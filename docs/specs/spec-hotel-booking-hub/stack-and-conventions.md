@@ -35,7 +35,7 @@ Compañero de [SPEC.md](SPEC.md). Detalla las constraints de stack, idioma y reg
 - **Dependencias apuntan hacia adentro** (Clean Architecture); lógica de negocio solo en Domain/Application. El dominio define **puertos**; infraestructura provee **adaptadores**.
 - **Result Pattern** (`Result<T>`) para flujos de negocio esperados; **excepciones solo** para errores inesperados/infraestructura.
 - **`DateTimeOffset`** siempre (nunca `DateTime`); `DateOnly` para fechas de estancia.
-- **UUID v7** en todas las PKs (`Guid.CreateVersion7()`).
+- **UUID v7** como identidad de dominio en las PKs (`Guid.CreateVersion7()`), expuesto en API y eventos. En SQL Server la PK se mapea **no-clustered** y la *clustering key* es una columna secuencial interna (`Seq bigint IDENTITY`), para evitar la fragmentación del v7 en el orden de `uniqueidentifier`; `Seq` es *shadow property* (nunca cruza la frontera del BC ni aparece en DTOs/eventos). Ver ADR-017.
 - **Concurrencia optimista** con columna `rowversion` (SQL Server) → `rowVersion` en DTOs; conflicto → 409.
 - **Minimal API** (no MVC), **versionado por URL** `/api/v1/`.
 - **Problem Details RFC 7807** en todos los errores.

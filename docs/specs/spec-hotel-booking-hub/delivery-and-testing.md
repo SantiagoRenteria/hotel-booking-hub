@@ -46,7 +46,7 @@ Compañero de [SPEC.md](SPEC.md). Detalla los entregables, la estrategia TDD, el
 | HU2-5 (notificación por correo) | CAP-7 | Evento `ReservaConfirmada` → `Notificaciones.Worker` → SMTP |
 | Solicitud de cancelación + política sugerida | CAP-10 | `SolicitarCancelacionCommand` — VO `MotivoCancelacion`/`Iniciador`/`PenalidadSugerida`, guard de estado |
 | Resolución (aprobar/condonar/rechazar) + auditoría | CAP-11 | `ResolverCancelacionCommand` — `PenalidadDecidida`, libera `NochesHabitacion` **solo al aprobar**, eventos `ReservaCancelada` / `SolicitudCancelacionRechazada` |
-| Cero overbooking bajo concurrencia | CAP-6 | Slots `NochesHabitacion` + `UNIQUE` + `SERIALIZABLE` |
+| Cero overbooking bajo concurrencia | CAP-6 | Slots `NochesHabitacion` + `UNIQUE (HabitacionId, Noche)` arbitrado en el INSERT (READ COMMITTED) — ADR-016 |
 | Auth + RBAC | CAP-8 | JWT/OIDC + policies en Gateway y servicios |
 | Observabilidad / tracing | CAP-9 | OTel + Aspire dashboard / App Insights |
 

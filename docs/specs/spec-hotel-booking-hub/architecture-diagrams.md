@@ -65,7 +65,7 @@ flowchart TB
 1. `POST /api/v1/reservas` con `HabitacionId`, `Estancia`, huéspedes y contacto de emergencia.
 2. Se valida (fechas coherentes `salida > entrada`, capacidad ≥ huéspedes, habitación activa en proyección).
 3. Se calcula el precio: `(costoBase + impuesto) × noches`.
-4. En **una sola transacción** (`SERIALIZABLE`): se inserta `Reserva`, se insertan las `NocheHabitacion` de la estancia (el `UNIQUE` rechaza solapamientos → HTTP 409) **y** se escribe el evento en la tabla `outbox`.
+4. En **una sola transacción** (READ COMMITTED): se inserta `Reserva`, se insertan las `NocheHabitacion` de la estancia (el índice `UNIQUE` rechaza solapamientos → HTTP 409; ver ADR-016) **y** se escribe el evento en la tabla `outbox`.
 5. El *relay* publica `ReservaConfirmada`.
 6. `Notificaciones.Worker` consume (idempotente vía Redis) y envía los correos.
 
