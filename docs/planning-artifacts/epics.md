@@ -184,3 +184,200 @@ No aplica — la entrega es exclusivamente back end (non-goal del PRD). No exist
 *Recortable — primero en recortarse.* Despliegue reproducible a Azure **exclusivamente por Terraform**: ACA + Azure SQL + Cache for Redis + Service Bus + Key Vault + App Insights. Queda como IaC documentada si el tiempo aprieta; no bloquea ningún criterio obligatorio.
 
 **Cubre:** NFR-6 (portabilidad y despliegue).
+
+---
+
+## Convención de historias y criterios de aceptación
+
+_Disciplina fija (derivada de party-mode: Mary, Paige, Murat). Aplica a todas las historias de este documento._
+
+- **Encabezado de trazabilidad** en cada historia: `HU-x → FR-n → AC-id`, etiqueta **Obligatorio** (criterio del enunciado) o **Diferenciador** (valor añadido), y un bloque **Porqué** de 1-2 frases que ata la decisión al criterio de evaluación ("claridad del razonamiento").
+- **Un `Dado/Cuando/Entonces` = una aserción observable.** ID estable `AC-Ex.n`. **Números, no adjetivos** (`exactamente 1`, `409`, `deliveries >= 1`). Ramas múltiples → tabla de ejemplos.
+- **Tipografía tri-idioma:** identificador de dominio/estado en `código` (español sin tilde, p. ej. `Habitacion`, estado `Confirmada`); mensaje de negocio entre "comillas" (español con tilde, p. ej. `"La habitación ya está reservada"`); sufijo de patrón en inglés (`CrearReservaCommand`).
+- **AC negativos** para los obligatorios frágiles (campo ausente → rechazo; falso 409; round-trip de liberación).
+- **Deuda de verificación** rastreable: `[DEUDA-VERIF:Ex]` en el AC que no cierra en su épica, nombrando la épica que lo salda. En E1: `deliveries >= 1` **nunca** `== 1`.
+
+---
+
+## Epic 1: Fundación ejecutable y anti-overbooking probado
+
+🎯 *Núcleo intocable · frontera de riesgo · Fase 0→1.* Al cerrar la épica, el sistema arranca con un comando y se puede crear una reserva que jamás sobrevende bajo concurrencia, con el invariante garantizado por el motor de datos. Gates: **E1a** (esqueleto + spikes + contrato de evento) · **E1b** (anti-overbooking productivo). Alcance de verificación: `AC-E1` cierra aquí (productor); `AC-E3/E5` es deuda diferida.
+
+### Story 1.1: Esqueleto ejecutable de un comando (walking skeleton)
+
+> **Trazabilidad:** G2 · NFR-6 · NFR-7 → *(historia habilitadora, sin FR de negocio)* → `AC-E1.1.x` · **Obligatorio (infraestructura de entrega)**
+> **Porqué:** el enunciado exige `docker-compose` funcional y evaluación sin instalar SDK; un esqueleto que arranca de un comando retira el riesgo G2 primero y es la topología de archivos que toda historia posterior extiende (ADR-015: sin `aspire-starter`).
+
+Como **evaluador de la prueba**,
+quiero **levantar todo el sistema con un solo comando y verificar que responde**,
+para **revisar la solución sin instalar el SDK de .NET ni los workloads de Aspire**.
+
+**Acceptance Criteria:**
+
+**AC-E1.1.1 — Arranque reproducible**
+**Dado** un checkout limpio del repositorio sin SDK de .NET instalado
+**Cuando** ejecuto `docker compose up`
+**Entonces** los servicios (`ApiGateway`, `Hoteles.Api`, `Reservas.Api`, `Notificaciones.Worker`) alcanzan estado *healthy*
+**Y** `GET /health` responde `200` en cada servicio.
+
+**AC-E1.1.2 — Estructura y gobernanza desde el primer commit**
+**Dado** el repositorio inicializado
+**Cuando** inspecciono la solución
+**Entonces** existen 4 assemblies por BC (`.Domain`, `.Application`, `.Infrastructure`, `.Api`), `Directory.Packages.props` (CPM) y `Directory.Build.props` (`net10.0`, `Nullable`, `TreatWarningsAsErrors` con `CA2016`)
+**Y** `NetArchTest` verifica que `Reservas.Domain` no referencia `Microsoft.EntityFrameworkCore`.
+
+**AC-E1.1.3 — CI verde y smoke test de compose**
+**Dado** un push a `develop`
+**Cuando** corre el pipeline de CI
+**Entonces** `build` + `dotnet format` + `gitleaks` pasan
+**Y** el smoke test (`docker compose up` + verificación de `/health`) pasa, detectando *drift* del compose a mano (ADR-007).
+
+### Story 1.2: Spikes de validación de ejecución (Sprint 0, timeboxed)
+
+> **Trazabilidad:** riesgo de ejecución (G1, ADR-016/018) → *(spike de reducción de incertidumbre — código desechable, sin cobertura, NO cuenta como entregable productivo)* → `AC-E1.2.x` · **Obligatorio (gate de riesgo)**
+> **Porqué:** el `architecture.md` declara "diseño completo, ejecución NO validada"; estos spikes retiran ese riesgo antes de construir el core. Salen del código de entrega precisamente para no contaminar la regla de "100% verde" con código throwaway.
+
+Como **equipo de desarrollo**,
+quiero **validar en un timebox que el arbitraje por índice único y el wiring del mediator funcionan sobre infraestructura real**,
+para **confirmar el diseño (o disparar el Plan B) antes de invertir en el core**.
+
+**Acceptance Criteria:**
+
+**AC-E1.2.1 — Spike de arbitraje de concurrencia (go/no-go)**
+**Dado** un `NochesHabitacion` con `UNIQUE(HabitacionId, Noche)` sobre Testcontainers.MsSql
+**Cuando** dos INSERT concurrentes compiten por la misma noche bajo `READ COMMITTED`
+**Entonces** uno commitea y el otro recibe `SqlException.Number` `2627`/`2601` (clasificado, sin parsear el mensaje)
+**Y** un `1205` (deadlock) se distingue como reintentable
+**Y** *(criterio de aborto)* si no se logra la garantía en el timebox, se documenta y se dispara el **Plan B**: `SERIALIZABLE` sin retry (revierte parcialmente ADR-016, ya trazado).
+
+**AC-E1.2.2 — Spike del pipeline del mediator (go/no-go)**
+**Dado** un `IRequestHandler<TRequest, TResponse>` con `TResponse = Result`
+**Cuando** se ejecuta un comando trivial a través del pipeline `Logging → Validation → Transaction → Outbox → Handler`
+**Entonces** los behaviors se componen en ese orden literal
+**Y** el insert de dominio y el de `OutboxMessages` comparten el mismo `SaveChangesAsync` (ADR-018).
+
+### Story 1.3: Contrato del evento `ReservaConfirmada` (claves de dedup y orden congeladas)
+
+> **Trazabilidad:** NFR-3 · NFR-8 → *(habilitadora de contrato; base de E3 y E5)* → `AC-E1.3.x` · **Obligatorio (contrato)**
+> **Porqué:** E5 (idempotencia) y E3 (orden de proyección) dependen de estas claves para existir; congelarlas ahora evita reabrir el productor después (party-mode: Winston/Murat). Va en E1a, no detrás de lógica de negocio.
+
+Como **consumidor de eventos (Worker / proyección)**,
+quiero **un contrato de evento versionado con clave de deduplicación y clave de orden estables**,
+para **poder deduplicar y ordenar sin acoplarme a la implementación del productor**.
+
+**Acceptance Criteria:**
+
+**AC-E1.3.1 — Congelamiento del esquema (contract test)**
+**Dado** el esquema publicado de `ReservaConfirmada.v1` (envelope `{ id, type, version, occurredAt, traceId, data }`)
+**Cuando** valido un evento serializado contra el snapshot del contrato
+**Entonces** existe y es no-nula la **dedup key** (`id`/`MessageId`)
+**Y** existe y es no-nula la **order key** (`{ aggregateId, version }`)
+**Y** un cambio incompatible en esas claves **rompe** el test (snapshot/JSON Schema).
+**Y** el test documenta: dedup key → la consume E5; order key → la consume E3.
+
+### Story 1.4: Cálculo de precio de la reserva (`CalculadorPrecio`)
+
+> **Trazabilidad:** HU2 → **FR-12** → `AC-E1.4.x` · **Obligatorio**
+> **Porqué:** es dominio puro sin I/O, 100% unit-testeable → sostiene el TDD del flujo crítico (Red→Green→Refactor evidenciado en commits) que el enunciado valora.
+
+Como **viajero**,
+quiero **ver el precio total de la reserva calculado de forma correcta**,
+para **saber cuánto pagaré antes de confirmar**.
+
+**Acceptance Criteria:**
+
+**AC-E1.4.1 — Fórmula de precio**
+**Dado** un `costoBase`, un `impuesto` y una `Estancia` de N noches
+**Cuando** se invoca `CalculadorPrecio`
+**Entonces** el total es `(costoBase + impuesto) × N` usando `decimal` (nunca `double`).
+
+| costoBase | impuesto | noches | total |
+|---|---|---|---|
+| 100.00 | 19.00 | 3 | 357.00 |
+| 80.00 | 0.00 | 1 | 80.00 |
+
+**AC-E1.4.2 — Estancia inválida**
+**Dado** una `Estancia` con `salida <= entrada`
+**Cuando** se construye el value object
+**Entonces** se rechaza con el mensaje `"La fecha de salida debe ser posterior a la de entrada"` (no se calcula precio).
+
+### Story 1.5: Anti-overbooking — slots `NochesHabitacion` + índice único + arbitraje
+
+> **Trazabilidad:** HU2 → **FR-18** → `AC-E1.5.x` · **Obligatorio** · *núcleo del diseño*
+> **Porqué:** el invariante ("cero overbooking") es la promesa central del sistema; vive en el motor de datos (ADR-016), no en la aplicación. Es el corazón del reto de nivel senior.
+
+Como **operador del sistema**,
+quiero **que dos reservas solapadas de la misma habitación sean imposibles a nivel de motor**,
+para **garantizar cero overbooking aun bajo concurrencia**.
+
+**Acceptance Criteria:**
+
+**AC-E1.5.1 — El índice único arbitra el conflicto (persistencia)**
+**Dado** un slot libre `(HabitacionId, Noche)` sobre Testcontainers.MsSql
+**Cuando** dos inserciones concurrentes compiten por esa misma noche bajo `READ COMMITTED`
+**Entonces** `exactamente 1` commitea
+**Y** la otra recibe violación de único (`SqlException.Number` `2627`/`2601`) → se traduce a `409` sin retry.
+
+**AC-E1.5.2 — Retry acotado solo para deadlock**
+**Dado** una inserción multi-noche que sufre un deadlock (`1205`)
+**Cuando** el `TransactionBehavior` la reejecuta
+**Entonces** reintenta hasta 3 veces con backoff + jitter
+**Y** los slots se insertan en orden determinístico `ORDER BY HabitacionId, Noche` para minimizar deadlocks.
+
+**AC-E1.5.3 — Falso 409 (AC negativo — el riesgo silencioso)**
+**Dado** dos reservas en la **misma** habitación con estancias **adyacentes no solapadas** `[D1→D2]` y `[D2→D3]` (check-out == check-in, **no** es solape)
+**Cuando** se solicitan (incluso concurrentes)
+**Entonces** `ambas` confirman y `conflicts == 0`.
+**Y** dado dos reservas en habitaciones **distintas** con las mismas fechas → `ambas` confirman (el constraint no cruza habitaciones).
+
+### Story 1.6: Crear-confirmar reserva atómica (huésped + contacto de emergencia + outbox)
+
+> **Trazabilidad:** HU2-2/3/4 → **FR-9, FR-10, FR-11** → `AC-E1.6.x` · **Obligatorio**
+> **Porqué:** es la operación de negocio del viajero y el flujo crítico TDD; reúne precio (1.4), slots (1.5) y la escritura del outbox en una sola transacción. Aquí cierra `AC-E1` (productor) y se deja escrita la deuda `AC-E3/E5`.
+
+Como **viajero**,
+quiero **reservar una habitación disponible registrando mis datos y un contacto de emergencia, y confirmarla en una sola operación**,
+para **obtener alojamiento con confirmación inmediata**.
+
+**Acceptance Criteria:**
+
+**AC-E1.6.1 — Money test: confirmación única bajo concurrencia**
+**Dado** una `Habitacion` con un único slot libre para la estancia `[D]`
+**Cuando** se ejecutan N solicitudes `CrearReservaCommand` concurrentes sobre ese slot
+**Entonces** se cumple exactamente:
+
+| N | confirmadas (`201`) | rechazadas (`409`) | filas `Reserva` `Confirmada` | filas `Outbox` |
+|---|---|---|---|---|
+| 2 | 1 | 1 | 1 | 1 |
+| 50 | 1 | 49 | 1 | 1 |
+
+**Y** no existe fila en `OutboxMessages` para ninguna de las reservas rechazadas.
+*(Collection `G1` aislada, `DisableParallelization = true`.)*
+
+**AC-E1.6.2 — Atomicidad del outbox (misma transacción)**
+**Dado** un fallo inyectado entre el insert de la `Reserva` y el de `OutboxMessages`
+**Cuando** la transacción se resuelve
+**Entonces** `count(reservas Confirmada) == 0` **Y** `count(filas Outbox) == 0` (las dos o ninguna).
+*(Collection `OutboxFaultInjection` aislada, `DisableParallelization = true`.)*
+
+**AC-E1.6.3 — Resiliencia del relay (at-least-once del productor)**
+**Dado** una reserva confirmada con su fila de outbox y el broker caído (fake controlable de Dapr)
+**Cuando** el broker se recupera y el relay corre
+**Entonces** la fila pendiente se publica con `deliveries >= 1` (**nunca** se asume `== 1`); sin "mark sent" prematuro.
+**Y** `[DEUDA-VERIF:E5]` el colapso a un solo **efecto** (idempotencia del consumidor) se verifica en E5.
+**Y** `[DEUDA-VERIF:E3]` el orden/convergencia de la proyección se verifica en E3.
+
+**AC-E1.6.4 — Datos de cada huésped obligatorios (AC negativo)**
+**Dado** un `CrearReservaCommand` con un huésped al que le falta un campo (nombres, apellidos, fecha de nacimiento, género, tipo/número de documento, email o teléfono) o con formato inválido
+**Cuando** se valida (`ValidationBehavior` + FluentValidation)
+**Entonces** responde `400` con Problem Details (RFC 7807) enumerando los campos inválidos; no se crea reserva.
+
+**AC-E1.6.5 — Contacto de emergencia obligatorio (AC negativo)**
+**Dado** un `CrearReservaCommand` sin `ContactoEmergencia` (nombre completo + teléfono)
+**Cuando** se valida
+**Entonces** responde `400` con Problem Details; no se crea reserva.
+
+**AC-E1.6.6 — Confirmación exitosa expone el precio**
+**Dado** un comando válido sobre una habitación disponible
+**Cuando** se confirma
+**Entonces** responde `201` con la `Reserva` en estado `Confirmada`, el precio total (AC-E1.4.1) y su identificador (UUID v7).
