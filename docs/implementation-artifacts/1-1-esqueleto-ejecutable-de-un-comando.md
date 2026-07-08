@@ -47,10 +47,10 @@ para **revisar la solución sin instalar el SDK de .NET ni los workloads de Aspi
   - [x] Cada servicio: `builder.AddServiceDefaults()` + `app.MapDefaultEndpoints()` (`/health`, `/alive`); `MapDefaultEndpoints` ajustado para exponer salud en todos los entornos (smoke Production)
   - [x] `AppHost` declara SQL Server ×2 + Redis + RabbitMQ + dashboard OTel (por `OTEL_EXPORTER_OTLP_ENDPOINT`)
   - [ ] *(pendiente runtime)* verificar que los recursos alcanzan estado *healthy* al ejecutar
-- [ ] **Task 5 — Salto asíncrono real por Dapr pub/sub (AC: 4) — DIFERIDO (requiere Dapr CLI)**
-  - [x] Costura creada: puerto `IPublicadorEventos` en `Comun` (el adaptador Dapr se enchufa aquí)
-  - [x] Componentes Dapr placeholder en `deploy/dapr/` (`pubsub.yaml`, `statestore.yaml`)
-  - [ ] Endpoint de prueba que publica por Dapr + suscripción en el Worker + test publish→consume cross-proceso *(requiere Dapr CLI; se completa en la verificación de ejecución / con 1.6b–E5)*
+- [x] **Task 5 — Salto asíncrono real por Dapr pub/sub (AC: 4) — VERIFICADO**
+  - [x] Costura + adaptador: `IPublicadorEventos` en `Comun`; `Dapr.AspNetCore` en Reservas.Api (publica vía `DaprClient`) y en el Worker (suscripción `WithTopic` + `UseCloudEvents` + `MapSubscribeHandler`)
+  - [x] Componentes Dapr: `deploy/dapr/local/pubsub.yaml` (Redis, para `dapr run`) + placeholders `deploy/dapr/{pubsub,statestore}.yaml` (RabbitMQ/secret intent)
+  - [x] Endpoint `POST /_smoke/ping` en Reservas + suscripción `/smoke` en el Worker; **verificado publish→consume cross-proceso** con Dapr CLI 1.18 (`dapr init --slim`) + Redis: 2 eventos publicados (202) → Worker los consumió logueando los UUID v7. *(Endpoint/suscripción de humo TEMPORAL: se reemplazan por `ReservaConfirmada` en 1.6 / E5.)*
 - [~] **Task 6 — `docker-compose` a mano + smoke test (AC: 1, 3) — AUTORADO, runtime no verificado**
   - [x] `deploy/docker-compose.yml` (SQL ×2, Redis, RabbitMQ, dashboard Aspire, 4 servicios; `USER` no root, tags fijos, `HEALTHCHECK`, `Dockerfile` multi-stage parametrizado; secreto SQL por `.env`)
   - [ ] *(pendiente runtime)* `docker compose up` en frío → `/health` 200 sin SDK

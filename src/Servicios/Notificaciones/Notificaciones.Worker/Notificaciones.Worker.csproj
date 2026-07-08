@@ -9,4 +9,8 @@
     <ProjectReference Include="..\..\..\Comun\HotelBookingHub.Comun\HotelBookingHub.Comun.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Dapr.AspNetCore" />
+  </ItemGroup>
+
 </Project>
