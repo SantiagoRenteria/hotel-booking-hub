@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2, 3, 4, 5]
+stepsCompleted: [1, 2, 3, 4, 5, 6]
 inputDocuments:
   - docs/planning-artifacts/prds/prd-hotel-booking-hub-2026-07-08/prd.md
   - docs/specs/spec-hotel-booking-hub/SPEC.md
@@ -315,3 +315,93 @@ Se materializa un **`AGENTS.md`** en la raíz: **imperativo** ("Usa X"), **tabla
 
 - **Con código que corre:** naming, `Result<T>`/Problem Details, anti-overbooking, ciclo de vida/cancelación, eventos + outbox + `Notificaciones.Worker` + SMTP, observabilidad OTel.
 - **Documentado, no implementado (honesto):** read model MongoDB (ADR-013), waitlist (gancho), compensación por deshabilitación con reservas activas, nube Azure/Terraform (F3, con compuerta).
+
+## Project Structure & Boundaries
+
+### Árbol de proyecto completo
+
+```
+hotel-booking-hub/
+├── HotelBookingHub.sln
+├── Directory.Build.props            # net10.0, Nullable, ImplicitUsings, TreatWarningsAsErrors (+CA2016)
+├── Directory.Packages.props         # Central Package Management
+├── .editorconfig · .gitignore · .dockerignore
+├── AGENTS.md                        # reglas canónicas (incluye "Comun no contiene tipos de dominio")
+├── README.md                        # C4 + árbol comentado + enlaces a ADRs
+├── .github/workflows/ci.yml         # build · unit · integration · contracts · dotnet format · gitleaks/SAST · newman · smoke compose · check sufijos
+├── src/
+│   ├── AppHost/{AppHost, ServiceDefaults}       # Aspire: recursos + OTel/health/resiliencia
+│   ├── ApiGateway/                              # YARP (dotnet new web) — auth JWT, rate limit, HTTPS
+│   ├── Comun/HotelBookingHub.Comun/             # shared kernel — SOLO contratos transversales
+│   │   ├── Resultados/ · Mediador/ · Behaviors/ · Eventos/ · Errores/ · Primitivos/
+│   └── Servicios/
+│       ├── Hoteles/{Hoteles.Domain, .Application, .Infrastructure, .Api}
+│       └── Reservas/
+│           ├── Reservas.Domain/     # Reservas/ · Cancelaciones/ · Servicios/ (CalculadorPrecio, PoliticaCancelacion) · Puertos/
+│           ├── Reservas.Application/ # organizado por SLICE (caso de uso), no por tipo técnico:
+│           │   ├── Reservas/CrearReserva/            # Command+Handler+Validator juntos (CAP-5)
+│           │   ├── Reservas/BuscarDisponibilidad/    # Query+Handler (CAP-4)
+│           │   ├── ReservasAgente/ObtenerReservas/   # Query (CAP-3)
+│           │   └── Cancelaciones/{SolicitarCancelacion, ResolverCancelacion}/  # CAP-10/11
+│           ├── Reservas.Infrastructure/ # Persistencia/ · Migraciones/ · Outbox/ · Proyeccion/ · Idempotencia/
+│           └── Reservas.Api/          # Minimal API /api/v1/reservas (+ /cancelaciones)
+│       └── Notificaciones/Notificaciones.Worker/     # consume eventos → SMTP (idempotente)
+├── tests/
+│   ├── TestKit/                     # class lib: Fixtures (SqlServer/Redis/Dapr, imagen pineada), Builders, Collections
+│   ├── Hoteles.UnitTests/  · Hoteles.IntegrationTests/
+│   ├── Reservas.UnitTests/          # CalculadorPrecio, PoliticaCancelacion, ciclo de vida, behaviors, clasificación 2627/1205
+│   ├── Reservas.IntegrationTests/   # G1 concurrencia + Resilience/OutboxFaultInjection (collections aisladas)
+│   ├── Contracts/                   # esquema de eventos Reservas↔Worker (JSON Schema/DTO snapshot, sin containers)
+│   └── E2E/                         # flujo completo crear→confirmar→notificar (compose; stage separado)
+├── deploy/{docker-compose.yml, dapr/, terraform/}
+├── postman/                         # colección + entorno (Newman)
+└── docs/                            # DOCUMENTO-BASE, specs/, planning-artifacts/ (este architecture.md), adr/
+```
+
+### Justificación de cada frontera (una frase por assembly — "existe porque…")
+
+- **`.Domain`** — aísla las reglas e invariantes del dominio de todo I/O; permite testear `CalculadorPrecio`/`PoliticaCancelacion`/ciclo de vida sin BD (sostiene el TDD del flujo crítico).
+- **`.Application`** — orquesta casos de uso (commands/queries + behaviors) sin conocer detalles de persistencia; organizada por *slice* para que un cambio de caso de uso toque una carpeta, no cuatro.
+- **`.Infrastructure`** — concentra los adaptadores (EF Core, Outbox, Redis, Dapr) detrás de los puertos del dominio; la frontera de **compilación** impide que el dominio dependa de EF Core aunque alguien lo intente.
+- **`.Api`** — expone HTTP (Minimal API) y traduce `Result<T>`→HTTP; sin lógica de negocio.
+- **`Comun`** — unifica las convenciones *transversales* (Result, mediador, behaviors, envelope, ProblemDetails) para que los servicios no diverjan en cómo se comunican.
+
+> La frontera de ensamblado (no de carpeta) se elige a propósito: en una prueba evaluada por claridad, el `.sln` **es** la evidencia visible de Clean Architecture. La disciplina *interna* de cada capa se refuerza además con **NetArchTest** en `*.UnitTests` (p. ej. "Domain no referencia Microsoft.EntityFrameworkCore").
+
+### Regla de admisión de `Comun`
+
+Un tipo entra a `Comun` **solo si** (1) es una convención de infraestructura transversal (*cómo* se comunican los servicios, no *de qué* hablan) y (2) cambiar su forma requeriría coordinar ambos BCs de todas formas. **Ningún tipo de dominio** de Hoteles o Reservas va en `Comun`, aunque sea cómodo — se prefiere duplicación deliberada al acoplamiento oculto. (Regla replicada en `AGENTS.md`.)
+
+### Architectural Boundaries
+
+- **API (borde externo):** solo el Gateway expone `/api/v1/*` (auth JWT + rate limit + HTTPS); los servicios no se exponen directamente. Cada servicio publica OpenAPI + Scalar.
+- **Servicio (BC):** Hoteles y Reservas son procesos independientes, **una BD por servicio**, sin llamadas síncronas — solo eventos Dapr pub/sub. `Comun` se comparte como biblioteca de contratos, nunca como estado.
+- **Datos:** invariante anti-overbooking **local a la BD de Reservas** (slots + índice único). Hoteles dueño del catálogo; Reservas mantiene `ProyeccionHabitacion` por eventos. `Seq` (bigint) nunca cruza el BC.
+- **Capas:** `Domain ← Application ← Infrastructure ← Api` (dependencias hacia adentro).
+
+### Estrategia de tests (aislamiento y determinismo)
+
+- **Tipos:** `*.UnitTests` (xUnit + InMemory/puro + NetArchTest) · `*.IntegrationTests` (Testcontainers.MsSql) · `Contracts` (esquema de eventos, sin containers, rápido, en cada PR) · `E2E` (compose completo, stage separado, bloqueante solo en PR a `main`).
+- **`TestKit`** centraliza fixtures (imagen de contenedor **pineada**), data builders y `ICollectionFixture` — sin duplicar setup entre servicios.
+- **Aislamiento crítico (no negociable):** G1 (concurrencia) y `OutboxFaultInjection` viven en **collections xUnit separadas con `DisableParallelization = true`**, cada una con su propio contenedor; reset de estado por test (`Respawn` o tx+rollback); el "broker caído" se inyecta como **fake controlable de Dapr**, no tumbando infra real. En CI corren como **stage secuencial aparte**, nunca en el `dotnet test` masivo paralelo.
+
+### Requirements → Structure Mapping
+
+| Capacidad / FR | Ubicación |
+|---|---|
+| CAP-1/2 · FR-1…7 | `Servicios/Hoteles/*` |
+| CAP-3 · FR-13 | `Reservas.Application/ReservasAgente/ObtenerReservas` |
+| CAP-4 · FR-8 | `Reservas.Application/Reservas/BuscarDisponibilidad` + `Infrastructure/Proyeccion` + Redis |
+| CAP-5 · FR-9…12 | `Reservas.Application/Reservas/CrearReserva` + `Domain/Servicios/CalculadorPrecio` |
+| CAP-6 · FR-18 | `Reservas.Infrastructure/Persistencia` (slots + índice único) |
+| CAP-10/11 · FR-14…17 | `Reservas/{Domain,Application}/Cancelaciones/` |
+| CAP-7 · FR-19…21 | `Reservas.Infrastructure/Outbox` → `Notificaciones.Worker` |
+| CAP-8 · FR-22…24 | `ApiGateway` + policies por servicio |
+| CAP-9 · FR-25/26 | `AppHost/ServiceDefaults` (OTel) |
+
+### Integration Points & Data Flow
+
+- **Reserva:** `POST /api/v1/reservas` → Gateway → `Reservas.Api` → `CrearReserva` (tx: `Reserva` + `NochesHabitacion` + `OutboxMessages`) → relay publica `ReservaConfirmada` → `Notificaciones.Worker` (idempotente) → SMTP.
+- **Catálogo→disponibilidad:** eventos de Hoteles → `ProyeccionHabitacion` (idempotente/ordenada) → alimenta la búsqueda.
+- **Cancelación:** `POST /reservas/{id}/cancelaciones` + `PATCH .../{cid}` → eventos por outbox → Worker.
+- **Externo:** SMTP y, en F3, Azure (Service Bus/SQL/Redis/Key Vault) vía componentes Dapr, sin cambio de código.
