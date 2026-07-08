@@ -1,0 +1,15 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub
+spec:
+  type: pubsub.rabbitmq
+  version: v1
+  metadata:
+    # Cero secretos en el repo: la cadena de conexión se resuelve por Dapr Secrets (local) / Key Vault (nube).
+    - name: connectionString
+      secretKeyRef:
+        name: rabbitmq-connection
+        key: connectionString
+# NOTA (Story 1.1): componente PLACEHOLDER. El pub/sub real, el secret store y la suscripción del
+# Notificaciones.Worker se cablean en la Story 1.6b / Épica 5 (requiere Dapr CLI).

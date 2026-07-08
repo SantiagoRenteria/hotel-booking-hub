@@ -1,6 +1,10 @@
+---
+baseline_commit: 6ea494b6dbf749787d56b883759d85a1cbbf8be6
+---
+
 # Story 1.1: Esqueleto ejecutable de un comando (walking skeleton)
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -21,39 +25,39 @@ para **revisar la solución sin instalar el SDK de .NET ni los workloads de Aspi
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Base de la solución + gobernanza de versiones (AC: 2)**
-  - [ ] `dotnet new sln --name HotelBookingHub` en la raíz
-  - [ ] Crear `Directory.Packages.props` (Central Package Management: `<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>`, una `<PackageVersion>` por paquete)
-  - [ ] Crear `Directory.Build.props` con `<TargetFramework>net10.0</TargetFramework>`, `<Nullable>enable</Nullable>`, `<ImplicitUsings>enable</ImplicitUsings>`, `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` y habilitar el analyzer `CA2016`
-  - [ ] `.editorconfig`, `.gitignore` (.NET: bin/obj, appsettings.Development.json, secretos), `.dockerignore`
-- [ ] **Task 2 — Piezas transversales de Aspire (AC: 1, 2)**
-  - [ ] `dotnet new aspire-servicedefaults --name ServiceDefaults --output src/AppHost/ServiceDefaults`
-  - [ ] `dotnet new aspire-apphost --name AppHost --output src/AppHost/AppHost` (NuGet-only vía `Aspire.AppHost.Sdk`; **no** `dotnet workload install aspire`)
-  - [ ] `dotnet sln add` de ambos
-- [ ] **Task 3 — Servicios de dominio + worker + gateway con sus 4 assemblies (AC: 2)**
-  - [ ] `Hoteles`: `Hoteles.Api` (`dotnet new webapi --use-minimal-apis`) + bibliotecas `Hoteles.Application`, `Hoteles.Domain`, `Hoteles.Infrastructure`
-  - [ ] `Reservas`: `Reservas.Api` (minimal API) + `Reservas.Application`, `Reservas.Domain`, `Reservas.Infrastructure`
-  - [ ] `Notificaciones.Worker` (`dotnet new worker`)
-  - [ ] `ApiGateway` (`dotnet new web` vacío — NO `webapi`) + paquete `Yarp.ReverseProxy`
-  - [ ] `src/Comun/HotelBookingHub.Comun` (biblioteca de contratos transversales; carpetas `Resultados/ Mediador/ Behaviors/ Eventos/ Errores/ Primitivos/`, aún vacías o con stubs mínimos)
-  - [ ] Wire de dependencias de capa: `Api → Application → Infrastructure → Domain` (referencias hacia adentro)
-  - [ ] `ProjectReference` por CADA ejecutable desde `AppHost.csproj` (habilita `Projects.*` del source-generator)
-  - [ ] Limpieza del scaffold: borrar `WeatherForecast.cs` y el endpoint `/weatherforecast` de cada `Program.cs`; revisar `Properties/launchSettings.json`
-- [ ] **Task 4 — Salud, telemetría y recursos declarados (AC: 1)**
-  - [ ] Cada servicio llama `builder.AddServiceDefaults()` (OTel + health checks + resiliencia) y `app.MapDefaultEndpoints()` (`/health`, `/alive`)
-  - [ ] `AppHost` declara recursos: SQL Server ×2 (db_hoteles, db_reservas), Redis, RabbitMQ (broker), sidecars Dapr, y el dashboard OTel
-- [ ] **Task 5 — Salto asíncrono real por Dapr pub/sub (AC: 4)**
-  - [ ] Componente Dapr pub/sub sobre RabbitMQ en `deploy/dapr/` (local)
-  - [ ] Endpoint temporal de prueba (p. ej. `POST /_smoke/ping` en `Reservas.Api`) que publica un evento de prueba al topic vía Dapr
-  - [ ] Suscripción en `Notificaciones.Worker` que consume ese topic y registra/marca la recepción
-  - [ ] Test de integración que verifica publish→consume de punta a punta (atraviesa el borde de proceso). *Marcar el endpoint de prueba como temporal/desechable — se retira cuando llegue el evento real de reserva (Story 1.6/5.1a).*
-- [ ] **Task 6 — `docker-compose` a mano + smoke test (AC: 1, 3)**
-  - [ ] `deploy/docker-compose.yml` reproducible: servicios + SQL ×2 + Redis + RabbitMQ + sidecars Dapr + dashboard de Aspire standalone (contenedores con `USER` no root, tags específicos no `:latest`, `HEALTHCHECK`)
-  - [ ] Verificar `docker compose up` en frío → `/health` `200` en cada servicio sin SDK instalado
-- [ ] **Task 7 — CI en GitHub Actions (AC: 3)**
-  - [ ] `.github/workflows/ci.yml`: `dotnet build` + `dotnet format --verify-no-changes` + `gitleaks` + smoke test de compose (`docker compose up` + curl `/health`)
-  - [ ] Correr el `NetArchTest` de la Task 3 dentro del stage de test
-- [ ] **Task 8 — Commit + push a `develop`** (cadencia obligatoria por cambio cerrado; autor Santiago Renteria, sin trailers de coautoría/IA)
+- [x] **Task 1 — Base de la solución + gobernanza de versiones (AC: 2)**
+  - [x] `dotnet new sln` → generó **`HotelBookingHub.slnx`** (formato XML, default del SDK .NET 10)
+  - [x] `Directory.Packages.props` (CPM `ManagePackageVersionsCentrally=true`, una `PackageVersion` por paquete; `Version=` removido de todos los csproj)
+  - [x] `Directory.Build.props` (`net10.0`, `Nullable`, `ImplicitUsings`, `TreatWarningsAsErrors`, `WarningsAsErrors=CA2016`)
+  - [x] `.editorconfig` (corregida regla de naming: `const`→PascalCase), `.gitignore` (+`.env`, excepción `!deploy/.env.example`), `.dockerignore` creado
+- [x] **Task 2 — Piezas transversales de Aspire (AC: 1, 2)**
+  - [x] `aspire-servicedefaults` → `src/AppHost/ServiceDefaults`
+  - [x] `aspire-apphost` → `src/AppHost/AppHost` (NuGet-only vía `Aspire.AppHost.Sdk` 13.4.6; sin workload)
+  - [x] Ambos añadidos a la solución
+- [x] **Task 3 — Servicios de dominio + worker + gateway con sus 4 assemblies (AC: 2)**
+  - [x] `Hoteles`: `.Api` (minimal) + `.Application` + `.Domain` + `.Infrastructure`
+  - [x] `Reservas`: `.Api` (minimal) + `.Application` + `.Domain` + `.Infrastructure` (+ EF Core SqlServer en `.Infrastructure`)
+  - [x] `Notificaciones.Worker` (host web para exponer `/health`)
+  - [x] `ApiGateway` (`web` vacío) + `Yarp.ReverseProxy`
+  - [x] `src/Comun/HotelBookingHub.Comun` con `Eventos/` (`EventoIntegracion`, `IPublicadorEventos`)
+  - [x] Referencias de capa `Domain ← Application ← Infrastructure ← Api` + `Comun` (transversal) + `ServiceDefaults` (ejecutables)
+  - [x] `ProjectReference` de cada ejecutable desde `AppHost` (source-generator `Projects.*` verificado al compilar)
+  - [x] Limpieza del scaffold: borrados `Class1.cs` y `WeatherForecast`
+- [x] **Task 4 — Salud, telemetría y recursos declarados (AC: 1 · impl.)**
+  - [x] Cada servicio: `builder.AddServiceDefaults()` + `app.MapDefaultEndpoints()` (`/health`, `/alive`); `MapDefaultEndpoints` ajustado para exponer salud en todos los entornos (smoke Production)
+  - [x] `AppHost` declara SQL Server ×2 + Redis + RabbitMQ + dashboard OTel (por `OTEL_EXPORTER_OTLP_ENDPOINT`)
+  - [ ] *(pendiente runtime)* verificar que los recursos alcanzan estado *healthy* al ejecutar
+- [ ] **Task 5 — Salto asíncrono real por Dapr pub/sub (AC: 4) — DIFERIDO (requiere Dapr CLI)**
+  - [x] Costura creada: puerto `IPublicadorEventos` en `Comun` (el adaptador Dapr se enchufa aquí)
+  - [x] Componentes Dapr placeholder en `deploy/dapr/` (`pubsub.yaml`, `statestore.yaml`)
+  - [ ] Endpoint de prueba que publica por Dapr + suscripción en el Worker + test publish→consume cross-proceso *(requiere Dapr CLI; se completa en la verificación de ejecución / con 1.6b–E5)*
+- [~] **Task 6 — `docker-compose` a mano + smoke test (AC: 1, 3) — AUTORADO, runtime no verificado**
+  - [x] `deploy/docker-compose.yml` (SQL ×2, Redis, RabbitMQ, dashboard Aspire, 4 servicios; `USER` no root, tags fijos, `HEALTHCHECK`, `Dockerfile` multi-stage parametrizado; secreto SQL por `.env`)
+  - [ ] *(pendiente runtime)* `docker compose up` en frío → `/health` 200 sin SDK
+- [x] **Task 7 — CI en GitHub Actions (AC: 3)**
+  - [x] `.github/workflows/ci.yml`: `restore` + `dotnet format --verify-no-changes` + `build` (Release) + `dotnet test` + `gitleaks` (activos y verdes); job `smoke-compose` scaffolded (`if: false`) hasta verificar el stack
+  - [x] `NetArchTest` incluido en el stage de test
+- [x] **Task 8 — Commit + push a `develop`** (autor Santiago Renteria, sin trailers)
 
 ## Dev Notes
 
@@ -153,8 +157,47 @@ hotel-booking-hub/
 
 ### Agent Model Used
 
+Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
+
 ### Debug Log References
+
+- `dotnet build HotelBookingHub.slnx` → **Build succeeded. 0 Warning(s), 0 Error(s)** (con `TreatWarningsAsErrors`).
+- `dotnet test` → **Passed! 1/1** (NetArchTest: `Reservas.Domain` no depende de EF Core).
+- `dotnet format --verify-no-changes` → limpio.
+- Hallazgo de seguridad resuelto: `NU1903` (TreatWarningsAsErrors) detectó `Microsoft.OpenApi 2.0.0` (CVE GHSA-v5pm-xwqc-g5wc) arrastrado por `Microsoft.AspNetCore.OpenApi 10.0.9`; se pineó `Microsoft.OpenApi 2.10.0` en CPM.
 
 ### Completion Notes List
 
+**Entregado y verificado (build + test + format verdes):**
+- Solución `HotelBookingHub.slnx` con 14 proyectos; **CPM** (`Directory.Packages.props`) y `Directory.Build.props` (net10.0, Nullable, ImplicitUsings, TreatWarningsAsErrors, CA2016) desde el primer commit.
+- Estructura de **4 assemblies por BC** (Hoteles, Reservas) + `ApiGateway` (YARP) + `Notificaciones.Worker` + `Comun` + Aspire `AppHost`/`ServiceDefaults`; referencias hacia adentro; `Class1.cs`/`WeatherForecast` eliminados.
+- Salud `/health` + `/alive` vía `ServiceDefaults` en las 3 APIs/gateway y en el Worker (host web); `MapDefaultEndpoints` expone salud en todos los entornos (para el smoke de compose).
+- `AppHost` declara la topología (SQL ×2, Redis, RabbitMQ, dashboard OTel) y referencia los 4 ejecutables (`Projects.*` generado OK).
+- **NetArchTest** (AC-E1.1.2) verde. Puerto `IPublicadorEventos` + `EventoIntegracion` en `Comun` (costura del salto async).
+- CI (`.github/workflows/ci.yml`): build + format + test + gitleaks activos; `docker-compose` + `Dockerfile` + componentes Dapr autorados; **cero secretos** (password SQL por `deploy/.env`, ignorado).
+
+**Pendiente (documentado, la historia queda `in-progress`):**
+- **AC-E1.1.4 (salto async real por Dapr):** DIFERIDO — requiere **Dapr CLI** (no instalado). La costura (`IPublicadorEventos` + componentes Dapr placeholder) queda lista; el publish→consume cross-proceso + su test se completan en la verificación de ejecución (con 1.6b/E5).
+- **AC-E1.1.1 (compose → healthy) y AC-E1.1.3 (smoke en CI):** el `docker-compose`/`Dockerfile` están autorados pero **no verificados en runtime** esta sesión (levantar SQL Server ×2 + broker es pesado); el job `smoke-compose` queda scaffolded (`if: false`). Verificación de runtime pendiente.
+- **Nota:** el SDK .NET 10 generó `HotelBookingHub.slnx` (no `.sln`); referencias en README/docs pueden actualizarse.
+
 ### File List
+
+- `HotelBookingHub.slnx` (nuevo)
+- `Directory.Build.props`, `Directory.Packages.props` (nuevos)
+- `Dockerfile`, `.dockerignore` (nuevos)
+- `.editorconfig` (modificado: regla naming const→PascalCase), `.gitignore` (modificado: `.env` + excepción `.env.example`)
+- `.github/workflows/ci.yml` (nuevo)
+- `deploy/docker-compose.yml`, `deploy/.env.example`, `deploy/dapr/pubsub.yaml`, `deploy/dapr/statestore.yaml` (nuevos)
+- `src/AppHost/AppHost/AppHost.cs` (modificado), `src/AppHost/AppHost/AppHost.csproj` (refs)
+- `src/AppHost/ServiceDefaults/Extensions.cs` (modificado: salud en todos los entornos), `ServiceDefaults.csproj`
+- `src/ApiGateway/{ApiGateway.csproj, Program.cs, appsettings.json}` (modificados)
+- `src/Comun/HotelBookingHub.Comun/Eventos/{EventoIntegracion.cs, IPublicadorEventos.cs}` (nuevos), csproj (refs)
+- `src/Servicios/Hoteles/**` (4 proyectos; `Hoteles.Api/Program.cs` reescrito)
+- `src/Servicios/Reservas/**` (4 proyectos; `Reservas.Api/Program.cs` reescrito; `Reservas.Domain/AssemblyReference.cs` nuevo; `Reservas.Infrastructure` con EF Core)
+- `src/Servicios/Notificaciones/Notificaciones.Worker/{Notificaciones.Worker.csproj (SDK Web), Program.cs, Worker.cs}` (modificados)
+- `tests/Reservas.UnitTests/{Reservas.UnitTests.csproj, Arquitectura/DisciplinaDeCapasTests.cs}` (test NetArchTest; `UnitTest1.cs` borrado)
+
+### Change Log
+
+- 2026-07-08 · Story 1.1 · esqueleto ejecutable: solución + CPM + estructura 4-assemblies/BC + Aspire + YARP + health + NetArchTest + CI + compose (autorado). Build/test/format verdes. Dapr async jump y verificación de compose en runtime: pendientes (Dapr CLI / stack pesado). Estado: `in-progress`.

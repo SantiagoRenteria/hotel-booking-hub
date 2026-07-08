@@ -1,0 +1,14 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: redis:6379
+    - name: redisPassword
+      value: ""
+# NOTA (Story 1.1): componente PLACEHOLDER. El inbox de idempotencia (SETNX+TTL) que usa este
+# state store se implementa en la Épica 3 (proyección) y la Épica 5 (worker).
