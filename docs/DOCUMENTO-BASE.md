@@ -281,6 +281,17 @@ Al confirmar una reserva, dentro de una transacción con aislamiento `SERIALIZAB
 
 > Alternativas evaluadas y descartadas por complejidad/contención: `sp_getapplock` por `HabitacionId`, y verificación de rango bajo `SERIALIZABLE` sin tabla de slots. Se documentan en el ADR-003.
 
+**Resumen de todas las condiciones de carrera del sistema** (respuesta preparada — resueltas por diseño, no como parche):
+
+| Condición de carrera | Mecanismo |
+|----------------------|-----------|
+| Overbooking (2 reservas, misma habitación/fechas) | Slots `NochesHabitacion` + `UNIQUE` + `SERIALIZABLE` → una gana, otra `409` |
+| Edición concurrente (2 agentes, mismo hotel) | Concurrencia optimista con `rowversion` → `409` + recarga |
+| Evento procesado dos veces (broker *at-least-once*) | Idempotencia: inbox en Redis por `message-id` |
+| Doble publicación desde el outbox | *At-least-once* + idempotencia aguas abajo lo absorbe |
+| Doble envío del cliente (doble clic en "reservar") | **Idempotency-Key** en header del `POST` → devuelve la misma reserva |
+| *Deadlock* por `SERIALIZABLE` bajo contención | Retry ante errores transitorios de SQL (Polly) |
+
 ### 8.6 Consistencia y mensajería (Outbox + idempotencia + Dapr)
 
 **No perder el evento:** patrón **Transactional Outbox**. La reserva, sus slots y su evento se escriben en la misma transacción ACID de SQL Server. Un relay lee la tabla `outbox` y publica vía Dapr. Si el broker está caído, el evento permanece en `outbox` hasta publicarse.
@@ -291,6 +302,21 @@ Al confirmar una reserva, dentro de una transacción con aislamiento `SERIALIZAB
 - Local → RabbitMQ (en docker-compose).
 - Nube → Azure Service Bus.
 - **Cero cambios de código** — solo el YAML del component.
+
+**Dapr — building blocks utilizados** (modelo *sidecar*: cada servicio corre junto a un proceso Dapr que expone una API local; los sidecars hablan entre sí, desacoplando el código de la infraestructura concreta):
+
+| Building block | ¿Se usa? | Para qué en este sistema |
+|----------------|:--------:|--------------------------|
+| Pub/Sub | ✅ | Eventos `ReservaConfirmada` y de catálogo; broker abstraído |
+| State management | ✅ | Redis para idempotencia (inbox) y outbox |
+| Secrets | ✅ | Key Vault (nube) / archivo (local) — sin credenciales en código |
+| Resiliency | ✅ | Retry / circuit-breaker / timeout declarativos (YAML) |
+| Observability | ✅ | Emite trazas OTel de cada salto → alimenta el tracing distribuido (§8.11) |
+| Service invocation | Opcional | Llamada servicio-a-servicio con mTLS (se prefieren eventos) |
+| Bindings | Opcional | Alternativa para el envío de correo (SMTP/SendGrid) |
+| Actors / Workflow | ❌ | Sin caso; Workflow serviría si la reserva creciera a una *saga* |
+
+> **Valor clave:** una sola abstracción resuelve pub/sub + secrets + state + resiliencia + observabilidad, y mantiene el sistema *cloud-agnostic*. El sidecar lo gestiona ACA en la nube y Aspire en local — no se opera a mano.
 
 ### 8.7 CQRS y mediator propio
 
@@ -310,7 +336,22 @@ Al confirmar una reserva, dentro de una transacción con aislamiento `SERIALIZAB
 
 **Qué se sacrifica:** escalado horizontal de escritura (sharding) más simple en NoSQL, y flexibilidad de esquema. Pero **10.000 reservas/día ≈ 0,12 writes/s** promedio (picos de decenas/s) → SQL Server en una instancia sobra.
 
-**En qué escenario cambiaría (respuesta preparada):** si la **búsqueda de disponibilidad** se vuelve el cuello de botella más allá de lo que resuelve Redis, se introduce un **read model en MongoDB** vía CQRS (proyecciones desnormalizadas alimentadas por eventos) — MongoDB ya está en el stack de la empresa. El *write model* sigue en SQL Server. Esta evolución está diseñada pero **no implementada** en esta entrega (control de alcance).
+**En qué escenario cambiaría (respuesta preparada):** si la **búsqueda de disponibilidad** se vuelve el cuello de botella más allá de lo que resuelve Redis, se introduce un **read model en MongoDB** vía CQRS. Diseño completo (documentado, **no implementado** en esta entrega — ver [ADR-013](#adr-013--read-model-cqrs-en-mongodb-diferido)):
+
+```
+Comando (reservar) ─► SQL Server   (verdad transaccional, invariantes, anti-overbooking)
+                          │ evento de dominio (Dapr pub/sub)
+                          ▼
+                     proyección ─► MongoDB (documentos desnormalizados, solo lectura)
+                                       ▲
+Query (buscar disponibilidad) ────────┘  (sin joins; un documento pre-armado)
+```
+
+- **Write** en SQL Server; **Read** en MongoDB (documentos desnormalizados, índices de texto/geoespaciales por ciudad, escala de lectura horizontal).
+- **Consistencia eventual** entre ambos: la proyección se actualiza de forma asíncrona. Aceptable para *búsqueda* (puede estar milisegundos desfasada); **la confirmación de reserva SIEMPRE va contra SQL** con el constraint anti-overbooking. La verdad transaccional vive en SQL; Mongo es una vista.
+- **Cómo se asegura MongoDB** (el read model puede contener PII del huésped): autenticación SCRAM-SHA-256 con credenciales en Key Vault; RBAC de permiso mínimo; TLS en tránsito; cifrado en reposo (WiredTiger); **cifrado a nivel de campo (CSFLE / Queryable Encryption)** para documento y email del huésped (ni el DBA lo ve en claro — conecta con PCI/ISO); aislamiento de red (sin puerto público); minimización de datos.
+
+Mientras tanto, **Redis** cubre el caché de lectura. Para catálogo multi-región de baja latencia, la alternativa sería Cosmos DB con réplicas geográficas.
 
 ### 8.9 Resiliencia (circuit breaker)
 
@@ -342,6 +383,7 @@ El enunciado pide JWT/OAuth2 + ≥3 prácticas; se implementan **8**, mapeadas a
 - **OpenTelemetry** (traces + metrics + logs) en todos los servicios (OTLP).
 - Local: **dashboard de Aspire** (standalone como contenedor en docker-compose → el evaluador también ve trazas sin instalar Aspire).
 - Nube: **Application Insights / Azure Monitor** (cambio de endpoint OTLP).
+- **"¿Dónde falló cada cosa?" — trazas distribuidas:** cada request nace con un `trace-id` (W3C Trace Context) que se **propaga automáticamente** por Gateway → servicio → sidecar Dapr → broker → worker. Ante un fallo, se abre la traza y el *waterfall* de spans muestra el servicio/operación exacto en rojo con su excepción. Los **logs estructurados** (Serilog) se enriquecen con ese mismo `trace-id`/`correlation-id` → todos los logs de un request se filtran por su id. Dapr contribuye emitiendo spans de cada salto que pasa por el sidecar.
 - **Detección de degradación (respuesta preparada):** histograma de duración por endpoint, alertas p95/p99, y trazas distribuidas con *exemplars* que ligan métrica ↔ traza; el span de la query de disponibilidad revela el cuello de botella.
 
 ### 8.12 Entorno de desarrollo y despliegue
@@ -436,10 +478,11 @@ Se aplican **con intención** (no *pattern soup*): cada patrón resuelve un prob
 - **Decisión:** Aspire como fuente de verdad de la topología (dev + OTel); compose como artefacto reproducible; smoke test en CI evita drift.
 - **Consecuencias:** (+) mejor DX + observabilidad gratis + entrega reproducible. (−) dos representaciones (mitigado con generación + CI).
 
-### ADR-008 — Azure Container Apps + Terraform
-- **Contexto:** dejar la app lista para nube y demostrar IaC (la vacante pide cloud-native).
-- **Decisión:** ACA (Dapr gestionado, autoscale) + Azure SQL + Azure Cache for Redis, provisionado con Terraform; Fase 3 con compuerta.
-- **Consecuencias:** (+) despliegue real y escalable, IaC versionada. (−) costo/tiempo de infra (acotado con la compuerta).
+### ADR-008 — Azure Container Apps + Terraform (con criterio de migración a AKS)
+- **Contexto:** dejar la app lista para nube y demostrar IaC (la vacante pide cloud-native). Se evaluó **ACA vs AKS**.
+- **Decisión:** desplegar en **ACA** (Dapr y KEDA **gestionados**, sin operar Kubernetes) + Azure SQL + Azure Cache for Redis, provisionado con Terraform; Fase 3 con compuerta. **ACA corre sobre AKS por debajo** — es Kubernetes sin el overhead operativo.
+- **Cuándo migraría a AKS (documentado, no ejecutado):** necesidad de control fino (ingress controllers, network policies, service mesh), workloads no-serverless, multi-cloud, o requisitos que ACA no expone. La migración es viable porque Dapr y los contenedores son los mismos; cambia el plano de orquestación (Helm, HPA, node pools).
+- **Consecuencias:** (+) despliegue real y escalable sin gastar días operando K8s; demuestra criterio ACA↔AKS. (−) menos control fino que AKS (aceptable al alcance; se documenta el camino de salida).
 
 ### ADR-009 — Sin dependencias privadas
 - **Contexto:** el repo debe ser público y compilar en la máquina del evaluador.
@@ -460,6 +503,11 @@ Se aplican **con intención** (no *pattern soup*): cada patrón resuelve un prob
 - **Contexto:** Redis está en el stack de UltraGroup; se necesita caché de lecturas frecuentes, idempotencia y state store para Dapr.
 - **Decisión:** Redis como caché de disponibilidad, inbox de idempotencia (message-id con TTL) y Dapr state store.
 - **Consecuencias:** (+) lecturas rápidas, idempotencia simple, alineado al stack. (−) una dependencia de infra más (gestionada por Aspire/compose/ACA).
+
+### ADR-013 — Read model CQRS en MongoDB (diferido)
+- **Contexto:** MongoDB está en el stack de UltraGroup; la búsqueda de disponibilidad podría escalar más allá de lo que resuelve el caché Redis.
+- **Decisión:** **diseñar y documentar** el read model en MongoDB (proyección desnormalizada alimentada por eventos, con su estrategia de seguridad: SCRAM, RBAC, TLS, cifrado en reposo y **CSFLE** para PII), pero **no implementarlo** en esta entrega. Redis cubre el caché de lectura mientras tanto (§8.8).
+- **Consecuencias:** (+) demuestra dominio de CQRS con *read model* separado y de seguridad de datos, sin añadir una BD más que asegurar/sincronizar/desplegar en el plazo. (−) la separación write/read queda como evolución, no como código entregado.
 
 ---
 
