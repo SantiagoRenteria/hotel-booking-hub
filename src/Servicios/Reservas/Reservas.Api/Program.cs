@@ -13,7 +13,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+// HTTPS enforcement es responsabilidad del API Gateway (borde único); los servicios corren HTTP tras él.
 
 // /health y /alive (Story 1.1). Los endpoints de negocio de Reservas (CAP-4/5/6) y la publicación
 // real de eventos por Dapr (outbox → ReservaConfirmada) llegan en la Story 1.6.

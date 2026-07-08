@@ -13,7 +13,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+// HTTPS enforcement es responsabilidad del API Gateway (borde único); los servicios corren HTTP tras él.
 
 // /health y /alive (Story 1.1). Los endpoints de negocio de Hoteles (CAP-1/2) llegan en la Épica 2.
 app.MapDefaultEndpoints();

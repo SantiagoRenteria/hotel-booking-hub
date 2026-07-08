@@ -1,6 +1,6 @@
 # docker-compose · hotel-booking-hub (Story 1.1)
 # Reproducibilidad sin instalar SDK ni Aspire (ADR-007). Mantenido A MANO y blindado
-# con smoke test en CI. NOTA: AUTORADO — verificación de runtime pendiente (AC-E1.1.1).
+# con smoke test en CI. Verificado en runtime (Story 1.1): 9 contenedores, /health 200 en los 4 servicios.
 #
 # Cero secretos en el repo: la contraseña de SQL Server se toma de la variable de entorno
 # MSSQL_SA_PASSWORD (defínela en deploy/.env, que está en .gitignore). No hay valores por defecto.
@@ -42,6 +42,8 @@ services:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:9.0
     environment:
       DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+      # El endpoint OTLP debe escuchar en 0.0.0.0 (no localhost) para recibir de los otros contenedores.
+      DOTNET_DASHBOARD_OTLP_ENDPOINT_URL: "http://0.0.0.0:18889"
     ports: ["18888:18888"]
 
   gateway:
