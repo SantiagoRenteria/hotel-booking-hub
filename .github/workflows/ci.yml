@@ -52,24 +52,26 @@ jobs:
           GITLEAKS_CONFIG: .gitleaks.toml
 
   # ---------------------------------------------------------------------------
-  # Smoke test de docker-compose (G2 / AC-E1.1.1). SCAFFOLDED — pendiente de
-  # verificación de runtime: requiere Dockerfiles verificados y el stack completo
-  # (SQL Server x2, Redis, RabbitMQ). Se habilitará al cerrar la verificación de
-  # ejecución de la Story 1.1. Mientras tanto no bloquea el pipeline.
+  # Smoke test de docker-compose (G2 / AC-E1.1.1): levanta el stack y verifica /health.
+  # Verificado localmente en la Story 1.1. Es el gate PESADO (build de 4 imágenes + SQL x2):
+  # se ejecuta solo en la integración hacia `main` (push a main / PR a main), no en cada push a develop.
   # ---------------------------------------------------------------------------
   smoke-compose:
-    name: Smoke · docker compose up + /health (pendiente)
-    if: false
+    name: Smoke · docker compose up + /health
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Crear deploy/.env (secreto efímero de CI)
+        run: echo "MSSQL_SA_PASSWORD=Ci_$(openssl rand -hex 12)!" > deploy/.env
       - name: docker compose up
         run: docker compose -f deploy/docker-compose.yml up -d --build
-      - name: Verificar /health
+      - name: Verificar /health (gateway 8080, hoteles 8081, reservas 8082, notificaciones 8083)
         run: |
           set -e
-          for svc in 8080 8081 8082 8083; do
-            curl --retry 20 --retry-all-errors --retry-delay 5 -fsS "http://localhost:${svc}/health"
+          for port in 8080 8081 8082 8083; do
+            curl --retry 30 --retry-all-errors --retry-delay 5 -fsS "http://localhost:${port}/health"
+            echo " -> ${port}/health OK"
           done
       - name: Teardown
         if: always()

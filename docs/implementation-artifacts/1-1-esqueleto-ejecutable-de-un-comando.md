@@ -4,7 +4,7 @@ baseline_commit: 6ea494b6dbf749787d56b883759d85a1cbbf8be6
 
 # Story 1.1: Esqueleto ejecutable de un comando (walking skeleton)
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -46,16 +46,16 @@ para **revisar la solución sin instalar el SDK de .NET ni los workloads de Aspi
 - [x] **Task 4 — Salud, telemetría y recursos declarados (AC: 1 · impl.)**
   - [x] Cada servicio: `builder.AddServiceDefaults()` + `app.MapDefaultEndpoints()` (`/health`, `/alive`); `MapDefaultEndpoints` ajustado para exponer salud en todos los entornos (smoke Production)
   - [x] `AppHost` declara SQL Server ×2 + Redis + RabbitMQ + dashboard OTel (por `OTEL_EXPORTER_OTLP_ENDPOINT`)
-  - [ ] *(pendiente runtime)* verificar que los recursos alcanzan estado *healthy* al ejecutar
+  - [x] **Verificado en runtime:** los 4 servicios alcanzan `(healthy)` bajo `docker compose up`
 - [x] **Task 5 — Salto asíncrono real por Dapr pub/sub (AC: 4) — VERIFICADO**
   - [x] Costura + adaptador: `IPublicadorEventos` en `Comun`; `Dapr.AspNetCore` en Reservas.Api (publica vía `DaprClient`) y en el Worker (suscripción `WithTopic` + `UseCloudEvents` + `MapSubscribeHandler`)
   - [x] Componentes Dapr: `deploy/dapr/local/pubsub.yaml` (Redis, para `dapr run`) + placeholders `deploy/dapr/{pubsub,statestore}.yaml` (RabbitMQ/secret intent)
   - [x] Endpoint `POST /_smoke/ping` en Reservas + suscripción `/smoke` en el Worker; **verificado publish→consume cross-proceso** con Dapr CLI 1.18 (`dapr init --slim`) + Redis: 2 eventos publicados (202) → Worker los consumió logueando los UUID v7. *(Endpoint/suscripción de humo TEMPORAL: se reemplazan por `ReservaConfirmada` en 1.6 / E5.)*
-- [~] **Task 6 — `docker-compose` a mano + smoke test (AC: 1, 3) — AUTORADO, runtime no verificado**
+- [x] **Task 6 — `docker-compose` a mano + smoke test (AC: 1, 3) — VERIFICADO**
   - [x] `deploy/docker-compose.yml` (SQL ×2, Redis, RabbitMQ, dashboard Aspire, 4 servicios; `USER` no root, tags fijos, `HEALTHCHECK`, `Dockerfile` multi-stage parametrizado; secreto SQL por `.env`)
-  - [ ] *(pendiente runtime)* `docker compose up` en frío → `/health` 200 sin SDK
+  - [x] **Verificado:** `docker compose up` → 9 contenedores arriba, `/health` `200` en gateway:8080/hoteles:8081/reservas:8082/notificaciones:8083, los 4 `(healthy)`. *(Fix: RabbitMQ 5672 no se publica al host — rango reservado de Windows; los servicios lo alcanzan por la red interna.)*
 - [x] **Task 7 — CI en GitHub Actions (AC: 3)**
-  - [x] `.github/workflows/ci.yml`: `restore` + `dotnet format --verify-no-changes` + `build` (Release) + `dotnet test` + `gitleaks` (activos y verdes); job `smoke-compose` scaffolded (`if: false`) hasta verificar el stack
+  - [x] `.github/workflows/ci.yml`: `restore` + `dotnet format --verify-no-changes` + `build` (Release) + `dotnet test` + `gitleaks` (activos y verdes); job `smoke-compose` **habilitado** y gateado a push/PR a `main` (gate pesado de integración)
   - [x] `NetArchTest` incluido en el stage de test
 - [x] **Task 8 — Commit + push a `develop`** (autor Santiago Renteria, sin trailers)
 
@@ -176,10 +176,16 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 - **NetArchTest** (AC-E1.1.2) verde. Puerto `IPublicadorEventos` + `EventoIntegracion` en `Comun` (costura del salto async).
 - CI (`.github/workflows/ci.yml`): build + format + test + gitleaks activos; `docker-compose` + `Dockerfile` + componentes Dapr autorados; **cero secretos** (password SQL por `deploy/.env`, ignorado).
 
-**Pendiente (documentado, la historia queda `in-progress`):**
-- **AC-E1.1.4 (salto async real por Dapr):** DIFERIDO — requiere **Dapr CLI** (no instalado). La costura (`IPublicadorEventos` + componentes Dapr placeholder) queda lista; el publish→consume cross-proceso + su test se completan en la verificación de ejecución (con 1.6b/E5).
-- **AC-E1.1.1 (compose → healthy) y AC-E1.1.3 (smoke en CI):** el `docker-compose`/`Dockerfile` están autorados pero **no verificados en runtime** esta sesión (levantar SQL Server ×2 + broker es pesado); el job `smoke-compose` queda scaffolded (`if: false`). Verificación de runtime pendiente.
-- **Nota:** el SDK .NET 10 generó `HotelBookingHub.slnx` (no `.sln`); referencias en README/docs pueden actualizarse.
+**Verificado en runtime (cierre de la historia):**
+- **AC-E1.1.4 (salto async real por Dapr):** ✅ Dapr CLI 1.18 (`dapr init --slim`); `Dapr.AspNetCore` en Reservas.Api (publica) y Worker (suscribe); publish→consume cross-proceso probado sobre Redis (2 eventos → Worker los consumió).
+- **AC-E1.1.1 (compose → healthy):** ✅ `docker compose up` → 9 contenedores; `/health` `200` en los 4 servicios, todos `(healthy)`. Sin SDK (imágenes autocontenidas). Fix aplicado: RabbitMQ 5672 no publicado al host (rango reservado de Windows).
+- **AC-E1.1.3 (CI):** ✅ build + format + test + gitleaks verificados; `smoke-compose` verificado localmente y habilitado en CI (gate a `main`).
+
+**Notas / gotchas (en [docs/COMO-EJECUTAR.md](../COMO-EJECUTAR.md)):**
+- El SDK .NET 10 generó `HotelBookingHub.slnx` (no `.sln`).
+- Windows reserva rangos de puertos (WSL/Hyper-V): 6060 (Dapr scheduler → `dapr init --slim`) y 5672 (RabbitMQ AMQP → no publicar al host).
+- `dotnet run` bajo Dapr requiere `--no-launch-profile` para respetar el `--app-port`.
+- **Todos los AC (E1.1.1–E1.1.4) verificados** → historia lista para review.
 
 ### File List
 
@@ -188,7 +194,8 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 - `Dockerfile`, `.dockerignore` (nuevos)
 - `.editorconfig` (modificado: regla naming const→PascalCase), `.gitignore` (modificado: `.env` + excepción `.env.example`)
 - `.github/workflows/ci.yml` (nuevo)
-- `deploy/docker-compose.yml`, `deploy/.env.example`, `deploy/dapr/pubsub.yaml`, `deploy/dapr/statestore.yaml` (nuevos)
+- `deploy/docker-compose.yml` (RabbitMQ AMQP no publicado al host), `deploy/.env.example`, `deploy/dapr/pubsub.yaml`, `deploy/dapr/statestore.yaml`, `deploy/dapr/local/pubsub.yaml` (nuevos)
+- `docs/COMO-EJECUTAR.md` (runbook reproducible con gotchas de Windows)
 - `src/AppHost/AppHost/AppHost.cs` (modificado), `src/AppHost/AppHost/AppHost.csproj` (refs)
 - `src/AppHost/ServiceDefaults/Extensions.cs` (modificado: salud en todos los entornos), `ServiceDefaults.csproj`
 - `src/ApiGateway/{ApiGateway.csproj, Program.cs, appsettings.json}` (modificados)
@@ -200,4 +207,5 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 
 ### Change Log
 
-- 2026-07-08 · Story 1.1 · esqueleto ejecutable: solución + CPM + estructura 4-assemblies/BC + Aspire + YARP + health + NetArchTest + CI + compose (autorado). Build/test/format verdes. Dapr async jump y verificación de compose en runtime: pendientes (Dapr CLI / stack pesado). Estado: `in-progress`.
+- 2026-07-08 · Story 1.1 · esqueleto ejecutable: solución + CPM + estructura 4-assemblies/BC + Aspire + YARP + health + NetArchTest + CI + compose. Build/test/format verdes.
+- 2026-07-08 · Verificación de runtime: salto async Dapr (publish→consume) OK; `docker compose up` → 4 servicios `(healthy)`, `/health` 200; `smoke-compose` habilitado en CI (gate a `main`). Todos los AC verificados. Estado: `in-progress` → `review`.

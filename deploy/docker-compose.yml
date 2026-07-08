@@ -32,7 +32,10 @@ services:
 
   rabbitmq:
     image: rabbitmq:4.0-management-alpine
-    ports: ["5672:5672", "15672:15672"]
+    # AMQP (5672) queda solo en la red interna de compose: los servicios lo alcanzan por 'rabbitmq:5672'.
+    # No se publica al host (no lo necesita nada externo y, en Windows, 5672 suele caer en un rango de
+    # puertos reservado por WSL/Hyper-V → 'bind: ... forbidden'). Solo se publica la UI de management.
+    ports: ["15672:15672"]
 
   # Dashboard OTel standalone: el evaluador ve trazas sin instalar Aspire.
   aspire-dashboard:
