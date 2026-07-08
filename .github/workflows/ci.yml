@@ -48,6 +48,8 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Usa .gitleaks.toml del repo (allowlist de tooling de IA vendored: .claude/ y _bmad/).
+          GITLEAKS_CONFIG: .gitleaks.toml
 
   # ---------------------------------------------------------------------------
   # Smoke test de docker-compose (G2 / AC-E1.1.1). SCAFFOLDED — pendiente de
