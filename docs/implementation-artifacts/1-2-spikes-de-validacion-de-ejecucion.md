@@ -4,7 +4,7 @@ baseline_commit: 99dec38cfbbefc7a769b6802797d7f1c1e6c2554
 
 # Story 1.2: Spikes de validación de ejecución (Sprint 0, timeboxed)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -122,3 +122,4 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 ### Change Log
 
 - 2026-07-08 · Story 1.2 · spikes de Sprint 0 ejecutados (Testcontainers.MsSql + SQLite): arbitraje 2627/1205 y wiring del mediator validados empíricamente. **GO** en ambos, sin Plan B. Aprendizaje destilado en `spikes-referencia.md`; código throwaway eliminado. Estado: `in-progress` → `review`.
+- 2026-07-08 · Cierre: `review` → `done` (decisión de Santiago). Se omite el code-review formal por ser un spike sin código productivo (el único artefacto es el doc de referencia).
