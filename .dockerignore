@@ -1,0 +1,15 @@
+# Contexto de build mínimo y sin artefactos locales
+**/bin/
+**/obj/
+**/out/
+**/.vs/
+**/.git/
+**/.github/
+**/node_modules/
+**/*.user
+**/appsettings.Development.json
+deploy/.env
+docs/
+postman/
+_bmad/
+.claude/
