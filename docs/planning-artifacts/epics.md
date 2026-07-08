@@ -185,6 +185,11 @@ No aplica — la entrega es exclusivamente back end (non-goal del PRD). No exist
 
 **Cubre:** NFR-6 (portabilidad y despliegue).
 
+### Épica T: Entrega y requisitos transversales
+*Transversal — acompaña a todas las fases.* Ancla los entregables explícitos del enunciado (repo público, README+C4+ADR, doc de seguridad, doc de uso de IA, colección Postman/Newman, `docker-compose`) como Definition of Done verificable, para que no queden huérfanos.
+
+**Cubre:** requisitos de entrega del enunciado (sin FR de negocio).
+
 ---
 
 ## Convención de historias y criterios de aceptación
@@ -978,3 +983,52 @@ para **desplegar de forma reproducible y sin provisión manual**.
 **Dado** el cambio de broker local→nube
 **Cuando** se despliega
 **Entonces** solo cambia el component YAML de Dapr; `0` cambios de código de aplicación.
+
+---
+
+## Epic T: Entrega y requisitos transversales (DoD de entrega)
+
+*Transversal · acompaña a todas las fases.* Ancla los **requisitos de entrega explícitos del enunciado** que no cuelgan de ninguna feature y suelen quedar huérfanos (party-mode: Mary). No es una fase; es el Definition of Done de la entrega.
+
+### Story T.1: Cerrar los entregables del enunciado
+
+> **Trazabilidad:** Requisitos de entrega del enunciado → *(entregables transversales, sin FR)* → `AC-ET.1.x` · **Obligatorio (entrega)**
+> **Porqué:** el enunciado lista entregables concretos (repo, README, docs, Postman, compose) cuya ausencia se penaliza aunque el core funcione; modelarlos como AC verificables evita que se pierdan.
+
+Como **evaluador de la prueba**,
+quiero **encontrar todos los entregables exigidos y el razonamiento detrás de las decisiones**,
+para **evaluar la solución de forma completa y ágil**.
+
+**Acceptance Criteria:**
+
+**AC-ET.1.1 — Repositorio público sin dependencias privadas**
+**Dado** el repositorio en GitHub
+**Cuando** un tercero lo clona
+**Entonces** es público, compila sin paquetes privados (ADR-009) y no contiene secretos (gitleaks en verde).
+
+**AC-ET.1.2 — README enrutador con "Decisiones y por qué"**
+**Dado** la raíz del repositorio
+**Cuando** abro el `README.md`
+**Entonces** presenta, al frente, una tabla **"Decisiones y por qué"** (5-7 decisiones → trade-off → enlace al ADR), el **C4 de contenedores**, un **árbol de carpetas comentado** y una tabla enrutadora ("si quieres saber X → ve a Y"), sin duplicar contenido (party-mode: Paige).
+
+**AC-ET.1.3 — Documentación de seguridad y de uso de IA**
+**Dado** `docs/`
+**Cuando** se revisa
+**Entonces** existe la doc de **prácticas de seguridad** (8 prácticas → OWASP, con el porqué) y la doc de **uso de IA** (flujo BMAD, prompts de módulos críticos e iteración/verificación).
+
+**AC-ET.1.4 — Colección Postman ejecutable en CI**
+**Dado** los flujos principales
+**Cuando** corre CI
+**Entonces** la colección Postman se ejecuta con **Newman** y pasa (200/400/401/403/404/409 según el flujo).
+
+**AC-ET.1.5 — `docker-compose` funcional (verificado por smoke test)**
+**Dado** el `docker-compose.yml` a mano (ADR-007)
+**Cuando** corre el smoke test de CI (`docker compose up` + `/health`)
+**Entonces** levanta el sistema sin instalar SDK ni Aspire (G2) y detecta *drift*.
+
+**AC-ET.1.6 — ADRs como documento**
+**Dado** `docs/adr/`
+**Cuando** se revisa
+**Entonces** existen los ADR como archivos individuales (incluidos ADR-015/016/017/018) con Contexto · Decisión · Consecuencias.
+
+> **Nota de navegación (party-mode: Paige).** Cada documento mayor (SPEC, PRD, `architecture.md`, `epics.md`) abre con un letrero de una línea *"Este doc responde X; para Y, ve a Z"*; `epics.md` (backlog de 31 historias) se referencia desde el README pero **no se destaca** — no es material de lectura del evaluador.
