@@ -164,7 +164,7 @@ No aplica — la entrega es exclusivamente back end (non-goal del PRD). No exist
 **FRs cubiertos:** FR-14, FR-15, FR-16, FR-17.
 
 ### Épica 5: Notificaciones por correo sin pérdida ni duplicado
-*Diferenciador (profundo) · contiene un criterio OBLIGATORIO del enunciado (HU2-5) · Fase 2.* Huésped y agente reciben correos de **confirmación de reserva y de cancelación**, sin pérdida (outbox de E1/E4) ni duplicado, sobreviviendo a la caída del broker (G3). Aquí viven `Notificaciones.Worker` + SMTP + la **idempotencia del consumidor** (Redis SETNX+TTL) que cierra la parte `AC-E5` (efecto exactamente-una-vez) que E1 dejó como deuda; reutiliza la colección `OutboxFaultInjection` de E1 encendiendo el assert de "0 efecto duplicado".
+*Contiene un criterio OBLIGATORIO del enunciado (HU2-5) · **HU2-5 mínimo en Fase 1**, profundidad (idempotencia + G3) en Fase 2.* Huésped y agente reciben correos de **confirmación de reserva y de cancelación**, sin pérdida (outbox de E1/E4) ni duplicado, sobreviviendo a la caída del broker (G3). Aquí viven `Notificaciones.Worker` + SMTP + la **idempotencia del consumidor** (Redis SETNX+TTL) que cierra la parte `AC-E5` (efecto exactamente-una-vez) que E1 dejó como deuda; reutiliza la colección `OutboxFaultInjection` de E1 encendiendo el assert de "0 efecto duplicado".
 
 > **No recortable.** FR-19 (correo de confirmación) satisface **HU2-5**, criterio obligatorio de la prueba. A diferencia de E7/E8, esta épica no se recorta.
 
@@ -232,6 +232,11 @@ para **revisar la solución sin instalar el SDK de .NET ni los workloads de Aspi
 **Entonces** `build` + `dotnet format` + `gitleaks` pasan
 **Y** el smoke test (`docker compose up` + verificación de `/health`) pasa, detectando *drift* del compose a mano (ADR-007).
 
+**AC-E1.1.4 — Salto asíncrono real cableado (no un standing skeleton)**
+**Dado** el esqueleto en marcha
+**Cuando** un servicio publica un evento de prueba por Dapr pub/sub
+**Entonces** `Notificaciones.Worker` lo consume (publish→consume verificado de punta a punta), probando que el componente Dapr, la suscripción y el sidecar están cableados desde el día uno (enabler compartido por 3.1, E4 y E5).
+
 ### Story 1.2: Spikes de validación de ejecución (Sprint 0, timeboxed)
 
 > **Trazabilidad:** riesgo de ejecución (G1, ADR-016/018) → *(spike de reducción de incertidumbre — código desechable, sin cobertura, NO cuenta como entregable productivo)* → `AC-E1.2.x` · **Obligatorio (gate de riesgo)**
@@ -256,6 +261,11 @@ para **confirmar el diseño (o disparar el Plan B) antes de invertir en el core*
 **Entonces** los behaviors se componen en ese orden literal
 **Y** el insert de dominio y el de `OutboxMessages` comparten el mismo `SaveChangesAsync` (ADR-018).
 
+**AC-E1.2.3 — El aprendizaje sobrevive a la rama del spike (habilitador)**
+**Dado** que el código del spike es desechable
+**Cuando** se cierra el spike
+**Entonces** el arbitraje `2627`/`1205` y el wiring del mediator quedan documentados como snippet de referencia (alimentan 1.5 y 1.6b); el conocimiento no muere con la rama throwaway.
+
 ### Story 1.3: Contrato del evento `ReservaConfirmada` (claves de dedup y orden congeladas)
 
 > **Trazabilidad:** NFR-3 · NFR-8 → *(habilitadora de contrato; base de E3 y E5)* → `AC-E1.3.x` · **Obligatorio (contrato)**
@@ -267,13 +277,13 @@ para **poder deduplicar y ordenar sin acoplarme a la implementación del product
 
 **Acceptance Criteria:**
 
-**AC-E1.3.1 — Congelamiento del esquema (contract test)**
+**AC-E1.3.1 — Forma del payload congelada (contract test, solo forma)**
 **Dado** el esquema publicado de `ReservaConfirmada.v1` (envelope `{ id, type, version, occurredAt, traceId, data }`)
 **Cuando** valido un evento serializado contra el snapshot del contrato
-**Entonces** existe y es no-nula la **dedup key** (`id`/`MessageId`)
-**Y** existe y es no-nula la **order key** (`{ aggregateId, version }`)
+**Entonces** el payload **contiene** y no-nulos: `id`/`MessageId` (dedup key), `aggregateId` y `version` (order key), y `type` con semver
 **Y** un cambio incompatible en esas claves **rompe** el test (snapshot/JSON Schema).
-**Y** el test documenta: dedup key → la consume E5; order key → la consume E3.
+
+> **Alcance (party-mode: Amelia).** Este contract test valida **forma/presencia**, no comportamiento. La *semántica* de deduplicación se prueba en E5 (`AC-E5.1b.2`) y la de ordenamiento en E3 (`AC-E3.1.1`). No se mezcla forma con ordering aquí.
 
 ### Story 1.4: Cálculo de precio de la reserva (`CalculadorPrecio`)
 
@@ -312,6 +322,11 @@ para **garantizar cero overbooking aun bajo concurrencia**.
 
 **Acceptance Criteria:**
 
+**AC-E1.5.0 — Esquema y migración aplicados (habilitador, precede a todo test de integración)**
+**Dado** un contenedor limpio de Testcontainers.MsSql
+**Cuando** arranca la suite de integración
+**Entonces** la migración EF Core crea las tablas `Reserva`, `NochesHabitacion` (con `UNIQUE(HabitacionId, Noche)` clustered) y `OutboxMessages` (con `UNIQUE(MessageId)`), con estrategia de migración explícita por BC.
+
 **AC-E1.5.1 — El índice único arbitra el conflicto (persistencia)**
 **Dado** un slot libre `(HabitacionId, Noche)` sobre Testcontainers.MsSql
 **Cuando** dos inserciones concurrentes compiten por esa misma noche bajo `READ COMMITTED`
@@ -328,12 +343,12 @@ para **garantizar cero overbooking aun bajo concurrencia**.
 **Dado** dos reservas en la **misma** habitación con estancias **adyacentes no solapadas** `[D1→D2]` y `[D2→D3]` (check-out == check-in, **no** es solape)
 **Cuando** se solicitan (incluso concurrentes)
 **Entonces** `ambas` confirman y `conflicts == 0`.
-**Y** dado dos reservas en habitaciones **distintas** con las mismas fechas → `ambas` confirman (el constraint no cruza habitaciones).
+**Y** dado dos reservas en habitaciones **distintas** con las mismas fechas → `ambas` confirman (el `UNIQUE(HabitacionId, Noche)` no cruza habitaciones: `HabitacionId` distinto + misma `Noche` coexisten como dos filas válidas).
 
-### Story 1.6: Crear-confirmar reserva atómica (huésped + contacto de emergencia + outbox)
+### Story 1.6a: Crear-confirmar reserva — validación y happy path
 
-> **Trazabilidad:** HU2-2/3/4 → **FR-9, FR-10, FR-11** → `AC-E1.6.x` · **Obligatorio**
-> **Porqué:** es la operación de negocio del viajero y el flujo crítico TDD; reúne precio (1.4), slots (1.5) y la escritura del outbox en una sola transacción. Aquí cierra `AC-E1` (productor) y se deja escrita la deuda `AC-E3/E5`.
+> **Trazabilidad:** HU2-2/3/4 → **FR-9, FR-10, FR-11** → `AC-E1.6a.x` · **Obligatorio**
+> **Porqué:** es la operación de negocio del viajero; se separa la lógica de aplicación (validación + orquestación) de la concurrencia y la atomicidad transaccional, que fallan y se depuran en otra capa (party-mode: Amelia). Consume precio (1.4) y el write path de slots (1.5).
 
 Como **viajero**,
 quiero **reservar una habitación disponible registrando mis datos y un contacto de emergencia, y confirmarla en una sola operación**,
@@ -341,46 +356,93 @@ para **obtener alojamiento con confirmación inmediata**.
 
 **Acceptance Criteria:**
 
-**AC-E1.6.1 — Money test: confirmación única bajo concurrencia**
-**Dado** una `Habitacion` con un único slot libre para la estancia `[D]`
+**AC-E1.6a.1 — Publisher de eventos fake in-memory (habilitador)**
+**Dado** los tests de E1
+**Cuando** un handler necesita publicar un evento
+**Entonces** se inyecta un `IPublicadorEventos` **fake in-memory**; los tests de E1 no dependen del sidecar de Dapr ni de un broker real.
+
+**AC-E1.6a.2 — Datos de cada huésped obligatorios (AC negativo)**
+**Dado** un `CrearReservaCommand` con un huésped al que le falta un campo (nombres, apellidos, fecha de nacimiento, género, tipo/número de documento, email o teléfono) o con formato inválido
+**Cuando** se valida (`ValidationBehavior` + FluentValidation)
+**Entonces** responde `400` con Problem Details (RFC 7807) enumerando los campos inválidos; no se crea reserva.
+
+**AC-E1.6a.3 — Contacto de emergencia obligatorio (AC negativo)**
+**Dado** un `CrearReservaCommand` sin `ContactoEmergencia` (nombre completo + teléfono)
+**Cuando** se valida
+**Entonces** responde `400` con Problem Details; no se crea reserva.
+
+**AC-E1.6a.4 — Confirmación exitosa expone el precio**
+**Dado** un comando válido sobre una habitación disponible
+**Cuando** se confirma
+**Entonces** responde `201` con la `Reserva` en estado `Confirmada`, el precio total (AC-E1.4.1) y su identificador (UUID v7).
+
+### Story 1.6b: Atomicidad transaccional reserva + outbox
+
+> **Trazabilidad:** NFR-3 → **FR-9 (atomicidad)** → `AC-E1.6b.x` · **Obligatorio**
+> **Porqué:** la fila de outbox debe ser atómica con la reserva; se prueba con un test de integración y un harness de fault-injection, aislado de la validación (1.6a) y de la concurrencia (1.6c).
+
+Como **operador del sistema**,
+quiero **que la reserva y su evento de outbox se escriban en la misma transacción o ninguna**,
+para **no dejar eventos huérfanos ni reservas sin notificar**.
+
+**Acceptance Criteria:**
+
+**AC-E1.6b.1 — Harness de fault-injection (habilitador)**
+**Dado** un `DbCommandInterceptor` (o hook de `SaveChanges`) que puede lanzar entre el INSERT de `Reserva` y el de `OutboxMessages`
+**Cuando** se activa en un test
+**Entonces** provoca el fallo transaccional de forma determinista.
+
+**AC-E1.6b.2 — Éxito: una fila de cada una**
+**Dado** una reserva confirmada
+**Cuando** inspecciono la BD tras el commit
+**Entonces** `count(Reserva WHERE AggregateId=X) == 1` **Y** `count(OutboxMessages WHERE AggregateId=X) == 1` con estado `Pendiente`.
+
+**AC-E1.6b.3 — Fallo: ninguna de las dos (atomicidad)**
+**Dado** un fallo inyectado entre el insert de `Reserva` y el de `OutboxMessages`
+**Cuando** la transacción se resuelve
+**Entonces** `count(Reserva Confirmada) == 0` **Y** `count(OutboxMessages) == 0` (las dos o ninguna).
+*(Collection `OutboxFaultInjection` aislada, `DisableParallelization = true`.)*
+
+**AC-E1.6b.4 — At-least-once del productor (en términos persistidos)**
+**Dado** una reserva confirmada con su fila de outbox `Pendiente` y el relay corriendo
+**Cuando** el relay publica al `IPublicadorEventos` fake (con reintentos simulados)
+**Entonces** la fila pasa a `Enviada` con `intentos >= 1`; sin "mark sent" prematuro (no se marca enviada antes de publicar).
+**Y** `[DEUDA-VERIF:E5]` el colapso a un solo **efecto** (idempotencia del consumidor, `deliveries` de runtime) se verifica en E5.
+**Y** `[DEUDA-VERIF:E3]` el orden/convergencia de la proyección se verifica en E3.
+
+### Story 1.6c: Money test — confirmación única bajo concurrencia
+
+> **Trazabilidad:** HU2 · G1 → **FR-18 (bajo concurrencia real)** → `AC-E1.6c.x` · **Obligatorio** · *el flujo crítico*
+> **Porqué:** es la prueba de la promesa central del sistema; la historia más cara (Testcontainers.MsSql + paralelismo real), aislada para que un deadlock intermitente no bloquee otras historias. **Depende de 1.4 + 1.5 + 1.6b.**
+
+Como **operador del sistema**,
+quiero **que N reservas concurrentes sobre la misma habitación/fechas produzcan exactamente una confirmada**,
+para **garantizar cero overbooking bajo carga**.
+
+**Acceptance Criteria:**
+
+**AC-E1.6c.1 — Seed determinista (habilitador)**
+**Dado** un `ReservaTestDataBuilder` (ObjectMother)
+**Cuando** prepara el escenario
+**Entonces** crea 1 `Hotel`, 1 `Habitacion` y 1 noche disponible de forma reproducible (mismo estado en cada corrida).
+
+**AC-E1.6c.2 — Confirmación única bajo concurrencia**
+**Dado** el seed anterior (un único slot libre para la estancia `[D]`)
 **Cuando** se ejecutan N solicitudes `CrearReservaCommand` concurrentes sobre ese slot
 **Entonces** se cumple exactamente:
 
-| N | confirmadas (`201`) | rechazadas (`409`) | filas `Reserva` `Confirmada` | filas `Outbox` |
+| N | confirmadas (`201`) | rechazadas (`409`) | filas `Reserva` `Confirmada` | filas `OutboxMessages` |
 |---|---|---|---|---|
 | 2 | 1 | 1 | 1 | 1 |
 | 50 | 1 | 49 | 1 | 1 |
 
 **Y** no existe fila en `OutboxMessages` para ninguna de las reservas rechazadas.
-*(Collection `G1` aislada, `DisableParallelization = true`.)*
 
-**AC-E1.6.2 — Atomicidad del outbox (misma transacción)**
-**Dado** un fallo inyectado entre el insert de la `Reserva` y el de `OutboxMessages`
-**Cuando** la transacción se resuelve
-**Entonces** `count(reservas Confirmada) == 0` **Y** `count(filas Outbox) == 0` (las dos o ninguna).
-*(Collection `OutboxFaultInjection` aislada, `DisableParallelization = true`.)*
-
-**AC-E1.6.3 — Resiliencia del relay (at-least-once del productor)**
-**Dado** una reserva confirmada con su fila de outbox y el broker caído (fake controlable de Dapr)
-**Cuando** el broker se recupera y el relay corre
-**Entonces** la fila pendiente se publica con `deliveries >= 1` (**nunca** se asume `== 1`); sin "mark sent" prematuro.
-**Y** `[DEUDA-VERIF:E5]` el colapso a un solo **efecto** (idempotencia del consumidor) se verifica en E5.
-**Y** `[DEUDA-VERIF:E3]` el orden/convergencia de la proyección se verifica en E3.
-
-**AC-E1.6.4 — Datos de cada huésped obligatorios (AC negativo)**
-**Dado** un `CrearReservaCommand` con un huésped al que le falta un campo (nombres, apellidos, fecha de nacimiento, género, tipo/número de documento, email o teléfono) o con formato inválido
-**Cuando** se valida (`ValidationBehavior` + FluentValidation)
-**Entonces** responde `400` con Problem Details (RFC 7807) enumerando los campos inválidos; no se crea reserva.
-
-**AC-E1.6.5 — Contacto de emergencia obligatorio (AC negativo)**
-**Dado** un `CrearReservaCommand` sin `ContactoEmergencia` (nombre completo + teléfono)
-**Cuando** se valida
-**Entonces** responde `400` con Problem Details; no se crea reserva.
-
-**AC-E1.6.6 — Confirmación exitosa expone el precio**
-**Dado** un comando válido sobre una habitación disponible
-**Cuando** se confirma
-**Entonces** responde `201` con la `Reserva` en estado `Confirmada`, el precio total (AC-E1.4.1) y su identificador (UUID v7).
+**AC-E1.6c.3 — Determinismo (sin flakiness)**
+**Dado** la corrida del money test
+**Cuando** se clasifican las respuestas
+**Entonces** hay `exactamente 1` × `201` y `N-1` × `409`; `0` excepciones no mapeadas; los reintentos por deadlock `1205` están acotados (máx. 3, backoff+jitter) y un `1205` agotado se mapea a `409`, nunca a `500`.
+*(Collection `G1` aislada, `DisableParallelization = true`; el N sorteado 30–100 y la semilla se registran en la salida para reproducibilidad.)*
 
 ---
 
@@ -516,6 +578,16 @@ para **que la búsqueda no mienta sobre la disponibilidad**.
 
 **Acceptance Criteria:**
 
+**AC-E3.1.0 — Dos proyecciones con dueño explícito (cierra el gap productor-sin-consumidor)**
+**Dado** los eventos de catálogo de E2 (`HabitacionAgregada`/`PrecioHabitacionCambiado`/`HabitacionDeshabilitada`, contrato de `AC-E2.5.1`) y el evento `ReservaConfirmada` de E1
+**Cuando** el proyector los consume
+**Entonces** la `ProyeccionHabitacion` combina **atributos de catálogo** (hotel, ciudad, tipo, costo, impuesto, capacidad, activa) **y disponibilidad** (slots ocupados) — ambos lados alimentan la búsqueda de `AC-E3.2.1`.
+
+**AC-E3.1.4 — Inbox de idempotencia compartido (habilitador, decidido aquí)**
+**Dado** que E3 (proyección) y E5 (worker) deben deduplicar
+**Cuando** se implementa el mecanismo de dedup
+**Entonces** existe **un único** patrón de inbox por `(MessageId, version)` en Redis (SETNX + TTL), definido aquí y reutilizado por E5 (no dos tablas de mensajes-procesados divergentes).
+
 **AC-E3.1.1 — Convergencia bajo desorden**
 **Dado** dos eventos del mismo agregado entregados fuera de orden (`v2` antes que `v1`)
 **Cuando** el proyector los procesa
@@ -584,6 +656,8 @@ para **conciliar comisiones**.
 ## Epic 4: Ciclo de vida de la reserva — cancelación con discreción
 
 *Diferenciador (profundo) · valor más allá del enunciado · Fase 1 (núcleo de dominio).*
+
+> **Prioridad (decisión de Santiago, party-mode: John).** Se conserva la profundidad (3 historias), pero se aborda **explícitamente detrás de los 10 criterios obligatorios** del enunciado: nunca una feature auto-inventada al 100% con un criterio pedido incompleto.
 
 ### Story 4.1: Solicitar cancelación con política sugerida
 
@@ -675,30 +749,41 @@ para **atender al viajero por teléfono sin perder trazabilidad**.
 
 ## Epic 5: Notificaciones por correo sin pérdida ni duplicado
 
-*Diferenciador (profundo) · contiene HU2-5 OBLIGATORIO · Fase 2 · no recortable.* Aquí se salda la deuda `[DEUDA-VERIF:E5]` de E1.
+*Contiene HU2-5 OBLIGATORIO · Fase 1 (mínimo) + Fase 2 (profundidad) · no recortable.* El **correo mínimo (5.1a) sube a Fase 1** para cerrar el criterio obligatorio con bajo riesgo; la **profundidad idempotente + supervivencia al broker (5.1b) queda en Fase 2** y salda la deuda `[DEUDA-VERIF:E5]` de E1 (decisión de Santiago, party-mode: John).
 
-### Story 5.1: Notificar la confirmación de reserva (idempotente)
+### Story 5.1a: Notificación mínima de confirmación (Fase 1)
 
-> **Trazabilidad:** HU2-5 → **FR-19** · **[SALDA: AC-E1.6.3 (E5)]** → `AC-E5.1.x` · **Obligatorio**
-> **Porqué:** HU2-5 es criterio del enunciado; el efecto exactamente-una-vez (dedupe del consumidor) es lo que E1 dejó como deuda. Es el cierre end-to-end que Mary marcó en riesgo de partirse.
+> **Trazabilidad:** HU2-5 → **FR-19 (mínimo)** → `AC-E5.1a.x` · **Obligatorio · Fase 1**
+> **Porqué:** el enunciado exige que el correo *se dispare* al confirmar, no que un servidor real lo entregue; una versión mínima (consola/MailHog) cierra el criterio obligatorio sin depender de infra externa frágil en la última fase (party-mode: John). Reutiliza el salto async cableado en `AC-E1.1.4`.
 
 Como **huésped y agente**,
-quiero **recibir un correo al confirmarse la reserva, exactamente una vez**,
-para **tener constancia inmediata sin spam de duplicados**.
+quiero **recibir un correo cuando se confirma la reserva**,
+para **tener constancia inmediata de la reserva**.
 
 **Acceptance Criteria:**
 
-**AC-E5.1.1 — Entrega end-to-end (outcome obligatorio)**
+**AC-E5.1a.1 — El correo se dispara (outcome obligatorio)**
 **Dado** una reserva confirmada (evento `ReservaConfirmada` en el outbox de E1)
 **Cuando** el relay publica y `Notificaciones.Worker` consume
-**Entonces** se envía un correo al huésped y otro al agente (SMTP).
+**Entonces** `INotificador` emite un correo al huésped y otro al agente hacia el sink de Fase 1 (consola/MailHog), verificable en el test/demo. *(SMTP real = pulido opcional; no bloquea el criterio.)*
 
-**AC-E5.1.2 — Idempotencia del consumidor (salda la deuda de E1)**
+### Story 5.1b: Worker idempotente sin pérdida ni duplicado (Fase 2)
+
+> **Trazabilidad:** HU2-5 (profundidad) → **FR-19** · **[SALDA: AC-E1.6b.4 (E5)]** → `AC-E5.1b.x` · **Diferenciador (profundo) · Fase 2**
+> **Porqué:** el efecto exactamente-una-vez (dedupe del consumidor) es lo que E1 dejó como deuda; la supervivencia a la caída del broker (G3) es nivel senior. Reutiliza el inbox compartido decidido en `AC-E3.1.4`.
+
+Como **huésped y agente**,
+quiero **recibir el correo exactamente una vez aunque el evento se reintente o el broker caiga**,
+para **no recibir duplicados ni perder la notificación**.
+
+**Acceptance Criteria:**
+
+**AC-E5.1b.1 — Idempotencia del consumidor (salda la deuda de E1)**
 **Dado** el mismo evento entregado N veces (`deliveries >= 1`, at-least-once)
-**Cuando** el worker lo procesa deduplicando por `(MessageId, version)` en Redis (SETNX + TTL)
+**Cuando** el worker lo procesa deduplicando por `(MessageId, version)` en Redis (SETNX + TTL, inbox de `AC-E3.1.4`)
 **Entonces** se envía `exactamente 1` correo por destinatario (`efecto == 1`).
 
-**AC-E5.1.3 — Sin pérdida tras caída del broker (G3)**
+**AC-E5.1b.2 — Sin pérdida tras caída del broker (G3)**
 **Dado** el broker caído durante una ráfaga
 **Cuando** se recupera
 **Entonces** el `100%` de los eventos pendientes se entrega; `0` correos perdidos.
@@ -810,10 +895,12 @@ para **demostrar seguridad proporcional y verificable**.
 
 **Acceptance Criteria:**
 
-**AC-E6.4.1 — Prácticas implementadas**
+**AC-E6.4.1 — Prácticas implementadas (acotadas a lo aplicable)**
 **Dado** el sistema desplegado
 **Cuando** se audita
-**Entonces** están activas y documentadas: rate limiting, validación/anti-inyección (FluentValidation + EF parametrizado), manejo de secretos (Dapr Secrets/Key Vault), HTTPS/HSTS + CORS allowlist, logging de eventos de seguridad sin PII, protección de PII.
+**Entonces** están activas y documentadas las prácticas **aplicables al alcance**: rate limiting, validación/anti-inyección (FluentValidation + EF parametrizado), manejo de secretos (Dapr Secrets/Key Vault), HTTPS/HSTS + CORS allowlist, logging de eventos de seguridad sin PII, protección de PII.
+
+> **Alcance (party-mode: Winston).** El mapeo completo a OWASP Top 10 se **documenta**; lo que se **ejercita con código** es el subconjunto aplicable (authz/aislamiento, parametrización EF, datos sensibles, secretos). Un barrido exhaustivo del Top 10 sería gold-plating para la prueba.
 
 **AC-E6.4.2 — Cero secretos en el repo (CI)**
 **Dado** un push
@@ -858,10 +945,12 @@ para **detectar degradación de latencia**.
 
 **Acceptance Criteria:**
 
-**AC-E7.2.1 — Histograma de duración**
-**Dado** tráfico sobre los endpoints
+**AC-E7.2.1 — Histograma de duración instrumentado**
+**Dado** tráfico sobre los endpoints (incluida la carga concurrente del money test G1)
 **Cuando** consulto las métricas
-**Entonces** hay histograma de duración por endpoint con p95/p99 disponibles.
+**Entonces** hay histograma de duración por endpoint con p95/p99 **disponibles y observables** en el dashboard.
+
+> **Alcance (party-mode: Winston).** Se **instrumenta** y se muestra una traza/métrica de ejemplo; **no** se monta un load test dedicado (k6) para *validar* percentiles bajo carga — sería over-engineering para la prueba. La carga concurrente del money test (G1) basta como fuente de tráfico.
 
 ---
 
