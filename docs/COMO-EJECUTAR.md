@@ -30,77 +30,16 @@ Los tres deben salir en verde. Si `build` falla con `NU1903`, es un paquete con 
 
 ---
 
-## 3. Salto asíncrono real por Dapr (publish → consume) 🛰️
+## 3. Salto asíncrono por Dapr — estado 🛰️
 
-Esto reproduce lo que probamos: **Reservas.Api publica** un evento y **Notificaciones.Worker lo consume** por Dapr pub/sub.
+Durante la Story 1.1 se **validó (de-risking)** que el salto asíncrono real funciona: se cableó Dapr pub/sub y se verificó **publish → consume cruzando el borde de proceso** (Reservas.Api → Notificaciones.Worker) sobre Redis, con Dapr CLI 1.18. Ese endpoint de **humo temporal se retiró** para no dejar mocks en el código.
 
-### 3.1 Instalar el Dapr CLI
+El **flujo reproducible de pub/sub** (con el evento real `ReservaConfirmada`, el outbox transaccional y la suscripción idempotente en el Worker) llega en la **Story 1.6b / Épica 5**. Cuando esté, esta sección tendrá los pasos de `dapr run` end-to-end.
 
-Opción rápida (sin elevar), descarga directa a `C:\dapr`:
+**Trampas de Dapr en Windows** (para tenerlas listas):
 
-```powershell
-$tag = (Invoke-RestMethod "https://api.github.com/repos/dapr/cli/releases/latest").tag_name
-Invoke-WebRequest "https://github.com/dapr/cli/releases/download/$tag/dapr_windows_amd64.zip" -OutFile "$env:TEMP\dapr.zip"
-Expand-Archive "$env:TEMP\dapr.zip" -DestinationPath "C:\dapr" -Force
-# Añade C:\dapr al PATH de tu sesión (o permanente):
-$env:Path = "C:\dapr;$env:Path"
-dapr --version
-```
-
-### 3.2 Inicializar el runtime
-
-```powershell
-dapr init --slim
-```
-
-> **Trampa de Windows:** `dapr init` (modo Docker) puede fallar con *"port 6060 is not available"* — el *scheduler* cae en un **rango de puertos reservado** por Windows (WSL/Hyper-V). Soluciones: usar **`--slim`** (lo que hacemos aquí; corre los binarios locales, sin contenedores) o abrir una terminal **como Administrador** y correr `dapr init`. En modo slim verás errores de *placement/scheduler* en el log — **son inofensivos para pub/sub**.
-
-### 3.3 Levantar un Redis para el pub/sub
-
-```powershell
-docker run -d --name hbh-redis-dev -p 6379:6379 redis:7.4-alpine
-```
-
-El componente local ya está en `deploy/dapr/local/pubsub.yaml` (apunta a `localhost:6379`).
-
-### 3.4 Arrancar los dos servicios con sidecar (dos terminales)
-
-**Terminal A — Worker (suscriptor):**
-```powershell
-$env:ASPNETCORE_URLS='http://localhost:5081'
-dapr run --app-id notificaciones --app-port 5081 --dapr-http-port 3501 --resources-path deploy/dapr/local `
-  -- dotnet run --project src/Servicios/Notificaciones/Notificaciones.Worker/Notificaciones.Worker.csproj --no-launch-profile
-```
-
-**Terminal B — Reservas (publicador):**
-```powershell
-$env:ASPNETCORE_URLS='http://localhost:5080'
-dapr run --app-id reservas --app-port 5080 --dapr-http-port 3500 --resources-path deploy/dapr/local `
-  -- dotnet run --project src/Servicios/Reservas/Reservas.Api/Reservas.Api.csproj --no-launch-profile
-```
-
-> **Trampa clave:** el `--no-launch-profile` es **obligatorio**. Sin él, `dotnet run` aplica el `launchSettings.json` y la app escucha en un puerto aleatorio (p. ej. 5192) en vez del `--app-port` que le dijiste a Dapr, y el sidecar nunca la alcanza.
-
-### 3.5 Publicar y ver el consumo
-
-**Terminal C:**
-```powershell
-curl -Method POST http://localhost:5080/_smoke/ping     # PowerShell: Invoke-WebRequest
-# o en Git Bash:  curl -X POST http://localhost:5080/_smoke/ping
-```
-
-En la **Terminal A** verás:
-```
-Worker recibió evento de humo por Dapr pub/sub: Id=019f43ef-... Type=SmokePing.v1
-```
-
-### 3.6 Apagar
-
-```powershell
-dapr stop --app-id reservas
-dapr stop --app-id notificaciones
-docker rm -f hbh-redis-dev
-```
+- `dapr init` (modo Docker) puede fallar con *"port 6060 is not available"* — el *scheduler* cae en un rango de puertos reservado por Windows (WSL/Hyper-V). Usa **`dapr init --slim`** (binarios locales, sin contenedores) o una terminal **como Administrador**. En slim verás errores de *placement/scheduler* en el log: **son inofensivos para pub/sub**.
+- Al correr un servicio bajo Dapr con `dotnet run`, usa **`--no-launch-profile`**, o `launchSettings.json` pisa el puerto y el sidecar no alcanza la app.
 
 ---
 

@@ -47,10 +47,11 @@ para **revisar la solución sin instalar el SDK de .NET ni los workloads de Aspi
   - [x] Cada servicio: `builder.AddServiceDefaults()` + `app.MapDefaultEndpoints()` (`/health`, `/alive`); `MapDefaultEndpoints` ajustado para exponer salud en todos los entornos (smoke Production)
   - [x] `AppHost` declara SQL Server ×2 + Redis + RabbitMQ + dashboard OTel (por `OTEL_EXPORTER_OTLP_ENDPOINT`)
   - [x] **Verificado en runtime:** los 4 servicios alcanzan `(healthy)` bajo `docker compose up`
-- [x] **Task 5 — Salto asíncrono real por Dapr pub/sub (AC: 4) — VERIFICADO**
-  - [x] Costura + adaptador: `IPublicadorEventos` en `Comun`; `Dapr.AspNetCore` en Reservas.Api (publica vía `DaprClient`) y en el Worker (suscripción `WithTopic` + `UseCloudEvents` + `MapSubscribeHandler`)
-  - [x] Componentes Dapr: `deploy/dapr/local/pubsub.yaml` (Redis, para `dapr run`) + placeholders `deploy/dapr/{pubsub,statestore}.yaml` (RabbitMQ/secret intent)
-  - [x] Endpoint `POST /_smoke/ping` en Reservas + suscripción `/smoke` en el Worker; **verificado publish→consume cross-proceso** con Dapr CLI 1.18 (`dapr init --slim`) + Redis: 2 eventos publicados (202) → Worker los consumió logueando los UUID v7. *(Endpoint/suscripción de humo TEMPORAL: se reemplazan por `ReservaConfirmada` en 1.6 / E5.)*
+- [x] **Task 5 — Salto asíncrono por Dapr pub/sub (AC: 4) — DE-RISKED en la 1.1; wiring real diferido a 1.6b/E5**
+  - [x] **Validado (de-risking):** se cableó `Dapr.AspNetCore` (publicador en Reservas + suscriptor en el Worker) y se **verificó publish→consume cross-proceso** con Dapr CLI 1.18 (`dapr init --slim`) + Redis — 2 eventos publicados (202) → Worker los consumió logueando los UUID v7. Evidencia en el Change Log.
+  - [x] **Mock retirado (decisión de Santiago):** el endpoint `/_smoke/ping` + la suscripción `/smoke` + el paquete `Dapr.AspNetCore` se **eliminaron** para no dejar código de prueba en producción. Reservas.Api y el Worker quedan como esqueletos limpios (solo `/health`).
+  - [x] Costura conservada: puerto `IPublicadorEventos` + envelope `EventoIntegracion` en `Comun`; componentes Dapr en `deploy/dapr/`.
+  - [ ] **Pendiente (1.6b/E5):** el cableado Dapr **permanente** con el evento real `ReservaConfirmada`, outbox transaccional y suscripción idempotente. *(AC-E1.1.4: el salto quedó de-risked, no cableado en el código de la 1.1.)*
 - [x] **Task 6 — `docker-compose` a mano + smoke test (AC: 1, 3) — VERIFICADO**
   - [x] `deploy/docker-compose.yml` (SQL ×2, Redis, RabbitMQ, dashboard Aspire, 4 servicios; `USER` no root, tags fijos, `HEALTHCHECK`, `Dockerfile` multi-stage parametrizado; secreto SQL por `.env`)
   - [x] **Verificado:** `docker compose up` → 9 contenedores arriba, `/health` `200` en gateway:8080/hoteles:8081/reservas:8082/notificaciones:8083, los 4 `(healthy)`. *(Fix: RabbitMQ 5672 no se publica al host — rango reservado de Windows; los servicios lo alcanzan por la red interna.)*
@@ -177,7 +178,7 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 - CI (`.github/workflows/ci.yml`): build + format + test + gitleaks activos; `docker-compose` + `Dockerfile` + componentes Dapr autorados; **cero secretos** (password SQL por `deploy/.env`, ignorado).
 
 **Verificado en runtime (cierre de la historia):**
-- **AC-E1.1.4 (salto async real por Dapr):** ✅ Dapr CLI 1.18 (`dapr init --slim`); `Dapr.AspNetCore` en Reservas.Api (publica) y Worker (suscribe); publish→consume cross-proceso probado sobre Redis (2 eventos → Worker los consumió).
+- **AC-E1.1.4 (salto async por Dapr):** ⚠️ **de-risked, no cableado en el código final.** Se verificó publish→consume cross-proceso (Dapr CLI 1.18 + Redis, 2 eventos consumidos) y luego se **retiró el mock** (`/_smoke/ping` + suscripción + `Dapr.AspNetCore`) por decisión de Santiago para no dejar código de prueba. El cableado Dapr **permanente** (con `ReservaConfirmada` + outbox) llega en 1.6b/E5. La costura (`IPublicadorEventos`/`EventoIntegracion`) queda en `Comun`.
 - **AC-E1.1.1 (compose → healthy):** ✅ `docker compose up` → 9 contenedores; `/health` `200` en los 4 servicios, todos `(healthy)`. Sin SDK (imágenes autocontenidas). Fix aplicado: RabbitMQ 5672 no publicado al host (rango reservado de Windows).
 - **AC-E1.1.3 (CI):** ✅ build + format + test + gitleaks verificados; `smoke-compose` verificado localmente y habilitado en CI (gate a `main`).
 
@@ -185,7 +186,7 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 - El SDK .NET 10 generó `HotelBookingHub.slnx` (no `.sln`).
 - Windows reserva rangos de puertos (WSL/Hyper-V): 6060 (Dapr scheduler → `dapr init --slim`) y 5672 (RabbitMQ AMQP → no publicar al host).
 - `dotnet run` bajo Dapr requiere `--no-launch-profile` para respetar el `--app-port`.
-- **Todos los AC (E1.1.1–E1.1.4) verificados** → historia lista para review.
+- **AC-E1.1.1/1.1.2/1.1.3 verificados**; **AC-E1.1.4 de-risked** (mock retirado; wiring Dapr real en 1.6b/E5) → esqueleto listo para review.
 
 ### File List
 
@@ -208,4 +209,5 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 ### Change Log
 
 - 2026-07-08 · Story 1.1 · esqueleto ejecutable: solución + CPM + estructura 4-assemblies/BC + Aspire + YARP + health + NetArchTest + CI + compose. Build/test/format verdes.
-- 2026-07-08 · Verificación de runtime: salto async Dapr (publish→consume) OK; `docker compose up` → 4 servicios `(healthy)`, `/health` 200; `smoke-compose` habilitado en CI (gate a `main`). Todos los AC verificados. Estado: `in-progress` → `review`.
+- 2026-07-08 · Verificación de runtime: salto async Dapr (publish→consume) OK; `docker compose up` → 4 servicios `(healthy)`, `/health` 200; `smoke-compose` habilitado en CI (gate a `main`). Estado: `in-progress` → `review`.
+- 2026-07-08 · Limpieza (decisión de Santiago): retirado el mock del salto async (`/_smoke/ping` + suscripción `/smoke` + paquete `Dapr.AspNetCore`) para no dejar código de prueba en producción. Reservas.Api y Worker quedan como esqueletos limpios (`/health`). Salto Dapr queda **de-risked** (verificado en sesión); wiring real con `ReservaConfirmada` en 1.6b/E5. Build/test/format verdes.
