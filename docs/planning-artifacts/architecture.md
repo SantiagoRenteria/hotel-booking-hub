@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2]
+stepsCompleted: [1, 2, 3]
 inputDocuments:
   - docs/planning-artifacts/prds/prd-hotel-booking-hub-2026-07-08/prd.md
   - docs/specs/spec-hotel-booking-hub/SPEC.md
@@ -89,3 +89,76 @@ Bisagra hacia el diseño: cada concern trazado al criterio de evaluación ("clar
 - **[VERIFICAR] Modo de evaluación:** se asume que el evaluador ejecuta vía `docker compose up` pero **no ejecuta el despliegue a Azure**; por eso recortar Terraform es decisión de alcance y no riesgo de entrega. Si llegara a desplegar, cambia.
 - **[VERIFICAR] Origen del inventario:** se asume inventario **propio** de la agencia (una BD de hoteles), no integración con un channel manager externo. Si hubiera terceros, aparece un concern de resiliencia (retries/circuit breaker) hoy fuera de alcance.
 - **[ASSUMPTION heredado del SPEC]** penalidad sugerida congelada en fecha de solicitud; sin cobro real (monto adeudado).
+
+## Starter Template Evaluation
+
+### Primary Technology Domain
+
+API / back end distribuido en **C# · .NET 10 (LTS)** con orquestación local vía **.NET Aspire (Aspire 13)**. Preferencias técnicas ya fijadas y justificadas en el SPEC (`stack-and-conventions.md` + ADRs), no en un `project-context.md`; este paso las honra y ancla las versiones verificadas.
+
+### Versiones verificadas (jul 2026)
+
+- **.NET 10** — GA 11-nov-2025, **LTS** hasta nov-2028. Satisface el "`.NET 8 o superior`" del enunciado con la LTS vigente.
+- **Aspire 13** (`Aspire.ProjectTemplates` 13.4.x) — requiere SDK .NET 10 para el AppHost en C#; producto desacoplado del versionado de .NET. **NuGet-only vía `Aspire.AppHost.Sdk`** — el modelo `dotnet workload install aspire` está deprecado y NO se usa.
+
+### Starter Options Considered
+
+- **`aspire-starter` (Starter App)** — descartado: scaffoldea una muestra Blazor Web + API + tests que no aplica a un back end puro con estructura DDD a medida. Decisión registrada en **ADR-015** ("por qué no `aspire-starter`") para que la ausencia del sample se lea como criterio, no como omisión.
+- **`aspire-apphost` + `aspire-servicedefaults` (elegido)** — aporta solo lo transversal: AppHost (topología, wiring, dashboard) y ServiceDefaults (OpenTelemetry, health checks, service discovery, resiliencia por defecto). Los servicios de dominio se añaden a mano siguiendo la estructura del repo.
+- **Sin Aspire (solo docker-compose)** — descartado: se pierde el dev-loop y el dashboard OTel; contradice ADR-007.
+- **Colapsar a un solo servicio (walking skeleton mínimo)** — descartado: el SPEC fija ≥2 Bounded Contexts como microservicios independientes (ADR-001; el enunciado premia separar ≥2 dominios). Se conserva la estructura completa; lo que se prioriza es el *esfuerzo*, no se recorta la estructura (ver "Secuencia F0").
+
+### Selected Starter: Aspire AppHost + ServiceDefaults (bespoke solution)
+
+**Rationale:** máxima señal de criterio para una prueba evaluada por claridad — se adopta lo transversal (orquestación + telemetría reproducibles) y se rechaza el scaffold de muestra que ensuciaría el repo. La estructura de solución la manda el contrato, no la plantilla.
+
+**Initialization Command (verificar versiones vigentes al ejecutar):**
+
+```bash
+# 0) Base de la solución + gobernanza de versiones (desde el PRIMER commit)
+dotnet new sln --name HotelBookingHub
+dotnet new install Aspire.ProjectTemplates      # v13.x (NuGet-only; sin workload)
+#   + raíz: Directory.Packages.props  (Central Package Management: una versión por paquete)
+#   + raíz: Directory.Build.props     (<TargetFramework>net10.0</TargetFramework>, Nullable=enable, ImplicitUsings=enable)
+
+# 1) Piezas transversales de Aspire (NO el starter con sample)
+dotnet new aspire-servicedefaults --name ServiceDefaults --output src/AppHost/ServiceDefaults
+dotnet new aspire-apphost        --name AppHost         --output src/AppHost/AppHost
+dotnet sln add src/AppHost/ServiceDefaults src/AppHost/AppHost
+
+# 2) Servicios de dominio (Minimal API) + worker + gateway
+dotnet new webapi --use-minimal-apis --name Hoteles.Api  --output src/Servicios/Hoteles/Hoteles.Api
+dotnet new webapi --use-minimal-apis --name Reservas.Api --output src/Servicios/Reservas/Reservas.Api
+dotnet new worker --name Notificaciones.Worker           --output src/Servicios/Notificaciones/Notificaciones.Worker
+dotnet new web    --name ApiGateway                      --output src/ApiGateway   # 'web' vacío (NO webapi) + Yarp.ReverseProxy
+#   + bibliotecas de capa por servicio (.Application/.Domain/.Infrastructure) y src/Comun/HotelBookingHub.Comun
+
+# 3) Por CADA ejecutable, referencia explícita desde el AppHost (habilita Projects.* del source-generator)
+dotnet add src/AppHost/AppHost/AppHost.csproj reference \
+  src/Servicios/Hoteles/Hoteles.Api src/Servicios/Reservas/Reservas.Api \
+  src/Servicios/Notificaciones/Notificaciones.Worker src/ApiGateway
+
+# 4) Limpieza del scaffold: borrar WeatherForecast.cs y el endpoint /weatherforecast de cada Program.cs;
+#    revisar Properties/launchSettings.json (Aspire orquesta los puertos vía AppHost).
+```
+
+**Architectural Decisions Provided by Starter:**
+
+- **Language & Runtime:** C# / .NET 10 LTS; `Nullable`+`ImplicitUsings` centralizados en `Directory.Build.props`.
+- **Gobernanza de dependencias:** **Central Package Management** (`Directory.Packages.props`) desde el primer commit — evita drift de versiones entre servicios (EF Core, StackExchange.Redis, Dapr.Client).
+- **Observabilidad (ServiceDefaults):** OpenTelemetry (trazas + métricas + logs) preconfigurado → base de CAP-9 / FR-25/26 / NFR-5.
+- **Salud y resiliencia:** health checks (`/health`, `/alive`) y `Microsoft.Extensions.Http.Resilience` por defecto → alinea ADR-010 y el smoke test de `docker-compose` (G2).
+- **Service discovery + wiring:** el AppHost declara recursos (SQL Server, Redis, broker, sidecars Dapr) y los inyecta por configuración; `ProjectReference` por servicio es requisito para el source-generator `Projects.*`.
+- **OpenAPI nativo:** .NET 10 usa `Microsoft.AspNetCore.OpenApi` (sin Swashbuckle); UI vía Scalar (ADR-011).
+- **Code organization:** estructura impuesta por `stack-and-conventions.md`, no por la plantilla.
+
+### Secuencia F0 (estructura completa, esfuerzo primero al core)
+
+La estructura nace **completa** (honra la constraint de ≥2 BC y hace que el C4 sea real), pero el orden de trabajo prioriza valor: el **primer story con TDD ataca el core** (cálculo de precio + creación de reserva + anti-overbooking en `Reservas` sobre SQL Server real con Testcontainers). El cableado de Gateway (YARP) y Notificaciones.Worker se completa después dentro de F0/F1, sin bloquear el core. Métrica del arranque: minimizar el tiempo hasta el **primer test rojo de dominio**.
+
+### Acciones de documentación derivadas (feeding README/ADRs)
+
+- **ADR-015** — "por qué no `aspire-starter`" (contexto/decisión/consecuencias).
+- **README raíz** — abre con el **C4 de Contenedores** (imagen que carga sin clonar) + **árbol de carpetas comentado** (≤20 líneas, nombres de carpeta = nombres del diagrama = conceptos de negocio) + enlace gancho al ADR-015.
+
+**Nota:** la inicialización con estos comandos (versiones re-verificadas al ejecutar) es la **primera historia de implementación** (Fase 0 → Fase 1).
