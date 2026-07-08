@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2, 3, 4]
+stepsCompleted: [1, 2, 3, 4, 5]
 inputDocuments:
   - docs/planning-artifacts/prds/prd-hotel-booking-hub-2026-07-08/prd.md
   - docs/specs/spec-hotel-booking-hub/SPEC.md
@@ -227,4 +227,91 @@ Registro de handlers por **scan de assembly**; pipeline **`Validation → Loggin
 
 **Supuestos de negocio marcados:** deshabilitar una habitación **retira la oferta futura pero NO cancela reservas confirmadas existentes** (se honran hasta su fin); el gancho de compensación queda diseñado, no implementado (revisable).
 
-> **Sincronización pendiente del contrato:** estas decisiones **reescriben ADR-003** y **ajustan la constraint de UUID v7**. Se sincronizarán en `decisions-adr.md` y `stack-and-conventions.md` (+ **ADR-016** "arbitraje por índice único vs SERIALIZABLE" y **ADR-017** "claves: UUID v7 + clustering secuencial") tras cerrar este paso.
+> **Sincronización pendiente del contrato:** estas decisiones **reescriben ADR-003** y **ajustan la constraint de UUID v7**. Se sincronizarán en `decisions-adr.md` y `stack-and-conventions.md` (+ **ADR-016** "arbitraje por índice único vs SERIALIZABLE" y **ADR-017** "claves: UUID v7 + clustering secuencial") tras cerrar este paso. _(Sincronizado en el commit `813a099`.)_
+
+## Implementation Patterns & Consistency Rules
+
+**Propósito (encuadre honesto):** estas reglas existen para que el código **no delate que se escribió a lo largo de muchas sesiones** (asistidas por IA) — coherencia de un solo autor, no orquestación de un enjambre de agentes. La mayoría ya es contrato en `stack-and-conventions.md`; aquí se consolidan como patrones, se añaden las derivadas de las decisiones de arquitectura, y se materializan en un **`AGENTS.md`** canónico consumible por la herramienta de IA.
+
+### Naming Patterns
+
+**Regla mnemónica tri-idioma** (clasificatoria, no de estilo):
+> **¿Qué es? → español sin tilde. ¿Cómo se implementa? → inglés. ¿Qué le digo al humano? → español con tilde.**
+
+Sufijos de patrón permitidos (**lista cerrada**, verificable en CI): `Command, Query, Handler, Repository, Service, Validator, Behavior, Dto, Request, Response, Factory, Exception, Api, Worker, Middleware`.
+
+| Elemento | Correcto | Incorrecto | Por qué falla |
+|---|---|---|---|
+| Comando | `CrearReservaCommand` | `CreateReservaCommand` | "Crear" es dominio → español sin tilde |
+| Excepción | `HabitacionNoDisponibleException` | `...Excepcion` | "Exception" es sufijo de patrón (.NET), no se traduce |
+| Mensaje al usuario | `"La habitación no está disponible"` | `"La habitacion no esta disponible"` | Los mensajes SÍ llevan tildes — es prosa, no identificador |
+
+> **Trampa nº 1 (90% de los errores previsibles):** el mismo sustantivo cambia de forma según dónde viva — `habitacion` en un identificador (sin tilde, restricción de código), `habitación` en un string de negocio (con tilde, es prosa).
+
+**Base de datos:** tablas PascalCase español plural (`Reservas`, `NochesHabitacion`, `OutboxMessages`); columnas PascalCase; PK lógica `Id` (UUID v7) + clustering key `Seq` (`bigint IDENTITY`, **shadow property**); FK `{Entidad}Id`→Guid; único árbitro `UX_NochesHabitacion_HabitacionId_Noche`.
+**API:** recursos plural `/api/v1/hoteles`, param `{id}`, query camelCase, versionado por URL.
+
+### Structure Patterns — *ya fijado*
+
+Folder-per-bounded-context; `Comun` solo contratos (Result, mediator, behaviors, envelope, Problem Details); tests en `tests/` separando **UnitTests** (xUnit + InMemory/puro) e **IntegrationTests** (Testcontainers.MsSql — concurrencia y outbox viven aquí, nunca InMemory).
+
+### Format Patterns
+
+- **Sin wrapper:** recurso directo en éxito; **Problem Details RFC 7807** (`application/problem+json`) en error. Nada de `{data, error}` ni 200-con-error-en-body.
+- **JSON `camelCase`** (System.Text.Json); enums como **string**; `DateTimeOffset` ISO 8601; `DateOnly` (`yyyy-MM-dd`) para estancia; `rowVersion` base64 en DTOs; **`decimal`** para dinero.
+
+### Communication Patterns
+
+- **Envelope** `{ id, type, version, occurredAt, traceId, data }`; `type` PascalCase español + **semver** (`ReservaConfirmada.v1`); compatibilidad hacia atrás. *(Consumidor real: `Notificaciones.Worker` — no es contrato teórico.)*
+- **`MessageId` = `id` del envelope, asignado en el `TransactionBehavior` una sola vez al entrar, ANTES del loop de retry** (si se regenera en el retry de 1205, el `UNIQUE(OutboxMessages.MessageId)` no dedupea). Relay *at-least-once*; **dedupe en el consumidor** por `MessageId` en Redis (SETNX + TTL).
+- **Handlers de proyección idempotentes y ordenados:** descartan eventos con `version`/secuencia anterior.
+- Sin llamadas síncronas entre BCs.
+
+### Process Patterns
+
+- **Errores:** `Result<T>` en flujos esperados; excepciones solo para lo inesperado; middleware global → RFC 7807.
+- **Mapeo excepción→HTTP:** `SqlException.Number` **2627/2601** → **409 sin retry**; **1205** → **retry** (3×, backoff+jitter) en `TransactionBehavior`; FluentValidation (`ValidationBehavior`) → **400**; sin token → **401**; sin permiso/agente ajeno → **403**; no encontrado → **404**. Clasificación por `Number`, **nunca** por mensaje.
+- **`Result<T>` → HTTP centralizado:** una única extensión `Result<T>.ToHttpResult()`; endpoints con **`TypedResults` + union type explícito** (`Results<Ok<HotelDto>, NotFound, ValidationProblem>`), no `IResult` desnudo (mantiene el OpenAPI uniforme). `Result.Invalid` → `TypedResults.ValidationProblem` (`{errors:{campo:[msgs]}}`); excepción de negocio → `Problem` plano.
+- **Retry selectivo** (ADR-010): solo deadlock 1205, SMTP (correo — dependencia externa real) y HTTP entre servicios (Polly/Http.Resilience). No en todos los métodos.
+- **`CancellationToken`** obligatorio como último parámetro en toda firma que cruce I/O (handler, repository, endpoint), propagado siempre; analyzer **`CA2016`** en `TreatWarningsAsErrors`. Sufijo **`Async`** en métodos `async` de infraestructura/aplicación.
+
+### Pipeline de behaviors del mediator (orden canónico)
+
+```
+1. LoggingBehavior      — scope de log/correlación, sin side effects
+2. ValidationBehavior   — FluentValidation; corta con Result.Invalid antes de tocar la BD (no accede a DbContext)
+3. TransactionBehavior  — abre la transacción, asigna MessageId (una vez), aplica retry 1205; SOLO comandos
+4. Handler
+```
+Registro en **un único `AddMediatorPipeline(this IServiceCollection)`** en ese orden literal; las queries no pasan por `TransactionBehavior`.
+
+### Observabilidad y logging
+
+- **`traceId` del envelope = `Activity.Current.TraceId` (W3C Trace Context)**, generado por el middleware del Gateway y propagado por `Activity` ambient — **no** un `Guid` propio. Es distinto del `traceparent` que Dapr inyecta en el CloudEvent (correlación de negocio vs tracing técnico): se documenta la relación, no se confunden.
+- **Logging estructurado** (Serilog + OTel sink) con enricher que vuelca `TraceId`/`SpanId` de `Activity.Current` automáticamente; `MessageId` y `AggregateId` como scope explícito solo en el consumer/outbox. Esquema de propiedades fijo: `TraceId`, `SpanId`, `MessageId`, `AggregateId`.
+- `ActivitySource` compartido `"HotelBookingHub"`.
+
+### Enforcement
+
+- **`.editorconfig` + analyzers + `TreatWarningsAsErrors`** (incluye `CA2016`); `dotnet format` en pre-commit y CI; gitleaks/SAST (higiene de CI).
+- **Check de CI sobre la lista cerrada de sufijos:** un test/step lee los sufijos permitidos de `AGENTS.md` y falla si un tipo público usa otro → la doc no puede desincronizarse en silencio.
+- Una violación de patrón se documenta como hallazgo en el PR.
+
+### Fuente canónica de reglas — `AGENTS.md` *(entregable derivado)*
+
+Se materializa un **`AGENTS.md`** en la raíz: **imperativo** ("Usa X"), **tablas y listas cerradas**, ejemplo ✅/❌ pegado a cada regla, **anti-patterns como sección propia**, sin justificación inline (el *por qué* vive en `architecture.md`, que lo enlaza). Versionado junto al código y **referenciado desde el contexto de la herramienta de IA** (system prompt / `CLAUDE.md`) para que entre al contexto de cada tarea. Doble valor: es también artefacto del "uso de IA" que la prueba pide documentar.
+
+### Anti-Patterns (evitar)
+
+- Parsear `SqlException.Message` para clasificar errores.
+- Exponer `Seq` (bigint interno) en DTOs/eventos/logs.
+- Envolver respuestas en `{data,...}` o devolver 200 con error en el body.
+- Regenerar el `MessageId` dentro del handler o del loop de retry.
+- Endpoints con `IResult` desnudo y mapeo manual `Result`→HTTP por endpoint.
+- `traceId` como `Guid` propio en vez del `TraceId` de `Activity`.
+- Lógica de negocio en `Comun` o en el Gateway; garantizar el invariante en la aplicación en vez del motor.
+
+### Alcance: qué corre vs qué se documenta
+
+- **Con código que corre:** naming, `Result<T>`/Problem Details, anti-overbooking, ciclo de vida/cancelación, eventos + outbox + `Notificaciones.Worker` + SMTP, observabilidad OTel.
+- **Documentado, no implementado (honesto):** read model MongoDB (ADR-013), waitlist (gancho), compensación por deshabilitación con reservas activas, nube Azure/Terraform (F3, con compuerta).
