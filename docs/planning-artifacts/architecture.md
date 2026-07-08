@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2, 3, 4, 5, 6]
+stepsCompleted: [1, 2, 3, 4, 5, 6, 7]
 inputDocuments:
   - docs/planning-artifacts/prds/prd-hotel-booking-hub-2026-07-08/prd.md
   - docs/specs/spec-hotel-booking-hub/SPEC.md
@@ -21,6 +21,20 @@ date: '2026-07-08'
 # Architecture Decision Document
 
 _This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
+
+## Resumen ejecutivo
+
+`hotel-booking-hub` es el back end de reservas de una agencia (single-tenant). El problema difícil no es el CRUD: es **garantizar cero overbooking bajo concurrencia** sin sacrificar el rendimiento de lectura.
+
+**Decisión estructural clave:** la reserva, sus **slots de inventario** (`NochesHabitacion`) y su **evento de outbox** se escriben en **una sola transacción local** en el BC de Reservas; el invariante lo garantiza el **motor de datos** (el índice `UNIQUE(HabitacionId, Noche)` arbitra el conflicto en el INSERT), nunca la lógica de aplicación.
+
+**Trade-offs que más pesan** (cada uno con su ADR): índice único + READ COMMITTED en vez de `SERIALIZABLE` (ADR-016, protege G7); UUID v7 no-clustered + clustering key `Seq` secuencial (ADR-017, evita fragmentación); **outbox manual at-least-once** con dedupe idempotente en el consumidor (no exactly-once en el wire); 2 Bounded Contexts que solo hablan por eventos; mediator propio (ADR-005/018, sin dependencia comercial).
+
+**Consistencia asimétrica a propósito:** fuerte-local para el invariante (una tx, un motor); eventual entre BCs para todo lo demás (proyecciones, notificaciones).
+
+**Estado (dos ejes):** **Diseño completo** (16/16, confianza alta). **Ejecución no validada** — condicionada a 2 spikes de Sprint 0 (money test G1×G3 + wiring del mediator). *"Diseño completo" ≠ "diseño validado".*
+
+> Las secciones 1-6 siguen el proceso de diseño paso a paso; los ADR están en `docs/adr/`; el contrato canónico en `docs/specs/`.
 
 ## Project Context Analysis
 
@@ -405,3 +419,79 @@ Un tipo entra a `Comun` **solo si** (1) es una convención de infraestructura tr
 - **Catálogo→disponibilidad:** eventos de Hoteles → `ProyeccionHabitacion` (idempotente/ordenada) → alimenta la búsqueda.
 - **Cancelación:** `POST /reservas/{id}/cancelaciones` + `PATCH .../{cid}` → eventos por outbox → Worker.
 - **Externo:** SMTP y, en F3, Azure (Service Bus/SQL/Redis/Key Vault) vía componentes Dapr, sin cambio de código.
+
+## Architecture Validation Results
+
+### Coherence Validation ✅
+
+Stack coherente y con versiones verificadas (.NET 10 LTS, Aspire 13, EF Core 10, YARP, Dapr, Redis); sin contradicciones tras la sincronización (índice único ADR-016 reemplaza a `SERIALIZABLE` en todo el contrato; claves ADR-017 coherentes con EF Core y con el envelope de eventos). Patrones (naming, formato, envelope, error→HTTP, pipeline) alineados con las decisiones; `AGENTS.md` + check de sufijos en CI evitan desincronización. Estructura (4 assemblies/BC + slices + fronteras de datos) soporta Clean Architecture, CQRS y el invariante local.
+
+### Requirements Coverage Validation ✅
+
+11 CAP y 26 FR mapeados a ubicación concreta; 8 NFR con mecanismo asignado (ver "Requirements → Structure Mapping" y "Core Architectural Decisions"). Sin FR huérfano.
+
+### Contrato del mediator — ADR-018 (cierre del último bloqueo de implementación)
+
+- **Firma:** `Task<TResponse> Handle(TRequest request, CancellationToken ct)` en `IRequestHandler<TRequest, TResponse>`, donde `TResponse` es `Result` o `Result<T>` (los flujos esperados no lanzan; 409/400/403 son `Result`).
+- **Pipeline por decorators** `IPipelineBehavior<TRequest,TResponse>` (composición anidada, no hardcode), orden `Logging → Validation → Transaction → Outbox → Handler`.
+- **Registro por scan de assembly** en un único `AddMediatorPipeline()` por servicio, behaviors en orden explícito.
+- **Regla no negociable (atomicidad):** el insert a `OutboxMessages` va en el **mismo `DbContext.SaveChangesAsync()`** que el cambio de dominio; el `TransactionBehavior` envuelve ambos y asigna el `MessageId` una vez antes del retry 1205.
+- **Pendiente de dibujo:** diagrama de secuencia de una escritura en `architecture-diagrams.md`.
+
+### Idempotencia del consumidor (explícita, no implícita)
+
+El outbox es **at-least-once por diseño**; la no-duplicación se garantiza **en el consumidor**, no en el wire: `Notificaciones.Worker` y el handler de `ProyeccionHabitacion` deduplican por **(`MessageId`, `version`)** (inbox Redis SETNX+TTL) y descartan eventos fuera de orden. Sostiene G3 y protege G7/G1 en cascada.
+
+### Alternativas rechazadas (con costo evitado)
+
+| Alternativa | Elegido | Costo que se evita |
+|---|---|---|
+| `SERIALIZABLE` | Índice único + READ COMMITTED (ADR-016) | Deadlocks bajo N alto → degradan G7 |
+| Dapr outbox nativo | Outbox manual | Acoplar la persistencia al state store de Dapr, perder el aggregate rico |
+| `aspire-starter` | AppHost+ServiceDefaults a medida (ADR-015) | Código muerto de muestra que el evaluador debe descartar |
+| UUID v7 clustered naive | v7 no-clustered + `Seq` bigint (ADR-017) | Fragmentación del índice clustered |
+| Read model MongoDB ahora | Redis + proyección (ADR-013) | Una BD más que asegurar/sincronizar/desplegar |
+| 1 proyecto por servicio | 4 assemblies por BC | Perder la evidencia visible de Clean Architecture |
+| MediatR comercial | Mediator propio (ADR-005/018) | Dependencia con licencia comercial |
+
+### Gap Analysis
+
+- **Críticos:** ninguno abierto (los tres forks + el contrato del mediator quedaron resueltos).
+- **Importantes (acciones de implementación):** materializar `AGENTS.md`, `README` (enrutador + C4 + árbol comentado), `.editorconfig`/analyzers, ADR-015/016/017/018 en `docs/adr/`, y el diagrama de secuencia de escritura.
+- **Menores / futuro:** compensación por deshabilitación; read model Mongo; waitlist; nube Azure (F3).
+
+### Riesgo residual (honesto — dónde el diseño tiene cicatriz)
+
+- **Ventana de re-entrega del outbox** (at-least-once): no se elimina, se **absorbe** con dedupe en el consumidor; si ese dedupe falla, se duplica el efecto. Punto más delicado.
+- **Staleness de `ProyeccionHabitacion`** (consistencia eventual): la búsqueda es best-effort; el invariante duro sigue en el motor → a lo sumo produce 409 evitables, nunca overbooking.
+- **Mediator propio:** sin el ecosistema de MediatR; el wiring hay que escribirlo y **testearlo** (ADR-018 + test de pipeline) — a cambio de cero dependencia con licencia.
+
+### Architecture Completeness Checklist
+
+Requirements Analysis — [x] contexto · [x] escala/complejidad · [x] restricciones · [x] cross-cutting.
+Architectural Decisions — [x] críticas con versiones · [x] stack · [x] integración · [x] rendimiento.
+Implementation Patterns — [x] naming · [x] estructura · [x] comunicación · [x] proceso.
+Project Structure — [x] directorios · [x] fronteras · [x] integración · [x] mapeo requisito→estructura.
+
+### Architecture Readiness Assessment (dos ejes)
+
+- **Diseño:** COMPLETO — 16/16, 0 gaps conocidos, contrato del mediator cerrado. **Confianza: alta** (coherencia verificable por inspección + ADRs).
+- **Ejecución:** **NO VALIDADA** — los gates de runtime (G1, G3, G7) no tienen aún una línea de test corriendo. **Confianza: pendiente**, condicionada a dos spikes de **Sprint 0**:
+  1. **Money test G1×G3×proyección:** 50-100 requests concurrentes sobre la misma disponibilidad + matar el broker a mitad de ráfaga + **fault-injection de deadlock 1205 a mitad de una reserva multi-noche** → verificar de una corrida: exactamente 1 confirmada + resto 409, rollback **todo-o-nada a nivel de reserva** (no por noche), **exactamente un evento de outbox coherente** (cero huérfanos, cero reservas parciales), 0 pérdida/duplicado tras recuperar, proyección converge sin eventos fuera de orden.
+  2. **Wiring del mediator** (ADR-018): el pipeline compone en orden y outbox+dominio comparten `SaveChanges`.
+
+**Criterio de aborto / Plan B por spike (riesgo acotado):** si READ COMMITTED + retry no da la garantía (o el spike no cierra en su timebox), caer a `SERIALIZABLE` **sin** retry, aceptar menor concurrencia y documentarlo como riesgo conocido (revierte parcialmente ADR-016, ya trazado). Decidido de antemano → un spike que sale mal es aprendizaje acotado, no bloqueo de cronograma.
+
+**Overall:** LISTO PARA IMPLEMENTAR (diseño), CON VALIDACIÓN DE EJECUCIÓN PENDIENTE (spikes de Sprint 0).
+
+### Fortalezas (en jerarquía)
+
+1. **Diferenciador real:** consistencia **asimétrica nombrada** + **invariante garantizado por el motor** con criterio de aislamiento justificado. Requiere entender el dominio; no lo genera una plantilla.
+2. **Sostén:** outbox honesto (garantía en el efecto, no en el wire); cada frontera de assembly con su justificación; decisiones estresadas en 6 rondas de party-mode y verificadas por web en los puntos sensibles.
+3. **Higiene (esperable):** trazabilidad FR↔CAP↔ADR↔ubicación; alcance honesto (qué corre vs qué se documenta).
+
+### Implementation Handoff
+
+**Guía para agentes:** seguir decisiones y patrones exactamente; `AGENTS.md` (el qué) + este `architecture.md` (el porqué); respetar fronteras de assembly y la regla de admisión de `Comun`.
+**Artefactos imprescindibles de la entrega:** diagrama de secuencia de la escritura crítica (reserva+slots+outbox en una tx) y `README`-enrutador (tabla "si quieres saber X → ve a Y", sin duplicar); C4 de contenedores como segundo.
+**Primera prioridad (Sprint 0):** inicialización (solución + CPM + Aspire + estructura) → **los dos spikes de validación de ejecución** → luego el core con TDD (`CalculadorPrecio` → anti-overbooking con Testcontainers.MsSql).
