@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2]
+stepsCompleted: [1, 2, 3]
 inputDocuments:
   - docs/planning-artifacts/prds/prd-hotel-booking-hub-2026-07-08/prd.md
   - docs/planning-artifacts/architecture.md
@@ -381,3 +381,511 @@ para **obtener alojamiento con confirmación inmediata**.
 **Dado** un comando válido sobre una habitación disponible
 **Cuando** se confirma
 **Entonces** responde `201` con la `Reserva` en estado `Confirmada`, el precio total (AC-E1.4.1) y su identificador (UUID v7).
+
+---
+
+## Epic 2: Gestión de hoteles e inventario (Agente)
+
+*Núcleo · Fase 1.* El agente administra su catálogo de punta a punta y emite los eventos que alimentarán la disponibilidad de E3 (el productor define y prueba sus eventos).
+
+### Story 2.1: Crear hotel
+
+> **Trazabilidad:** HU1-1 → **FR-1** → `AC-E2.1.x` · **Obligatorio**
+> **Porqué:** primer eslabón del catálogo del agente; sin hotel no hay inventario que ofertar.
+
+Como **agente de viajes**,
+quiero **registrar un hotel con sus datos y estado**,
+para **incorporarlo a mi catálogo y maximizar comisiones**.
+
+**Acceptance Criteria:**
+
+**AC-E2.1.1 — Alta válida**
+**Dado** un `CrearHotelCommand` con nombre, ciudad, dirección, descripción y estado
+**Cuando** se procesa
+**Entonces** responde `201` con el `Hotel` creado (UUID v7) en el estado indicado.
+
+**AC-E2.1.2 — Validación de campos (AC negativo)**
+**Dado** un comando con nombre o ciudad vacíos
+**Cuando** se valida
+**Entonces** responde `400` con Problem Details enumerando los campos inválidos.
+
+### Story 2.2: Editar hotel y eliminarlo lógicamente (soft delete)
+
+> **Trazabilidad:** HU1-1/HU1-3 → **FR-2, FR-3** → `AC-E2.2.x` · **Obligatorio**
+> **Porqué:** la edición independiente y el soft delete (nunca borrado físico) preservan trazabilidad e historial de comisiones.
+
+Como **agente**,
+quiero **editar los datos de un hotel y darlo de baja lógicamente**,
+para **mantener el catálogo al día sin perder historial**.
+
+**Acceptance Criteria:**
+
+**AC-E2.2.1 — Edición independiente**
+**Dado** un hotel existente
+**Cuando** edito sus datos con `EditarHotelCommand`
+**Entonces** responde `200` con los datos actualizados; las habitaciones del hotel no se alteran.
+
+**AC-E2.2.2 — Soft delete**
+**Dado** un hotel activo
+**Cuando** lo elimino
+**Entonces** queda marcado inactivo (sin borrado físico) y deja de aparecer en búsquedas y de ofertar habitaciones.
+
+**AC-E2.2.3 — Edición concurrente (concurrencia optimista)**
+**Dado** dos agentes que editan el mismo hotel con el mismo `rowVersion`
+**Cuando** ambos guardan
+**Entonces** `exactamente 1` confirma; el otro recibe `409` con instrucción de recargar.
+
+### Story 2.3: Habilitar / deshabilitar hotel
+
+> **Trazabilidad:** HU1-4 → **FR-4** → `AC-E2.3.x` · **Obligatorio**
+> **Porqué:** el estado de publicación debe reflejarse de inmediato en la ofertabilidad.
+
+Como **agente**,
+quiero **habilitar o deshabilitar un hotel**,
+para **controlar al instante si se oferta**.
+
+**Acceptance Criteria:**
+
+**AC-E2.3.1 — Reflejo inmediato**
+**Dado** un hotel habilitado con habitaciones
+**Cuando** lo deshabilito
+**Entonces** ni el hotel ni sus habitaciones aparecen en búsquedas posteriores (vía evento a la proyección de E3).
+
+### Story 2.4: Gestionar habitaciones del hotel
+
+> **Trazabilidad:** HU1-2/HU1-3/HU1-4 → **FR-5, FR-6, FR-7** → `AC-E2.4.x` · **Obligatorio**
+> **Porqué:** la habitación es la unidad reservable; su estado y datos se gestionan de forma independiente del hotel.
+
+Como **agente**,
+quiero **añadir, editar y habilitar/deshabilitar habitaciones de un hotel**,
+para **gestionar el inventario ofertable con precisión**.
+
+**Acceptance Criteria:**
+
+**AC-E2.4.1 — Añadir habitación**
+**Dado** un hotel existente
+**Cuando** añado una habitación con tipo, costo base, impuestos, ubicación y estado
+**Entonces** responde `201` con la `Habitacion` creada.
+
+**AC-E2.4.2 — Edición independiente**
+**Dado** una habitación existente
+**Cuando** la edito
+**Entonces** cambian solo sus datos; el `Hotel` no se altera.
+
+**AC-E2.4.3 — Ofertabilidad compuesta**
+**Dado** una habitación deshabilitada, o perteneciente a un hotel deshabilitado
+**Cuando** se ejecuta una búsqueda
+**Entonces** esa habitación no se oferta.
+
+### Story 2.5: Emisión del contrato de eventos de catálogo
+
+> **Trazabilidad:** NFR-3 · NFR-8 → *(productor define su evento; base de la proyección de E3)* → `AC-E2.5.x` · **Obligatorio (contrato)**
+> **Porqué:** regla de propiedad de eventos — E2 (productor) fija y prueba `HabitacionAgregada`/`PrecioHabitacionCambiado`/`HabitacionDeshabilitada` aunque E3 aún no los consuma, para no reabrir el productor después.
+
+Como **BC de Reservas (consumidor)**,
+quiero **eventos de catálogo versionados y estables**,
+para **construir la proyección de disponibilidad sin acoplarme a Hoteles**.
+
+**Acceptance Criteria:**
+
+**AC-E2.5.1 — Contrato de eventos de catálogo (contract test)**
+**Dado** los eventos de catálogo publicados por `Hoteles`
+**Cuando** valido su serialización contra el snapshot
+**Entonces** cada uno lleva envelope versionado (`type` con semver) + order key `{ aggregateId, version }`
+**Y** un cambio incompatible rompe el test.
+
+**AC-E2.5.2 — Emisión transaccional**
+**Dado** un cambio de catálogo (alta/edición de precio/deshabilitación)
+**Cuando** se persiste
+**Entonces** el evento se escribe en el outbox de `Hoteles` en la misma transacción (at-least-once).
+
+---
+
+## Epic 3: Búsqueda de disponibilidad y reservas del agente
+
+*Núcleo · Fase 1.* Cierra el lado de lectura/consulta (CQRS). Aquí se salda la deuda `[DEUDA-VERIF:E3]` que dejó E1.
+
+### Story 3.1: Proyección de habitaciones idempotente y ordenada
+
+> **Trazabilidad:** NFR-1/NFR-2 · **[SALDA: AC-E1.6.3 (E3)]** → `AC-E3.1.x` · **Obligatorio (mecanismo)**
+> **Porqué:** la búsqueda se sirve de una proyección alimentada por eventos de E2; debe converger aun con reentrega y desorden de Dapr, o mostraría inventario falso.
+
+Como **BC de Reservas**,
+quiero **mantener una `ProyeccionHabitacion` que converge bajo reentrega y desorden**,
+para **que la búsqueda no mienta sobre la disponibilidad**.
+
+**Acceptance Criteria:**
+
+**AC-E3.1.1 — Convergencia bajo desorden**
+**Dado** dos eventos del mismo agregado entregados fuera de orden (`v2` antes que `v1`)
+**Cuando** el proyector los procesa
+**Entonces** el estado final proyectado `== v2` (versión más alta)
+**Y** reprocesar el `v1` tardío no retrocede el estado (order key respetada).
+
+**AC-E3.1.2 — Idempotencia (sin duplicados)**
+**Dado** el mismo evento entregado N veces
+**Cuando** el proyector lo procesa
+**Entonces** `filas_duplicadas == 0` en la proyección.
+
+**AC-E3.1.3 — Reconciliación**
+**Dado** una proyección corrupta o rezagada
+**Cuando** corre el job de reconciliación/rebuild desde el event-log
+**Entonces** la proyección converge al estado correcto.
+
+### Story 3.2: Búsqueda de habitaciones disponibles
+
+> **Trazabilidad:** HU2-1 → **FR-8** → `AC-E3.2.x` · **Obligatorio**
+> **Porqué:** es la puerta de entrada del viajero; debe devolver solo lo realmente reservable, referenciando el invariante de E1 (no asumirlo).
+
+Como **viajero**,
+quiero **buscar habitaciones por ciudad, fechas y número de huéspedes**,
+para **encontrar solo opciones realmente disponibles**.
+
+**Acceptance Criteria:**
+
+**AC-E3.2.1 — Filtro de disponibilidad real**
+**Dado** habitaciones en una ciudad
+**Cuando** busco por ciudad, `[entrada, salida)` y huéspedes
+**Entonces** el resultado incluye solo habitaciones activas, con capacidad `>=` huéspedes y con todas las noches libres en el rango.
+
+**AC-E3.2.2 — No mostrar lo no disponible (AC negativo)**
+**Dado** una habitación ya reservada en `[entrada, salida)`, o deshabilitada, o de hotel deshabilitado
+**Cuando** busco ese rango
+**Entonces** esa habitación **no** aparece en los resultados.
+
+**AC-E3.2.3 — Caché de lectura**
+**Dado** una búsqueda repetida
+**Cuando** el resultado está en caché Redis vigente
+**Entonces** se sirve desde caché; una invalidación por evento de catálogo refresca el resultado.
+
+### Story 3.3: Listado de reservas del agente con detalle
+
+> **Trazabilidad:** HU1-5 → **FR-13** → `AC-E3.3.x` · **Obligatorio**
+> **Porqué:** el agente concilia comisiones; debe ver el detalle completo de las reservas de **sus** hoteles y solo de ellos.
+
+Como **agente**,
+quiero **listar las reservas de mis hoteles y ver su detalle**,
+para **conciliar comisiones**.
+
+**Acceptance Criteria:**
+
+**AC-E3.3.1 — Contenido del listado y detalle**
+**Dado** reservas en los hoteles del agente
+**Cuando** consulto el listado
+**Entonces** cada ítem muestra hotel, habitación, estancia, estado y precio; el detalle añade huéspedes y contacto de emergencia.
+
+**AC-E3.3.2 — Aislamiento (AC negativo)**
+**Dado** reservas de hoteles de **otro** agente
+**Cuando** consulto mi listado
+**Entonces** esas reservas **no** aparecen (aislamiento resuelto server-side).
+
+---
+
+## Epic 4: Ciclo de vida de la reserva — cancelación con discreción
+
+*Diferenciador (profundo) · valor más allá del enunciado · Fase 1 (núcleo de dominio).*
+
+### Story 4.1: Solicitar cancelación con política sugerida
+
+> **Trazabilidad:** — (no exigido por el enunciado) → **FR-14, FR-15** → `AC-E4.1.x` · **Diferenciador**
+> **Porqué:** refleja la operación real de una agencia (inventario perecedero); la penalidad es sugerencia congelada, no imposición, para no perjudicar al viajero por la demora administrativa.
+
+Como **viajero (o agente en su nombre)**,
+quiero **solicitar la cancelación de una reserva confirmada indicando el motivo**,
+para **iniciar el proceso y conocer la penalidad estimada**.
+
+**Acceptance Criteria:**
+
+**AC-E4.1.1 — Solicitud válida y penalidad sugerida congelada**
+**Dado** una reserva `Confirmada` con estancia no iniciada
+**Cuando** se solicita la cancelación con motivo (categoría + texto libre) e `Iniciador`
+**Entonces** la reserva pasa a `CancelacionSolicitada`, se **congela** la `PenalidadSugerida` (ref = fecha de solicitud: `>=30` días → `0%`; `<30` días → `100%`) y se escribe `SolicitudCancelacionRegistrada` en el outbox.
+**Y** la respuesta **incluye** la penalidad como valor informativo (no se cobra).
+
+**AC-E4.1.2 — Solicitud duplicada (AC negativo)**
+**Dado** una reserva con una solicitud de cancelación en curso
+**Cuando** se solicita otra
+**Entonces** responde `409`.
+
+**AC-E4.1.3 — Estado no elegible (AC negativo)**
+**Dado** una reserva que no está `Confirmada` (o con estancia ya iniciada)
+**Cuando** se solicita la cancelación
+**Entonces** responde `409`/`422` según el guard, sin cambiar de estado.
+
+### Story 4.2: Resolver cancelación (aprobar / condonar / rechazar) con auditoría
+
+> **Trazabilidad:** — → **FR-16** → `AC-E4.2.x` · **Diferenciador**
+> **Porqué:** el agente decide con criterio (determinismo vs juicio); la liberación de inventario al aprobar es el efecto de negocio que casi nadie prueba.
+
+Como **agente del hotel**,
+quiero **resolver una solicitud de cancelación con discreción**,
+para **aplicar la penalidad, condonarla o rechazar, liberando inventario cuando corresponde**.
+
+**Acceptance Criteria:**
+
+**AC-E4.2.1 — Aprobar libera el slot (round-trip — el assert que importa)**
+**Dado** una reserva `CancelacionSolicitada` que ocupa el único slot de `[D]`
+**Cuando** el agente aprueba (aplicando o condonando)
+**Entonces** la reserva pasa a `Cancelada`, se borran las `NochesHabitacion` de la estancia, `count(slots disponibles en [D]) == 1`
+**Y** una **nueva** `CrearReserva` sobre `[D]` ahora responde `201`
+**Y** se registra la `PenalidadDecidida` (flag default/override + quién decidió) y se escribe `ReservaCancelada` en el outbox.
+
+**AC-E4.2.2 — Rechazar no toca slots**
+**Dado** una reserva `CancelacionSolicitada`
+**Cuando** el agente rechaza con motivo
+**Entonces** la reserva vuelve a `Confirmada`, no se libera ningún slot y se escribe `SolicitudCancelacionRechazada` en el outbox.
+
+**AC-E4.2.3 — Doble resolución / doble liberación (AC negativo)**
+**Dado** una reserva ya resuelta
+**Cuando** llega una segunda resolución concurrente (mismo `rowVersion`)
+**Entonces** responde `409` (guard de estado + `rowVersion`); `count(slots)` **no** sube a `2` (guard contra doble liberación).
+
+**AC-E4.2.4 — Agente ajeno (AC negativo)**
+**Dado** un agente que no es dueño del hotel de la reserva
+**Cuando** intenta resolver
+**Entonces** responde `403`.
+
+### Story 4.3: Atajo de un paso, ciclo de vida y visibilidad
+
+> **Trazabilidad:** — → **FR-17** → `AC-E4.3.x` · **Diferenciador**
+> **Porqué:** el agente que atiende por teléfono resuelve en una operación; la auditoría no debe quedar con decisiones huérfanas.
+
+Como **agente**,
+quiero **solicitar y resolver una cancelación en una sola operación y ver la antigüedad de las pendientes**,
+para **atender al viajero por teléfono sin perder trazabilidad**.
+
+**Acceptance Criteria:**
+
+**AC-E4.3.1 — Atajo auditado**
+**Dado** una reserva `Confirmada`
+**Cuando** el agente ejecuta el atajo (solicitar + resolver)
+**Entonces** se registran **ambos** eventos (solicitud y resolución) para auditoría.
+
+**AC-E4.3.2 — Guards del ciclo de vida**
+**Dado** cualquier transición
+**Cuando** se intenta salir del ciclo `Confirmada → CancelacionSolicitada → {Cancelada | Confirmada}`
+**Entonces** una transición no permitida se rechaza por guard.
+
+**AC-E4.3.3 — Antigüedad visible**
+**Dado** solicitudes pendientes
+**Cuando** se listan
+**Entonces** cada una expone sus "días en espera"; no hay expiración automática.
+
+---
+
+## Epic 5: Notificaciones por correo sin pérdida ni duplicado
+
+*Diferenciador (profundo) · contiene HU2-5 OBLIGATORIO · Fase 2 · no recortable.* Aquí se salda la deuda `[DEUDA-VERIF:E5]` de E1.
+
+### Story 5.1: Notificar la confirmación de reserva (idempotente)
+
+> **Trazabilidad:** HU2-5 → **FR-19** · **[SALDA: AC-E1.6.3 (E5)]** → `AC-E5.1.x` · **Obligatorio**
+> **Porqué:** HU2-5 es criterio del enunciado; el efecto exactamente-una-vez (dedupe del consumidor) es lo que E1 dejó como deuda. Es el cierre end-to-end que Mary marcó en riesgo de partirse.
+
+Como **huésped y agente**,
+quiero **recibir un correo al confirmarse la reserva, exactamente una vez**,
+para **tener constancia inmediata sin spam de duplicados**.
+
+**Acceptance Criteria:**
+
+**AC-E5.1.1 — Entrega end-to-end (outcome obligatorio)**
+**Dado** una reserva confirmada (evento `ReservaConfirmada` en el outbox de E1)
+**Cuando** el relay publica y `Notificaciones.Worker` consume
+**Entonces** se envía un correo al huésped y otro al agente (SMTP).
+
+**AC-E5.1.2 — Idempotencia del consumidor (salda la deuda de E1)**
+**Dado** el mismo evento entregado N veces (`deliveries >= 1`, at-least-once)
+**Cuando** el worker lo procesa deduplicando por `(MessageId, version)` en Redis (SETNX + TTL)
+**Entonces** se envía `exactamente 1` correo por destinatario (`efecto == 1`).
+
+**AC-E5.1.3 — Sin pérdida tras caída del broker (G3)**
+**Dado** el broker caído durante una ráfaga
+**Cuando** se recupera
+**Entonces** el `100%` de los eventos pendientes se entrega; `0` correos perdidos.
+
+### Story 5.2: Notificar la solicitud de cancelación
+
+> **Trazabilidad:** — → **FR-20** → `AC-E5.2.x` · **Diferenciador**
+> **Porqué:** el viajero necesita un acuse con la estimación, marcada como tal para no confundirla con el cobro final.
+
+Como **viajero y agente**,
+quiero **ser avisado cuando se solicita una cancelación**,
+para **conocer la penalidad estimada y (el agente) saber que hay algo por resolver**.
+
+**Acceptance Criteria:**
+
+**AC-E5.2.1 — Acuse con estimación**
+**Dado** una `SolicitudCancelacionRegistrada`
+**Cuando** el worker la consume
+**Entonces** el viajero recibe un acuse que **incluye** la penalidad estimada, etiquetada explícitamente como estimación (no cobro final); el agente recibe aviso de "por resolver".
+
+### Story 5.3: Notificar la resolución de la cancelación
+
+> **Trazabilidad:** — → **FR-21** → `AC-E5.3.x` · **Diferenciador**
+> **Porqué:** el desenlace (aplicar/condonar/rechazar) debe comunicarse sin ambigüedad, incluida la nota del agente si difiere de la estimación.
+
+Como **viajero**,
+quiero **recibir el desenlace de mi solicitud de cancelación**,
+para **saber la penalidad final, si fue condonada, o que mi reserva sigue en pie**.
+
+**Acceptance Criteria:**
+
+**AC-E5.3.1 — Aprobación / condonación**
+**Dado** una `ReservaCancelada`
+**Cuando** el worker la consume
+**Entonces** el viajero recibe la penalidad **final** (con nota del agente si difiere de la sugerida) o el aviso de condonación.
+
+**AC-E5.3.2 — Rechazo (mensaje inequívoco)**
+**Dado** una `SolicitudCancelacionRechazada`
+**Cuando** el worker la consume
+**Entonces** el viajero recibe un correo indicando que la reserva **sigue** `Confirmada` y el motivo del rechazo.
+
+---
+
+## Epic 6: Seguridad y acceso
+
+*Núcleo (acceso) + diferenciador (OWASP) · Fase 1→2.*
+
+### Story 6.1: Autenticación JWT/OIDC
+
+> **Trazabilidad:** — → **FR-22** → `AC-E6.1.x` · **Obligatorio**
+> **Porqué:** el enunciado exige JWT/OAuth2; sin token válido no se opera.
+
+Como **operador del sistema**,
+quiero **que toda operación exija un token válido**,
+para **impedir el acceso no autenticado**.
+
+**Acceptance Criteria:**
+
+**AC-E6.1.1 — Sin token (AC negativo)**
+**Dado** una petición sin token o con token inválido/expirado
+**Cuando** llega al Gateway
+**Entonces** responde `401` (issuer/audience/expiración verificados).
+
+### Story 6.2: Autorización por rol (RBAC)
+
+> **Trazabilidad:** — → **FR-23** → `AC-E6.2.x` · **Obligatorio**
+> **Porqué:** roles `Agente`/`Viajero` separan capacidades; se resuelve server-side.
+
+Como **operador del sistema**,
+quiero **autorizar por rol en cada endpoint**,
+para **que cada actor solo haga lo suyo**.
+
+**Acceptance Criteria:**
+
+**AC-E6.2.1 — Rol sin permiso (AC negativo)**
+**Dado** un usuario autenticado con rol sin permiso para la operación
+**Cuando** la invoca
+**Entonces** responde `403` (policies .NET server-side).
+
+### Story 6.3: Aislamiento entre agentes
+
+> **Trazabilidad:** — → **FR-24** → `AC-E6.3.x` · **Obligatorio**
+> **Porqué:** un agente no puede leer ni modificar recursos de otro; es control de acceso de datos, no solo de rol.
+
+Como **agente**,
+quiero **que mis hoteles y reservas sean invisibles e inmutables para otros agentes**,
+para **proteger mi operación**.
+
+**Acceptance Criteria:**
+
+**AC-E6.3.1 — Lectura ajena (AC negativo)**
+**Dado** un recurso (hotel/reserva) de otro agente
+**Cuando** intento leerlo
+**Entonces** responde `403`/`404` (sin filtrar existencia).
+
+**AC-E6.3.2 — Escritura ajena (AC negativo)**
+**Dado** un recurso de otro agente
+**Cuando** intento modificarlo
+**Entonces** responde `403`; el recurso no cambia.
+
+### Story 6.4: Endurecimiento OWASP (8 prácticas)
+
+> **Trazabilidad:** NFR-4 · G6 → `AC-E6.4.x` · **Diferenciador · Fase 2**
+> **Porqué:** la vacante exige OWASP; se implementan y documentan 8 prácticas mapeadas al Top 10 (2021), con cero secretos en el repo.
+
+Como **responsable de seguridad**,
+quiero **8 prácticas mapeadas a OWASP y sin secretos en el repositorio**,
+para **demostrar seguridad proporcional y verificable**.
+
+**Acceptance Criteria:**
+
+**AC-E6.4.1 — Prácticas implementadas**
+**Dado** el sistema desplegado
+**Cuando** se audita
+**Entonces** están activas y documentadas: rate limiting, validación/anti-inyección (FluentValidation + EF parametrizado), manejo de secretos (Dapr Secrets/Key Vault), HTTPS/HSTS + CORS allowlist, logging de eventos de seguridad sin PII, protección de PII.
+
+**AC-E6.4.2 — Cero secretos en el repo (CI)**
+**Dado** un push
+**Cuando** corre gitleaks/SAST en CI
+**Entonces** `0` hallazgos de secretos y `0` hallazgos críticos.
+
+---
+
+## Epic 7: Observabilidad de extremo a extremo
+
+*Diferenciador · recortable · Fase 2.*
+
+### Story 7.1: Traza distribuida propagada extremo a extremo
+
+> **Trazabilidad:** — → **FR-25** → `AC-E7.1.x` · **Diferenciador**
+> **Porqué:** ante un fallo hay que ver el span exacto; el `trace-id` técnico (W3C) debe atravesar el sidecar Dapr, distinto del id de correlación de negocio.
+
+Como **operador**,
+quiero **seguir una petición por todos los saltos con un trace-id**,
+para **localizar el span exacto donde algo falla**.
+
+**Acceptance Criteria:**
+
+**AC-E7.1.1 — Propagación completa**
+**Dado** una petición que entra por el Gateway
+**Cuando** recorre `Gateway → servicio → sidecar Dapr → Worker`
+**Entonces** el mismo `traceparent` (W3C) aparece en todos los spans, visible en el dashboard de Aspire.
+
+**AC-E7.1.2 — Span de fallo visible**
+**Dado** un fallo en un servicio
+**Cuando** abro la traza
+**Entonces** el waterfall marca el servicio/operación exacto con su excepción.
+
+### Story 7.2: Métricas p95/p99 por endpoint
+
+> **Trazabilidad:** — → **FR-26** → `AC-E7.2.x` · **Diferenciador**
+> **Porqué:** detectar degradación (especialmente de la búsqueda bajo carga de escritura, G7) exige percentiles, no promedios.
+
+Como **operador**,
+quiero **métricas de duración p95/p99 por endpoint**,
+para **detectar degradación de latencia**.
+
+**Acceptance Criteria:**
+
+**AC-E7.2.1 — Histograma de duración**
+**Dado** tráfico sobre los endpoints
+**Cuando** consulto las métricas
+**Entonces** hay histograma de duración por endpoint con p95/p99 disponibles.
+
+---
+
+## Epic 8: Nube por IaC (con compuerta)
+
+*Recortable — primero en recortarse. No bloquea ningún criterio obligatorio.*
+
+### Story 8.1: Aprovisionar Azure por Terraform
+
+> **Trazabilidad:** — → **NFR-6** → `AC-E8.1.x` · **Recortable · Fase 3**
+> **Porqué:** demuestra cloud-native e IaC; el despliegue es exclusivamente por Terraform (ADR-008), sin click-ops.
+
+Como **responsable de despliegue**,
+quiero **aprovisionar la infraestructura de Azure con Terraform**,
+para **desplegar de forma reproducible y sin provisión manual**.
+
+**Acceptance Criteria:**
+
+**AC-E8.1.1 — IaC ejecutable**
+**Dado** el módulo Terraform
+**Cuando** ejecuto `terraform plan`/`apply` (o `plan` en CI)
+**Entonces** describe ACA + Azure SQL + Cache for Redis + Service Bus + Key Vault + App Insights, sin credenciales en el código.
+
+**AC-E8.1.2 — Cloud-agnostic por Dapr (AC negativo de acoplamiento)**
+**Dado** el cambio de broker local→nube
+**Cuando** se despliega
+**Entonces** solo cambia el component YAML de Dapr; `0` cambios de código de aplicación.
