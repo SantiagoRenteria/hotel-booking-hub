@@ -200,7 +200,7 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 - **AC-E1.1.1 (compose → healthy):** ✅ `docker compose up` → 9 contenedores; `/health` `200` en los 4 servicios, todos `(healthy)`. Sin SDK (imágenes autocontenidas). Fix aplicado: RabbitMQ 5672 no publicado al host (rango reservado de Windows).
 - **AC-E1.1.3 (CI):** ✅ build + format + test + gitleaks verificados; `smoke-compose` verificado localmente y habilitado en CI (gate a `main`).
 
-**Notas / gotchas (en [docs/COMO-EJECUTAR.md](../COMO-EJECUTAR.md)):**
+**Notas / gotchas (para tener presentes en la implementación):**
 - El SDK .NET 10 generó `HotelBookingHub.slnx` (no `.sln`).
 - Windows reserva rangos de puertos (WSL/Hyper-V): 6060 (Dapr scheduler → `dapr init --slim`) y 5672 (RabbitMQ AMQP → no publicar al host).
 - `dotnet run` bajo Dapr requiere `--no-launch-profile` para respetar el `--app-port`.
@@ -214,7 +214,6 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 - `.editorconfig` (modificado: regla naming const→PascalCase), `.gitignore` (modificado: `.env` + excepción `.env.example`)
 - `.github/workflows/ci.yml` (nuevo)
 - `deploy/docker-compose.yml` (RabbitMQ AMQP no publicado al host), `deploy/.env.example`, `deploy/dapr/pubsub.yaml`, `deploy/dapr/statestore.yaml`, `deploy/dapr/local/pubsub.yaml` (nuevos)
-- `docs/COMO-EJECUTAR.md` (runbook reproducible con gotchas de Windows)
 - `src/AppHost/AppHost/AppHost.cs` (modificado), `src/AppHost/AppHost/AppHost.csproj` (refs)
 - `src/AppHost/ServiceDefaults/Extensions.cs` (modificado: salud en todos los entornos), `ServiceDefaults.csproj`
 - `src/ApiGateway/{ApiGateway.csproj, Program.cs, appsettings.json}` (modificados)
