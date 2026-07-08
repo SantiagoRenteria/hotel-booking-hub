@@ -1,0 +1,64 @@
+# ---- .NET ----
+bin/
+obj/
+out/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+artifacts/
+project.lock.json
+project.fragment.lock.json
+
+# ---- Build / test results ----
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+TestResults/
+
+# ---- Rider / VS / VS Code ----
+.idea/
+*.sln.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+
+# ---- Secretos / configuración local (NUNCA versionar) ----
+appsettings.Development.json
+appsettings.*.Local.json
+*.pfx
+*.key
+*.pem
+.env
+.env.*
+secrets.json
+
+# ---- Dapr ----
+.dapr/
+
+# ---- Terraform ----
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!example.tfvars
+.terraform.lock.hcl
+
+# ---- Node (Newman / tooling) ----
+node_modules/
+npm-debug.log*
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
