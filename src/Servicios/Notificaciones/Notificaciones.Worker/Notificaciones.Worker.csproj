@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <UserSecretsId>dotnet-Notificaciones.Worker-fd04d7d9-41ef-47ae-9ec6-f7d91efd676e</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\AppHost\ServiceDefaults\ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\..\Comun\HotelBookingHub.Comun\HotelBookingHub.Comun.csproj" />
+  </ItemGroup>
+
+</Project>

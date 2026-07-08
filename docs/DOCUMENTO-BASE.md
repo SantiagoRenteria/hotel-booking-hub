@@ -1,7 +1,7 @@
 # Documento Base del Proyecto — Sistema de Gestión y Reserva de Hoteles
 
 > **Prueba técnica Back End Developer · UltraGroup (Tech, Travel & Loyalty)**
-> Documento único de fundación: consolida los requisitos de la prueba, la inteligencia de la vacante, las decisiones de arquitectura acordadas, las convenciones de código, el plan de trabajo y las respuestas preparadas a las preguntas de diseño.
+> Documento único de fundación: consolida los requisitos de la prueba, la inteligencia de la vacante, las decisiones de arquitectura acordadas, las convenciones de código, el plan de trabajo.
 >
 > **Estado:** base aprobada · **Fase actual:** 0 (documentación, previa a la creación del repositorio).
 > **Proyecto/repo:** `hotel-booking-hub` · https://github.com/SantiagoRenteria/hotel-booking-hub
@@ -25,7 +25,7 @@
 12. [Estrategia de pruebas (TDD)](#12-estrategia-de-pruebas-tdd)
 13. [Plan por fases y entregables](#13-plan-por-fases-y-entregables)
 14. [Trazabilidad requisito → solución](#14-trazabilidad-requisito--solución)
-15. [Preguntas de diseño — respuestas preparadas](#15-preguntas-de-diseño--respuestas-preparadas)
+15. [Preguntas de diseño](#15-preguntas-de-diseño)
 16. [Uso de IA en el desarrollo (BMAD)](#16-uso-de-ia-en-el-desarrollo-bmad)
 17. [Decisiones abiertas / pendientes](#17-decisiones-abiertas--pendientes)
 
@@ -38,8 +38,6 @@ Se construye el back end de una plataforma de alojamiento para una agencia de vi
 La solución se diseña como **dos microservicios** alineados a dos *Bounded Contexts* (Hoteles y Reservas), un **API Gateway**, y un **worker de notificaciones** que consume eventos de dominio. El corazón técnico —y el diferenciador de nivel senior— es garantizar **cero overbooking** bajo concurrencia y **entrega de eventos sin pérdida ni duplicación**.
 
 La estrategia de ejecución es **core blindado primero**, diferenciadores de alto valor después, y nube al final con compuerta, de modo que la ambición (Azure/Terraform) nunca ponga en riesgo la entrega base.
-
-> **Alineación con la vacante:** el diseño se ajusta deliberadamente al stack que UltraGroup declara en su oferta de Backend Developer (.NET, DDD, Clean Architecture / Hexagonal, microservicios, Event Driven, **SQL Server**, **Redis**, OWASP, PCI DSS, ISO 27001, Postman/Newman, IA generativa), para demostrar encaje real con su entorno.
 
 ---
 
@@ -281,7 +279,7 @@ Al confirmar una reserva, dentro de una transacción con aislamiento `SERIALIZAB
 
 > Alternativas evaluadas y descartadas por complejidad/contención: `sp_getapplock` por `HabitacionId`, y verificación de rango bajo `SERIALIZABLE` sin tabla de slots. Se documentan en el ADR-003.
 
-**Resumen de todas las condiciones de carrera del sistema** (respuesta preparada — resueltas por diseño, no como parche):
+**Resumen de todas las condiciones de carrera del sistema** (resueltas por diseño, no como parche):
 
 | Condición de carrera | Mecanismo |
 |----------------------|-----------|
@@ -336,7 +334,7 @@ Al confirmar una reserva, dentro de una transacción con aislamiento `SERIALIZAB
 
 **Qué se sacrifica:** escalado horizontal de escritura (sharding) más simple en NoSQL, y flexibilidad de esquema. Pero **10.000 reservas/día ≈ 0,12 writes/s** promedio (picos de decenas/s) → SQL Server en una instancia sobra.
 
-**En qué escenario cambiaría (respuesta preparada):** si la **búsqueda de disponibilidad** se vuelve el cuello de botella más allá de lo que resuelve Redis, se introduce un **read model en MongoDB** vía CQRS. Diseño completo (documentado, **no implementado** en esta entrega — ver [ADR-013](#adr-013--read-model-cqrs-en-mongodb-diferido)):
+**En qué escenario cambiaría:** si la **búsqueda de disponibilidad** se vuelve el cuello de botella más allá de lo que resuelve Redis, se introduce un **read model en MongoDB** vía CQRS. Diseño completo (documentado, **no implementado** en esta entrega — ver [ADR-013](#adr-013--read-model-cqrs-en-mongodb-diferido)):
 
 ```
 Comando (reservar) ─► SQL Server   (verdad transaccional, invariantes, anti-overbooking)
@@ -384,7 +382,7 @@ El enunciado pide JWT/OAuth2 + ≥3 prácticas; se implementan **8**, mapeadas a
 - Local: **dashboard de Aspire** (standalone como contenedor en docker-compose → el evaluador también ve trazas sin instalar Aspire).
 - Nube: **Application Insights / Azure Monitor** (cambio de endpoint OTLP).
 - **"¿Dónde falló cada cosa?" — trazas distribuidas:** cada request nace con un `trace-id` (W3C Trace Context) que se **propaga automáticamente** por Gateway → servicio → sidecar Dapr → broker → worker. Ante un fallo, se abre la traza y el *waterfall* de spans muestra el servicio/operación exacto en rojo con su excepción. Los **logs estructurados** (Serilog) se enriquecen con ese mismo `trace-id`/`correlation-id` → todos los logs de un request se filtran por su id. Dapr contribuye emitiendo spans de cada salto que pasa por el sidecar.
-- **Detección de degradación (respuesta preparada):** histograma de duración por endpoint, alertas p95/p99, y trazas distribuidas con *exemplars* que ligan métrica ↔ traza; el span de la query de disponibilidad revela el cuello de botella.
+- **Detección de degradación:** histograma de duración por endpoint, alertas p95/p99, y trazas distribuidas con *exemplars* que ligan métrica ↔ traza; el span de la query de disponibilidad revela el cuello de botella.
 
 ### 8.12 Entorno de desarrollo y despliegue
 
@@ -680,9 +678,7 @@ Ej.: `feat(reservas): agrega anti-overbooking con slots de inventario`.
 
 ---
 
-## 15. Preguntas de diseño — respuestas preparadas
-
-> El enunciado indica estar preparado para responderlas en la presentación (no memorizar; demostrar el proceso de pensamiento).
+## 15. Preguntas de diseño
 
 1. **¿Por qué esta arquitectura y qué sacrificaste?** Microservicios por BC → límites claros y escala independiente; sacrifico simplicidad operativa y consistencia inmediata (adopto consistencia eventual con outbox + proyecciones).
 2. **¿Cómo escalar a 10.000 reservas/día?** ≈ 0,12 writes/s promedio; servicios **stateless** con autoscale (KEDA en ACA); caché Redis para búsqueda; SQL Server con índices y pooling. El cuello probable es la búsqueda, no la escritura.
@@ -713,10 +709,10 @@ Se documenta el uso de IA de punta a punta (cubre los dos retos de "IA en el des
 |---|----------|--------|
 | 1 | **Idioma del código** | ✅ **Resuelto: español** (dominio sin tildes; sufijos de patrón en inglés — §10.1). |
 | 2 | **Nombre del proyecto/repo** | ✅ **Resuelto: `hotel-booking-hub`** (repo público en GitHub). |
-| 3 | **Alcance de Azure real** | Fase 3 con compuerta: se despliega solo si el core está sólido; si no, queda como IaC documentada. |
-| 4 | **Generación de docker-compose** | Intentar `Aspire.Hosting.Docker`; fallback a compose manual + smoke test CI. |
+| 3 | **Alcance de Azure real** | ✅ **Resuelto:** despliegue/aprovisionamiento **exclusivamente por IaC (Terraform)**, sin provisión manual ni click-ops; el entregable de nube es la IaC ejecutable, bajo compuerta de Fase 3 (ADR-008). |
+| 4 | **Generación de docker-compose** | ✅ **Resuelto:** `docker-compose` **mantenido a mano** (no se genera desde `Aspire.Hosting.Docker`), blindado con smoke test en CI (ADR-007). |
 | 5 | **MongoDB (read model)** | Diseñado como evolución CQRS; **no implementado** en esta entrega (control de alcance). |
-| 6 | **IdP en nube** | JWT propio en local; evaluar Entra ID en Azure. |
+| 6 | **IdP en nube** | ✅ **Resuelto: JWT/OIDC propio** en local y en nube; **Entra ID descartado** (ADR-006). |
 
 ---
 

@@ -1,0 +1,22 @@
+# Configuración de gitleaks · hotel-booking-hub
+#
+# Extiende la config por defecto y excluye del escaneo las carpetas de TOOLING DE IA (vendored):
+#   - .claude/  → skills, prompts y configuración del agente (Claude Code + BMAD).
+#   - _bmad/    → método BMAD: skills y "knowledge" con TOKENS DE EJEMPLO en su documentación
+#                 (p. ej. `const expiredToken = '...'`) que NO son secretos reales.
+#
+# Estas carpetas se versionan A PROPÓSITO para evidenciar el uso de IA en el desarrollo
+# (requisito de la prueba); se excluyen del secret scanning solo para evitar falsos positivos.
+# El código y la configuración PROPIOS (src/, deploy/, tests/, postman/, .github/) SÍ se escanean.
+
+title = "hotel-booking-hub gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Tooling de IA vendored (BMAD / Claude Code): ejemplos de documentación, no secretos reales"
+paths = [
+    '''^\.claude/''',
+    '''^_bmad/''',
+]

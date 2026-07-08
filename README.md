@@ -13,17 +13,19 @@ Prueba técnica · Back End Developer · **UltraGroup** (Tech, Travel & Loyalty)
 ![Dapr](https://img.shields.io/badge/Dapr-pub%2Fsub%20%2B%20secrets-0D2192?logo=dapr&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 ![Azure](https://img.shields.io/badge/Azure-Container%20Apps-0078D4?logo=microsoftazure&logoColor=white)
-![Estado](https://img.shields.io/badge/estado-🚧%20en%20construcción%20(Fase%202)-orange)
+![Estado](https://img.shields.io/badge/estado-planificación%20completa%20·%20impl.%20por%20comenzar-orange)
 
 </div>
 
 ---
 
-> **Estado del proyecto:** 🚧 Fase 2 — *scaffold* del repositorio. La ingeniería (requisitos, arquitectura, ADRs y decisiones, detalle a detalle) está consolidada en **[docs/DOCUMENTO-BASE.md](docs/DOCUMENTO-BASE.md)**. La implementación de código llega en la Fase 1; las secciones de ejecución marcadas con 🚧 se habilitarán entonces.
+> **Estado del proyecto:** 🚧 planificación completa, implementación por comenzar. El contrato (SPEC), el PRD, la **arquitectura** (con ADRs y readiness) y el **backlog** (8 épicas / 31 historias con criterios de aceptación) están consolidados y trazados — ver [Mapa de documentación](#mapa-de-documentación). La primera historia (esqueleto ejecutable) está lista para desarrollo; las secciones de ejecución marcadas con 🚧 se habilitarán conforme avance el código.
 
 ## Tabla de contenido
 
 - [Contexto](#contexto)
+- [Decisiones y por qué](#decisiones-y-por-qué)
+- [Mapa de documentación](#mapa-de-documentación)
 - [Capacidades](#capacidades)
 - [Arquitectura](#arquitectura)
 - [Stack tecnológico](#stack-tecnológico)
@@ -41,6 +43,35 @@ Prueba técnica · Back End Developer · **UltraGroup** (Tech, Travel & Loyalty)
 ## Contexto
 
 Una agencia de viajes gestiona hoteles y reservas de forma manual, lo que genera inconsistencias, pérdida de comisiones y mala experiencia. Este proyecto implementa el **back end** que resuelve el problema de forma **robusta, escalable y mantenible**, con dos capacidades principales: administración del catálogo (rol **Agente**) y búsqueda/reserva de habitaciones (rol **Viajero**), con notificación por correo al confirmar.
+
+## Decisiones y por qué
+
+Las decisiones que más pesan y el trade-off detrás de cada una (el detalle está en cada ADR):
+
+| Decisión | Por qué (trade-off) | ADR |
+|----------|---------------------|-----|
+| Anti-overbooking por índice `UNIQUE(HabitacionId, Noche)` + **READ COMMITTED** (no `SERIALIZABLE`) | El índice arbitra el conflicto en el propio INSERT; `SERIALIZABLE` añadía deadlocks bajo contención que degradan el p95/p99 de la búsqueda (G7) sin beneficio. | [ADR-016](docs/specs/spec-hotel-booking-hub/decisions-adr.md) |
+| Identidad **UUID v7 no-clustered** + *clustering key* `Seq bigint` interna | Identidad global estable en API/eventos sin fragmentar el índice clustered que produce `Guid.CreateVersion7()` bajo inserción concurrente. | [ADR-017](docs/specs/spec-hotel-booking-hub/decisions-adr.md) |
+| **Outbox manual** at-least-once + idempotencia en el consumidor | No hay exactly-once en el wire; la no-duplicación se garantiza en el *efecto* (dedupe por message-id en Redis), no en el transporte. Se evita acoplar la persistencia al state store de Dapr. | [ADR-004](docs/specs/spec-hotel-booking-hub/decisions-adr.md) · [ADR-018](docs/specs/spec-hotel-booking-hub/decisions-adr.md) |
+| **2 Bounded Contexts** que solo hablan por eventos (Dapr pub/sub) | Límites de dominio claros y escala independiente; se acepta consistencia eventual entre servicios (mitigada con outbox + proyecciones) a cambio de cero acoplamiento síncrono. | [ADR-001](docs/specs/spec-hotel-booking-hub/decisions-adr.md) · [ADR-002](docs/specs/spec-hotel-booking-hub/decisions-adr.md) |
+| **Mediator propio** (no MediatR) | MediatR pasó a licencia comercial; un mediator de ~30 líneas con pipeline de *behaviors* mantiene el repo público limpio y demuestra dominio del patrón. | [ADR-005](docs/specs/spec-hotel-booking-hub/decisions-adr.md) · [ADR-018](docs/specs/spec-hotel-booking-hub/decisions-adr.md) |
+| **SQL Server + Redis**; read model en MongoDB **diseñado, no implementado** | Redis cubre el caché de lectura a la escala objetivo (~10k reservas/día); introducir Mongo sería una BD más que asegurar/sincronizar sin necesidad hoy. | [ADR-003](docs/specs/spec-hotel-booking-hub/decisions-adr.md) · [ADR-013](docs/specs/spec-hotel-booking-hub/decisions-adr.md) |
+| **`docker-compose` a mano** (no generado desde Aspire) + smoke test en CI | El evaluador ejecuta sin SDK ni Aspire; el compose manual se blinda contra *drift* con un smoke test de `/health`. | [ADR-007](docs/specs/spec-hotel-booking-hub/decisions-adr.md) |
+| **Sin `aspire-starter`** (AppHost + ServiceDefaults a medida) | Se adopta solo lo transversal (orquestación + telemetría); se rechaza el *sample* que ensuciaría el repo con código muerto. | [ADR-015](docs/specs/spec-hotel-booking-hub/decisions-adr.md) |
+
+## Mapa de documentación
+
+Si buscas… → ve a:
+
+| Quieres saber… | Documento |
+|----------------|-----------|
+| El **contrato canónico** (qué se construye, capacidades, invariantes) | [docs/specs/spec-hotel-booking-hub/SPEC.md](docs/specs/spec-hotel-booking-hub/SPEC.md) + companions |
+| El **producto y los requisitos** (FR/NFR, journeys, fases) | [docs/planning-artifacts/prds/…/prd.md](docs/planning-artifacts/prds/prd-hotel-booking-hub-2026-07-08/prd.md) |
+| Las **decisiones de arquitectura y su porqué** (diseño, spikes, readiness) | [docs/planning-artifacts/architecture.md](docs/planning-artifacts/architecture.md) |
+| Los **ADRs** (contexto · decisión · consecuencias) | [docs/specs/spec-hotel-booking-hub/decisions-adr.md](docs/specs/spec-hotel-booking-hub/decisions-adr.md) |
+| El **backlog** (8 épicas + 31 historias con AC) | [docs/planning-artifacts/epics.md](docs/planning-artifacts/epics.md) |
+| El **documento fundacional** (razonamiento narrativo original) | [docs/DOCUMENTO-BASE.md](docs/DOCUMENTO-BASE.md) |
+| El **estado del sprint** | [docs/implementation-artifacts/sprint-status.yaml](docs/implementation-artifacts/sprint-status.yaml) |
 
 ## Capacidades
 
@@ -113,7 +144,7 @@ flowchart TB
 - **Persistencia** SQL Server por servicio; **Redis** para caché, idempotencia y *state*.
 - **Dapr** para pub/sub y secretos → *cloud-agnostic* (RabbitMQ en local, Azure Service Bus en la nube, sin cambiar código).
 
-> El detalle completo, los trade-offs y los **11 ADRs** están en [docs/DOCUMENTO-BASE.md](docs/DOCUMENTO-BASE.md).
+> El detalle completo y los **ADRs** (incluidos ADR-015/016/017/018, añadidos al diseñar la arquitectura) están en [docs/specs/spec-hotel-booking-hub/decisions-adr.md](docs/specs/spec-hotel-booking-hub/decisions-adr.md) y [docs/planning-artifacts/architecture.md](docs/planning-artifacts/architecture.md). El razonamiento narrativo original, en [docs/DOCUMENTO-BASE.md](docs/DOCUMENTO-BASE.md).
 
 ## Stack tecnológico
 
@@ -145,7 +176,7 @@ CREATE TABLE NochesHabitacion (
 );
 ```
 
-Dos reservas concurrentes sobre la misma habitación y fechas: una gana, la otra recibe **409 Conflict**. Cero overbooking, garantizado por el motor y portable.
+Los slots `[entrada, salida)` se insertan en **una sola transacción bajo READ COMMITTED**: si alguna noche ya existe, la violación del índice `UNIQUE(HabitacionId, Noche)` (`SqlException` 2627/2601) arbitra el conflicto → **409 Conflict**, sin retry. Solo el deadlock (`1205`) se reintenta (acotado, backoff+jitter). Se descartó `SERIALIZABLE` por costo/contención ([ADR-016](docs/specs/spec-hotel-booking-hub/decisions-adr.md)). Dos reservas concurrentes sobre la misma habitación y fechas: una gana, la otra recibe 409. Cero overbooking, garantizado por el motor.
 
 ## Estructura del repositorio
 
@@ -169,7 +200,7 @@ hotel-booking-hub/
 
 ### Requisitos previos
 - [.NET 10 SDK](https://dotnet.microsoft.com/) · [Docker Desktop](https://www.docker.com/) · [Dapr CLI](https://dapr.io/)
-- (Opcional, para el dev-loop) *workload* de .NET Aspire: `dotnet workload install aspire`
+- **.NET Aspire 13** se resuelve **solo por NuGet** (vía `Aspire.AppHost.Sdk`); el antiguo `dotnet workload install aspire` está **deprecado y no se usa** ([ADR-015](docs/specs/spec-hotel-booking-hub/decisions-adr.md)). Para la Opción B (Docker Compose) no se necesita ni el SDK ni Aspire.
 
 ### 🚧 Opción A — Desarrollo con .NET Aspire *(disponible desde la Fase 1)*
 ```bash

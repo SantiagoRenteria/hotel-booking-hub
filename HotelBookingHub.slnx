@@ -1,0 +1,31 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ApiGateway/ApiGateway.csproj" />
+  </Folder>
+  <Folder Name="/src/AppHost/">
+    <Project Path="src/AppHost/AppHost/AppHost.csproj" />
+    <Project Path="src/AppHost/ServiceDefaults/ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/src/Comun/">
+    <Project Path="src/Comun/HotelBookingHub.Comun/HotelBookingHub.Comun.csproj" />
+  </Folder>
+  <Folder Name="/src/Servicios/" />
+  <Folder Name="/src/Servicios/Hoteles/">
+    <Project Path="src/Servicios/Hoteles/Hoteles.Api/Hoteles.Api.csproj" />
+    <Project Path="src/Servicios/Hoteles/Hoteles.Application/Hoteles.Application.csproj" />
+    <Project Path="src/Servicios/Hoteles/Hoteles.Domain/Hoteles.Domain.csproj" />
+    <Project Path="src/Servicios/Hoteles/Hoteles.Infrastructure/Hoteles.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Servicios/Notificaciones/">
+    <Project Path="src/Servicios/Notificaciones/Notificaciones.Worker/Notificaciones.Worker.csproj" />
+  </Folder>
+  <Folder Name="/src/Servicios/Reservas/">
+    <Project Path="src/Servicios/Reservas/Reservas.Api/Reservas.Api.csproj" />
+    <Project Path="src/Servicios/Reservas/Reservas.Application/Reservas.Application.csproj" />
+    <Project Path="src/Servicios/Reservas/Reservas.Domain/Reservas.Domain.csproj" />
+    <Project Path="src/Servicios/Reservas/Reservas.Infrastructure/Reservas.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Reservas.UnitTests/Reservas.UnitTests.csproj" />
+  </Folder>
+</Solution>

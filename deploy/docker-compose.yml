@@ -1,0 +1,98 @@
+# docker-compose · hotel-booking-hub (Story 1.1)
+# Reproducibilidad sin instalar SDK ni Aspire (ADR-007). Mantenido A MANO y blindado
+# con smoke test en CI. NOTA: AUTORADO — verificación de runtime pendiente (AC-E1.1.1).
+#
+# Cero secretos en el repo: la contraseña de SQL Server se toma de la variable de entorno
+# MSSQL_SA_PASSWORD (defínela en deploy/.env, que está en .gitignore). No hay valores por defecto.
+#
+# Los sidecars de Dapr (pub/sub) se añaden en la Story 1.6b/E5 (requieren Dapr).
+
+name: hotel-booking-hub
+
+services:
+  sql-hoteles:
+    image: mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?definir en deploy/.env}"
+    ports: ["11433:1433"]
+    volumes: ["sql-hoteles-data:/var/opt/mssql"]
+
+  sql-reservas:
+    image: mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?definir en deploy/.env}"
+    ports: ["11434:1433"]
+    volumes: ["sql-reservas-data:/var/opt/mssql"]
+
+  redis:
+    image: redis:7.4-alpine
+    ports: ["6379:6379"]
+
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    ports: ["5672:5672", "15672:15672"]
+
+  # Dashboard OTel standalone: el evaluador ve trazas sin instalar Aspire.
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:9.0
+    environment:
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports: ["18888:18888"]
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        PROJECT_PATH: src/ApiGateway/ApiGateway.csproj
+        APP_DLL: ApiGateway.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+    ports: ["8080:8080"]
+    depends_on: [hoteles, reservas]
+
+  hoteles:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        PROJECT_PATH: src/Servicios/Hoteles/Hoteles.Api/Hoteles.Api.csproj
+        APP_DLL: Hoteles.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+    ports: ["8081:8080"]
+    depends_on: [sql-hoteles]
+
+  reservas:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        PROJECT_PATH: src/Servicios/Reservas/Reservas.Api/Reservas.Api.csproj
+        APP_DLL: Reservas.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+    ports: ["8082:8080"]
+    depends_on: [sql-reservas, redis, rabbitmq]
+
+  notificaciones:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        PROJECT_PATH: src/Servicios/Notificaciones/Notificaciones.Worker/Notificaciones.Worker.csproj
+        APP_DLL: Notificaciones.Worker.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+    ports: ["8083:8080"]
+    depends_on: [redis, rabbitmq]
+
+volumes:
+  sql-hoteles-data:
+  sql-reservas-data:
