@@ -1,5 +1,8 @@
 ---
-stepsCompleted: [1, 2, 3, 4, 5, 6, 7]
+stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
+lastStep: 8
+status: 'complete'
+completedAt: '2026-07-08'
 inputDocuments:
   - docs/planning-artifacts/prds/prd-hotel-booking-hub-2026-07-08/prd.md
   - docs/specs/spec-hotel-booking-hub/SPEC.md
