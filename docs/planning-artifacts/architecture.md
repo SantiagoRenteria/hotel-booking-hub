@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2, 3]
+stepsCompleted: [1, 2, 3, 4]
 inputDocuments:
   - docs/planning-artifacts/prds/prd-hotel-booking-hub-2026-07-08/prd.md
   - docs/specs/spec-hotel-booking-hub/SPEC.md
@@ -162,3 +162,69 @@ La estructura nace **completa** (honra la constraint de ≥2 BC y hace que el C4
 - **README raíz** — abre con el **C4 de Contenedores** (imagen que carga sin clonar) + **árbol de carpetas comentado** (≤20 líneas, nombres de carpeta = nombres del diagrama = conceptos de negocio) + enlace gancho al ADR-015.
 
 **Nota:** la inicialización con estos comandos (versiones re-verificadas al ejecutar) es la **primera historia de implementación** (Fase 0 → Fase 1).
+
+## Core Architectural Decisions
+
+### Decision Priority Analysis
+
+**Critical (bloquean implementación):** frontera de datos del invariante · arbitraje de concurrencia · estrategia de claves · outbox · pipeline del mediator.
+**Important (moldean la arquitectura):** contrato/versionado de eventos · pureza del cálculo de precio · política de retry · liberación de slots · idempotencia/orden de proyección.
+**Deferred (con racional):** compensación por deshabilitación con reservas activas (gancho diseñado, no implementado) · chaos test del outbox (F2) · read model MongoDB (ADR-013) · nube Azure/Terraform (F3) · waitlist (futuro).
+
+### Data Architecture
+
+- **Propiedad de datos (frontera BC):** **Reservas** es dueño de `NochesHabitacion` (slots) y de la **`ProyeccionHabitacion`** (read model por eventos de Hoteles); **Hoteles** es dueño del catálogo `Habitacion`/`Hotel`. El invariante anti-overbooking es **transacción local** en la BD de Reservas; sin acoplamiento síncrono.
+- **Arbitraje de concurrencia (reescribe ADR-003):** INSERT de los N slots bajo **READ COMMITTED**; la violación de **`UNIQUE(HabitacionId, Noche)`** es el árbitro. Clasificación por **`SqlException.Number`** (pattern matching, nunca parsear mensaje):
+  - **`2627`/`2601`** (violación de único) → **409 inmediato, cero retry** (determinístico: otro ganó).
+  - **`1205`** (deadlock victim) → **retry acotado** (3 intentos, backoff+jitter); re-ejecuta el handler completo (idempotente). Sin SERIALIZABLE se esperan *más* 1205, no menos — es el comportamiento nominal.
+  - Los slots del batch se insertan en **orden determinístico** (`ORDER BY HabitacionId, Noche`) para minimizar deadlocks. La reserva multi-slot es **todo-o-nada** (atomicidad por transacción).
+  - *Supuesto:* `Habitacion` es unidad física individual (no categoría con cupo N); si evolucionara a inventario por tipo, el árbitro cambia (contador + concurrencia optimista).
+- **Liberación de slots:** al **aprobar** una cancelación, las filas de `NochesHabitacion` se **borran físicamente** (DELETE) → el `UNIQUE` se mantiene simple y la noche vuelve a ser reservable limpiamente. El estado del ciclo de vida vive en el aggregate `Reserva`, no en los slots.
+- **Estrategia de claves (ajusta constraint UUID v7):** identidad de dominio = **UUID v7** (`Guid.CreateVersion7()`), PK **NO-clustered**, expuesta en API y eventos. Clustering key = columna secuencial interna **`Seq bigint IDENTITY`** (evita la fragmentación del v7 en el orden de `uniqueidentifier`). `Seq` es **shadow property**: nunca cruza la frontera del BC ni aparece en DTOs/eventos/logs; las **FK apuntan al Guid**. `NochesHabitacion` no usa surrogate — su clave clustered natural es el compuesto `(HabitacionId, Noche)`. *Matiz:* la anti-fragmentación aplica a entidades con surrogate secuencial; `NochesHabitacion` se fragmenta por actividad de negocio y se gestiona con **fill factor** + mantenimiento de índice.
+- **Config EF Core (SQL Server):** `HasKey(x=>x.Id).IsClustered(false)` + `HasIndex(x=>x.Seq).IsUnique().IsClustered()` + `Property(x=>x.Seq).UseIdentityColumn()`; `NochesHabitacion`: `HasKey(x=>new{ x.HabitacionId, x.Noche })`.
+- **Migraciones:** EF Core 10 code-first; versión del provider fijada por CPM.
+- **Caché:** Redis (ADR-012) — disponibilidad + inbox de idempotencia (message-id/TTL) + Dapr state store.
+
+### Authentication & Security
+
+- **JWT/OIDC propio** + **RBAC server-side** (Agente/Viajero), también en nube (ADR-006). 401 sin token, 403 sin permiso, aislamiento agente↔agente en autorización.
+- **Cero secretos en repo:** Dapr Secrets (local) / Key Vault (nube). SAST + gitleaks en CI. 8 prácticas OWASP (F2).
+
+### API & Communication Patterns
+
+- **REST + OpenAPI nativo** + **Scalar** (ADR-011); `/api/v1/`; **Problem Details RFC 7807**; `Result<T>` en flujos esperados.
+- **Comunicación entre BCs = solo eventos** vía Dapr pub/sub (ADR-002). **Contrato de eventos:** envelope `{ id, type, version, occurredAt, traceId, data }`; **semver en `type`**; compatibilidad hacia atrás; Reservas dueño del schema que consume Notificaciones.
+- **Outbox manual (at-least-once por diseño):** tabla `OutboxMessages` en la **misma transacción** EF Core que el cambio de dominio; el **`MessageId` se genera una sola vez antes del `TransactionBehavior`**; `UNIQUE(OutboxMessages.MessageId)`. **Relay `BackgroundService`** con polling y **lease-expiry/re-claim por antigüedad** (no solo por estado → sin mensajes huérfanos); publica a Dapr pub/sub. La **no-duplicación se garantiza en el efecto** (dedupe del consumidor por message-id en Redis, SETNX), no en el wire. (Dapr outbox nativo descartado: acoplaría persistencia al state store de Dapr.)
+- **Proyección `ProyeccionHabitacion`:** handler **idempotente y ordenado** — descarta eventos viejos por versión/secuencia (evita "wrong forever" por reordenamiento de Dapr). **Job de reconciliación/rebuild** desde el event-log como mitigante de corrupción. La disponibilidad de búsqueda se filtra best-effort por esta proyección (consistencia eventual; el invariante duro sigue en el motor).
+- **Gateway:** YARP (`dotnet new web` + `Yarp.ReverseProxy`) — enruta/agrega, sin lógica de negocio.
+
+### Frontend Architecture
+
+No aplica — la entrega es exclusivamente back end.
+
+### Infrastructure & Deployment
+
+- **Dev:** .NET Aspire (AppHost declara SQL Server ×2, Redis, broker, sidecars Dapr) + dashboard OTel.
+- **Reproducibilidad:** `docker-compose` a mano + smoke test de `/health` en CI (ADR-007).
+- **Nube (F3, con compuerta):** ACA + Azure SQL + Cache for Redis + Service Bus + Key Vault + App Insights, **solo por Terraform** (ADR-008).
+- **CI/CD:** GitHub Actions — build + test (unit + Testcontainers.MsSql) + gitleaks/SAST + Newman + smoke test de compose.
+
+### Patrón del mediator (propio)
+
+Registro de handlers por **scan de assembly**; pipeline **`Validation → Logging/Tracing → Transaction → Outbox`** desde el día uno. El `TransactionBehavior` abre la transacción y aplica el retry 1205; solo comandos (las queries no).
+
+### Cálculo de precio
+
+**Domain service puro** `CalculadorPrecio` (sin I/O): `(costoBase + impuesto) × noches`. La penalidad de cancelación (0%/100% por antelación) es igualmente función pura. 100% unit-testeable → sostiene el TDD del flujo crítico.
+
+### Decision Impact Analysis
+
+**Secuencia (F0→F1):** (1) esqueleto + CPM/Directory.Build.props; (2) dominio de Reservas + `CalculadorPrecio` (TDD); (3) `NochesHabitacion` + índice único + INSERT-arbitraje + clasificación 2627/1205 + 409 (Testcontainers.MsSql); (4) `CrearReservaCommand` + outbox en la misma tx; (5) proyección Hoteles→Reservas por eventos (idempotente/ordenada); (6) cancelación (CAP-10/11, DELETE de slots al aprobar); (7) Gateway + Worker; (8) seguridad + observabilidad (F2).
+
+**Dependencias cruzadas:** el arbitraje por índice único hace marginal el retry 1205 y protege el p95/p99 de G7 · la clustering key secuencial protege la inserción bajo el hotspot de G1 · outbox+idempotencia sostienen G3 · el contrato versionado + handler ordenado protegen a Notificaciones y la proyección.
+
+**Gates de calidad derivados (grupo B):** unit de clasificación `2627/2601` vs `1205`; fault-injection compuesto del outbox (pérdida + duplicado-con-efecto + broker caído); orden/idempotencia del handler de proyección; lag p99 de proyección con evento canario; el test de concurrencia G1 (N=100) sobre SQL real.
+
+**Supuestos de negocio marcados:** deshabilitar una habitación **retira la oferta futura pero NO cancela reservas confirmadas existentes** (se honran hasta su fin); el gancho de compensación queda diseñado, no implementado (revisable).
+
+> **Sincronización pendiente del contrato:** estas decisiones **reescriben ADR-003** y **ajustan la constraint de UUID v7**. Se sincronizarán en `decisions-adr.md` y `stack-and-conventions.md` (+ **ADR-016** "arbitraje por índice único vs SERIALIZABLE" y **ADR-017** "claves: UUID v7 + clustering secuencial") tras cerrar este paso.
