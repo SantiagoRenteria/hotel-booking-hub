@@ -82,7 +82,7 @@ development_status:
   5-1a-notificacion-minima-de-confirmacion: done
   5-1b-worker-idempotente-sin-perdida-ni-duplicado: done
   5-2-notificar-la-solicitud-de-cancelacion: done
-  5-3-notificar-la-resolucion-de-la-cancelacion: in-progress
+  5-3-notificar-la-resolucion-de-la-cancelacion: review
   epic-5-retrospective: optional
 
   # ---- Epic 6: Seguridad y acceso ----

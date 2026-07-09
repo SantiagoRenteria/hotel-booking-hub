@@ -4,7 +4,7 @@ baseline_commit: 763121ca100292ad4ac730f4305553593df64c3e
 
 # Story 5.3: Notificar la resolución de la cancelación
 
-Status: in-progress
+Status: review
 
 <!-- Generado por bmad-create-story (lote Épica 5). Complejidad NORMAL. Consume DOS eventos de resolución
 (ReservaCancelada.v1 y SolicitudCancelacionRechazada.v1, definidos/probados en 4.2/4.3). Reutiliza INotificador
@@ -29,15 +29,15 @@ para **saber la penalidad final, si fue condonada, o que mi reserva sigue en pie
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Handler de `ReservaCancelada.v1` (AC: 1)** *(TDD)*
-  - [ ] Deserializar (`ReservaCanceladaV1`: `AggregateId`=ReservaId, `ResueltaPor`, `FechaResolucion`, `PenalidadAplicadaPorcentaje`, `PenalidadFueOverride`). Correo al viajero con la penalidad **final aplicada**; si `PenalidadFueOverride` (difiere de la sugerida) → indicarlo (p. ej. condonación cuando aplicada = 0, o ajuste del agente).
-- [ ] **Task 2 — Handler de `SolicitudCancelacionRechazada.v1` (AC: 2)** *(TDD)*
-  - [ ] Deserializar (`SolicitudCancelacionRechazadaV1`: `AggregateId`, `ResueltaPor`, `FechaResolucion`, `MotivoRechazo`). Correo al viajero: la reserva **sigue Confirmada** + el **motivo del rechazo**. Mensaje inequívoco (no ambiguo con una cancelación).
-- [ ] **Task 3 — Idempotencia + reutilización (AC: 1, 2)**
-  - [ ] Ambos handlers pasan por `IInboxIdempotencia` (5.1b) — dedup por `(MessageId, version)` — y `INotificador` (5.1a). **Rechazo NUNCA comunica cancelación** y viceversa (invariante del contrato de eventos de 4.2).
-- [ ] **Task 4 — Tests (unit + integración)**
-  - [ ] Unit: aprobación aplicando → penalidad final; condonación (`FueOverride` + 0%) → aviso de condonación; rechazo → "sigue Confirmada" + motivo. Idempotencia (N entregas → 1 efecto). Que un evento de rechazo no dispare copy de cancelación.
-- [ ] **Task 5 — Commits TDD (Red→Green) en rama `feature/5-3-notificar-resolucion` + PR a `develop`** (autor Santiago Renteria; sin trailers). Cierra la Épica 5.
+- [x] **Task 1 — Handler de `ReservaCancelada.v1` (AC: 1)** *(TDD)*
+  - [x] `ConsumidorResolucionCancelacion` deserializa `ReservaCanceladaV1` y envía al viajero la penalidad **FINAL aplicada**; si aplicada = 0% → aviso de **condonación**; si `PenalidadFueOverride` (no cero) → nota de ajuste del agente respecto a la estimación.
+- [x] **Task 2 — Handler de `SolicitudCancelacionRechazada.v1` (AC: 2)** *(TDD)*
+  - [x] Deserializa `SolicitudCancelacionRechazadaV1` y envía al viajero: la reserva **sigue CONFIRMADA** + el **motivo del rechazo**. Inequívoco (no habla de penalidad → no confundible con cancelación).
+- [x] **Task 3 — Idempotencia + reutilización (AC: 1, 2)**
+  - [x] Ambos desenlaces pasan por `IInboxIdempotencia` (5.1b) y `INotificador` (5.1a) vía `EnvioIdempotenteCorreos` — dedup por `(MessageId, version, "viajero")`. Invariante **rechazo ≠ cancelación** garantizado despachando por `evento.Type` (tests lo aseveran).
+- [x] **Task 4 — Tests (unit + integración)**
+  - [x] Unit (`ConsumidorResolucionCancelacionTests`): aprobación aplicando → final (no estimación); condonación (0% + override) → "condonada"; override no-cero → nota de ajuste; rechazo → "sigue Confirmada" + motivo sin hablar de penalidad; idempotencia (N→1); otro tipo ignorado; sin email no envía. Enriquecimiento del evento: contract test + emitter tests (4.2 aprobar/rechazar). Idempotencia con Redis real cubierta por `EnvioIdempotenteCorreos` (5.1b). *(Transporte diferido en todo el sistema.)*
+- [x] **Task 5 — Commits TDD (Red→Green) en rama `feature/5-3-notificar-resolucion` + PR a `develop`** (autor Santiago Renteria; sin trailers). Cierra la Épica 5. — 2 ciclos Red→Green; PR pendiente al cierre.
 
 ## Dev Notes
 
@@ -69,10 +69,41 @@ para **saber la penalidad final, si fue condonada, o que mi reserva sigue en pie
 
 ### Agent Model Used
 
+claude-opus-4-8 (dev-story autónomo, Épica 5).
+
 ### Debug Log References
+
+- `dotnet format` exigía alinear el comentario multilínea entre parámetros del record `ReservaCanceladaV1` a la columna de los trailing comments (feo). Se movió la nota al `<summary>` y se dejó un trailing comment corto en el parámetro. `SolicitudCancelacionRechazadaV1` no lo requirió (su parámetro previo no tiene trailing comment).
+- Hoteles.IntegrationTests falló 19/19 en ~31ms en una corrida de la suite completa (fixture SQL no arrancó) → flake por contención de contenedores; verde en la reejecución.
 
 ### Completion Notes List
 
+- **AC-E5.3.1/.2 cumplidos:** el viajero recibe el desenlace FINAL — penalidad aplicada / condonación (`ReservaCancelada.v1`) o rechazo con "sigue Confirmada" + motivo (`SolicitudCancelacionRechazada.v1`). Invariante rechazo ≠ cancelación garantizado por despacho por tipo.
+- **Decisión de party-mode (opción a) aplicada a 5.3:** `ReservaCancelada.v1` y `SolicitudCancelacionRechazada.v1` enriquecidos ADITIVAMENTE con `HuespedEmail` (solo el viajero se notifica en la resolución → no se añadió `AgenteEmail`, YAGNI). Poblados por los emisores 4.2 (`ResolverCancelacion`) y 4.3 (`CancelarEnUnPaso`), ambas ramas.
+- **Reutilización:** `ConsumidorResolucionCancelacion` usa el helper `EnvioIdempotenteCorreos` (5.2) → dedup idempotente + liberación de compensación heredadas.
+- **Cierra la Épica 5.** Regresión 388 tests verdes; `dotnet format` limpio.
+
 ### File List
 
+**Nuevos (src):**
+- `src/Servicios/Notificaciones/Notificaciones.Worker/Notificaciones/ConsumidorResolucionCancelacion.cs`
+
+**Modificados (src):**
+- `src/Comun/HotelBookingHub.Comun/Eventos/ReservaCanceladaV1.cs` (+`HuespedEmail` aditivo)
+- `src/Comun/HotelBookingHub.Comun/Eventos/SolicitudCancelacionRechazadaV1.cs` (+`HuespedEmail` aditivo)
+- `src/Servicios/Reservas/Reservas.Application/Reservas/ResolverCancelacion/ResolverCancelacionCommandHandler.cs` (puebla email, ambas ramas)
+- `src/Servicios/Reservas/Reservas.Application/Reservas/CancelarEnUnPaso/CancelarEnUnPasoCommandHandler.cs` (puebla email, ambas ramas)
+- `src/Servicios/Notificaciones/Notificaciones.Worker/Program.cs` (registra el consumidor)
+
+**Nuevos (tests):**
+- `tests/Notificaciones.UnitTests/ConsumidorResolucionCancelacionTests.cs`
+
+**Modificados (tests):**
+- `tests/Contracts/ContratoEventosResolucionCancelacionTests.cs` (email en el contrato)
+- `tests/Reservas.UnitTests/Reservas/ResolverCancelacion/ResolverCancelacionCommandHandlerTests.cs` (emitter tests aprobar/rechazar)
+
 ### Change Log
+
+- 2026-07-09 — Ciclo A: enriquecimiento aditivo de `ReservaCancelada.v1`/`SolicitudCancelacionRechazada.v1` con `HuespedEmail` + emisores 4.2/4.3. Red→Green.
+- 2026-07-09 — Ciclo B: `ConsumidorResolucionCancelacion` (penalidad final / condonación / rechazo) sobre `EnvioIdempotenteCorreos`. Red→Green.
+- 2026-07-09 — Regresión completa (388 tests) verde + `dotnet format` limpio; Status → review.
