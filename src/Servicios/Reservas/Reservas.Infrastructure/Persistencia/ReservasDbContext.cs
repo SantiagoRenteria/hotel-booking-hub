@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Reservas.Domain.Reservas;
+using Reservas.Infrastructure.Idempotencia;
+using Reservas.Infrastructure.Proyeccion;
 
 namespace Reservas.Infrastructure.Persistencia;
 
@@ -13,6 +15,10 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
     public DbSet<Reserva> Reservas => Set<Reserva>();
     public DbSet<NocheHabitacion> NochesHabitacion => Set<NocheHabitacion>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    // Read-model de catálogo (E3) alimentado por eventos de Hoteles + inbox de idempotencia del consumidor.
+    public DbSet<ProyeccionHabitacion> ProyeccionesHabitacion => Set<ProyeccionHabitacion>();
+    public DbSet<MensajeProcesado> MensajesProcesados => Set<MensajeProcesado>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -64,6 +70,27 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
             b.Property(o => o.Estado).HasMaxLength(32);
             // Índice de polling del relay: pendientes en orden de secuencia.
             b.HasIndex(o => new { o.Estado, o.Seq });
+        });
+
+        modelBuilder.Entity<ProyeccionHabitacion>(b =>
+        {
+            b.ToTable("ProyeccionHabitacion");
+            b.HasKey(p => p.HabitacionId);
+            b.Property(p => p.Ciudad).HasMaxLength(120);
+            b.Property(p => p.Tipo).HasMaxLength(100);
+            b.Property(p => p.Ubicacion).HasMaxLength(200);
+            b.Property(p => p.Estado).HasMaxLength(20);
+            b.Property(p => p.CostoBase).HasPrecision(18, 2);
+            b.Property(p => p.Impuestos).HasPrecision(18, 2);
+            b.Ignore(p => p.Hidratada); // derivado en C# (VersionEstatico != null); 3.2 filtra por VersionEstatico.
+            // Índice para la búsqueda por ciudad (3.2), acotando a filas ya hidratadas.
+            b.HasIndex(p => p.Ciudad);
+        });
+
+        modelBuilder.Entity<MensajeProcesado>(b =>
+        {
+            b.ToTable("MensajesProcesados");
+            b.HasKey(m => m.MessageId); // dedup del inbox (AC-E3.1.4)
         });
     }
 }
