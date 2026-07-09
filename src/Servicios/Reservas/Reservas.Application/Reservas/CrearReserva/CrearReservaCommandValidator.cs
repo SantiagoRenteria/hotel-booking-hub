@@ -8,6 +8,10 @@ namespace Reservas.Application.Reservas.CrearReserva;
 /// </summary>
 public sealed class CrearReservaCommandValidator : AbstractValidator<CrearReservaCommand>
 {
+    // Tope superior de estancia: evita que una entrada bien formada genere cientos de miles de slots
+    // (un slot por noche) en una sola transacción. Un año cubre cualquier estancia realista.
+    private const int MaxNoches = 365;
+
     public CrearReservaCommandValidator()
     {
         RuleFor(x => x.HabitacionId)
@@ -18,7 +22,10 @@ public sealed class CrearReservaCommandValidator : AbstractValidator<CrearReserv
             .EmailAddress().WithMessage("El correo del agente no tiene un formato válido.");
 
         RuleFor(x => x.Salida)
-            .GreaterThan(x => x.Entrada).WithMessage("La fecha de salida debe ser posterior a la de entrada.");
+            .GreaterThan(x => x.Entrada).WithMessage("La fecha de salida debe ser posterior a la de entrada.")
+            .Must((comando, salida) => salida.DayNumber - comando.Entrada.DayNumber <= MaxNoches)
+                .WithMessage($"La estancia no puede exceder {MaxNoches} noches.")
+                .When(comando => comando.Salida > comando.Entrada, ApplyConditionTo.CurrentValidator);
 
         RuleFor(x => x.Huespedes)
             .NotEmpty().WithMessage("Debe registrar al menos un huésped.");

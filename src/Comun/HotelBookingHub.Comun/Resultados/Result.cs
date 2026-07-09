@@ -13,8 +13,10 @@ public enum EstadoResultado
 /// <summary>
 /// Patrón Result para flujos esperados: los handlers devuelven <see cref="Result"/>/<see cref="Result{T}"/>
 /// en vez de lanzar (400/404/409/403 son datos, no excepciones). El mapeo a HTTP se centraliza en la capa Api.
+/// Implementa <see cref="IResultadoInvalidable{TSelf}"/> para que un comando sin payload (<c>IRequest&lt;Result&gt;</c>)
+/// también cierre el <c>ValidationBehavior</c> y no se salte la validación en silencio.
 /// </summary>
-public class Result
+public class Result : IResultadoInvalidable<Result>
 {
     private static readonly IReadOnlyDictionary<string, string[]> _sinErrores =
         new Dictionary<string, string[]>();

@@ -124,6 +124,20 @@ public sealed class CrearReservaCommandValidatorTests
     }
 
     [Fact]
+    public void Comando_con_estancia_que_excede_el_tope_de_noches_es_invalido()
+    {
+        var comando = DatosPrueba.ComandoValido() with
+        {
+            Entrada = new DateOnly(2026, 1, 1),
+            Salida = new DateOnly(2999, 1, 1), // ~355k noches
+        };
+
+        var resultado = _validator.TestValidate(comando);
+
+        resultado.ShouldHaveValidationErrorFor(c => c.Salida);
+    }
+
+    [Fact]
     public void Comando_con_salida_no_posterior_a_entrada_es_invalido()
     {
         var comando = DatosPrueba.ComandoValido() with
