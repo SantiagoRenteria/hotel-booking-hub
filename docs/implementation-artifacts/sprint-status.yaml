@@ -64,10 +64,10 @@ development_status:
   epic-2-retrospective: optional
 
   # ---- Epic 3: Búsqueda de disponibilidad y reservas del agente ----
-  epic-3: in-progress
+  epic-3: done
   3-1-proyeccion-de-habitaciones-idempotente-y-ordenada: done
   3-2-busqueda-de-habitaciones-disponibles: done
-  3-3-listado-de-reservas-del-agente-con-detalle: review
+  3-3-listado-de-reservas-del-agente-con-detalle: done
   epic-3-retrospective: optional
 
   # ---- Epic 4: Ciclo de vida de la reserva — cancelación con discreción ----
