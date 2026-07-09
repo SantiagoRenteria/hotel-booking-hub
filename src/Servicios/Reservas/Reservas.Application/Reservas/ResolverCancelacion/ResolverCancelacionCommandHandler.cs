@@ -56,6 +56,8 @@ public sealed class ResolverCancelacionCommandHandler(
 
         var solicitud = reserva.SolicitudCancelacion!;
         var traceId = Activity.Current?.TraceId.ToString();
+        // Destinatario del correo de resolución (Story 5.2/5.3, party-mode opción a): el viajero.
+        var huespedEmail = reserva.Huespedes.FirstOrDefault()?.Email;
 
         if (solicitud.Resultado == ResultadoResolucion.Aprobada)
         {
@@ -64,7 +66,8 @@ public sealed class ResolverCancelacionCommandHandler(
                 ResueltaPor: agente,
                 FechaResolucion: fechaResolucion,
                 PenalidadAplicadaPorcentaje: solicitud.PenalidadAplicadaPorcentaje!.Value,
-                PenalidadFueOverride: solicitud.PenalidadFueOverride);
+                PenalidadFueOverride: solicitud.PenalidadFueOverride,
+                HuespedEmail: huespedEmail);
             outbox.Encolar(ReservaCanceladaV1.Tipo, VersionEvento, reserva.Id, data, traceId);
         }
         else
@@ -73,7 +76,8 @@ public sealed class ResolverCancelacionCommandHandler(
                 AggregateId: reserva.Id,
                 ResueltaPor: agente,
                 FechaResolucion: fechaResolucion,
-                MotivoRechazo: solicitud.MotivoResolucion!);
+                MotivoRechazo: solicitud.MotivoResolucion!,
+                HuespedEmail: huespedEmail);
             outbox.Encolar(SolicitudCancelacionRechazadaV1.Tipo, VersionEvento, reserva.Id, data, traceId);
         }
 
