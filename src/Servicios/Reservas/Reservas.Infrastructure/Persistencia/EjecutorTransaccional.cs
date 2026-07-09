@@ -41,11 +41,11 @@ public sealed class EjecutorTransaccional(ReservasDbContext db)
                 ct,
                 esReintentable: PoliticaReintentos.EsDeadlock);
         }
-        catch (DbUpdateException ex)
-            when (ex.InnerException is SqlException sql && ClasificacionSqlServer.EsDeadlock(sql.Number))
+        catch (Exception ex) when (PoliticaReintentos.EsDeadlock(ex))
         {
             // Deadlock persistente tras agotar los reintentos (1205): bajo contención equivale a no poder
-            // confirmar → se mapea a 409, NUNCA a 500 (determinismo del money test, AC-E1.6c.3).
+            // confirmar → se mapea a 409, NUNCA a 500 (determinismo del money test, AC-E1.6c.3). Se usa el
+            // MISMO predicado que el retry para cubrir el 1205 tanto crudo (commit/begin) como envuelto por EF.
             throw new HabitacionNoDisponibleException();
         }
     }
