@@ -41,7 +41,7 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
     {
         var handler = new CrearHabitacionCommandHandler(
             new HotelRepository(db), new HabitacionRepository(db), new ColaOutbox(db));
-        var comando = new CrearHabitacionCommand(hotelId, "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        var comando = new CrearHabitacionCommand(hotelId, "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada, Capacidad: 2);
         var r = await handler.Handle(comando, CancellationToken.None);
         return (r.Valor!.Id, Convert.FromBase64String(r.Valor.RowVersion));
     }
@@ -50,7 +50,7 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
     {
         var handler = new EditarHabitacionCommandHandler(new HabitacionRepository(db), new ColaOutbox(db));
         var r = await handler.Handle(
-            new EditarHabitacionCommand(id, rowVersion, "Suite", costo, 19m, "Piso 3"), CancellationToken.None);
+            new EditarHabitacionCommand(id, rowVersion, "Suite", costo, 19m, "Piso 3", Capacidad: 2), CancellationToken.None);
         return Convert.FromBase64String(r.Valor!.RowVersion);
     }
 
@@ -89,7 +89,7 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
         {
             var handler = new CrearHabitacionCommandHandler(
                 new HotelRepository(db), new HabitacionRepository(db), new ColaOutbox(db));
-            var comando = new CrearHabitacionCommand(hotelId, "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+            var comando = new CrearHabitacionCommand(hotelId, "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada, Capacidad: 2);
             await Assert.ThrowsAnyAsync<Exception>(() => handler.Handle(comando, CancellationToken.None));
         }
 
@@ -117,7 +117,7 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
         await using (var db = fixture.CrearContexto(new InterceptorFallaOutbox()))
         {
             var handler = new EditarHabitacionCommandHandler(new HabitacionRepository(db), new ColaOutbox(db));
-            var comando = new EditarHabitacionCommand(habId, rowVersion, "Suite", 999m, 99m, "Piso 3"); // precio nuevo
+            var comando = new EditarHabitacionCommand(habId, rowVersion, "Suite", 999m, 99m, "Piso 3", Capacidad: 2); // precio nuevo
             await Assert.ThrowsAnyAsync<Exception>(() => handler.Handle(comando, CancellationToken.None));
         }
 
@@ -250,7 +250,7 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
             // Orden de Seq por inserción: HAB_1 v2 (Seq1), HAB_1 v3 (Seq2), HAB_2 v5 (Seq3).
             cola.Encolar(PrecioHabitacionCambiadoV1.Tipo, 2, hab1, new PrecioHabitacionCambiadoV1(hab1, hotel, 150m, 28m), null);
             cola.Encolar(HabitacionDeshabilitadaV1.Tipo, 3, hab1, new HabitacionDeshabilitadaV1(hab1, hotel), null);
-            cola.Encolar(HabitacionAgregadaV1.Tipo, 5, hab2, new HabitacionAgregadaV1(hab2, hotel, "Suite", 100m, 19m, "Piso 1", "Habilitada"), null);
+            cola.Encolar(HabitacionAgregadaV1.Tipo, 5, hab2, new HabitacionAgregadaV1(hab2, hotel, "Suite", 100m, 19m, "Piso 1", "Habilitada", "Bogotá", 2), null);
             await db.SaveChangesAsync(CancellationToken.None);
         }
 

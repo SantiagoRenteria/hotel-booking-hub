@@ -22,8 +22,8 @@ public sealed class ContratoEventosCatalogoTests
     {
         yield return [
             HabitacionAgregadaV1.Tipo,
-            new HabitacionAgregadaV1(_hab, _hotel, "Suite", 100.00m, 19.00m, "Piso 3", "Habilitada"),
-            new[] { "aggregateId", "hotelId", "tipoHabitacion", "costoBase", "impuestos", "ubicacion", "estado" }];
+            new HabitacionAgregadaV1(_hab, _hotel, "Suite", 100.00m, 19.00m, "Piso 3", "Habilitada", "Bogotá", 2),
+            new[] { "aggregateId", "hotelId", "tipoHabitacion", "costoBase", "impuestos", "ubicacion", "estado", "ciudad", "capacidad" }];
         yield return [
             PrecioHabitacionCambiadoV1.Tipo,
             new PrecioHabitacionCambiadoV1(_hab, _hotel, 150.00m, 28.50m),

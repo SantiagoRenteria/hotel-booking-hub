@@ -11,7 +11,7 @@ public sealed class CambiarEstadoHabitacionCommandHandlerTests
 
     private static Habitacion UnaHabitacion(EstadoHabitacion estado)
     {
-        var h = Habitacion.Crear(Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        var h = Habitacion.Crear(Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada, capacidad: 2);
         if (estado == EstadoHabitacion.Deshabilitada)
         {
             h.Deshabilitar();
