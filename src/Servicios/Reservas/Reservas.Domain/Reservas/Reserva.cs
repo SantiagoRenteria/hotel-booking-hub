@@ -96,6 +96,27 @@ public sealed class Reserva
         DateOnly fechaSolicitud,
         CalculadorPenalidad calculadorPenalidad)
     {
-        throw new NotImplementedException();
+        // Guard 1 (AC-E4.1.2): solo desde Confirmada. Una 2ª solicitud ya está en CancelacionSolicitada → 409,
+        // y NO se re-congela la penalidad.
+        if (Estado != EstadoReserva.Confirmada)
+        {
+            throw new TransicionEstadoInvalidaException(Estado, EstadoReserva.CancelacionSolicitada);
+        }
+
+        // Guard 2 (AC-E4.1.3): estancia NO iniciada (hoy < entrada). Iniciada = no elegible → 409 (no penalidad
+        // del 100%). El reloj se resolvió en el handler y llega como fechaSolicitud (dominio determinista).
+        if (fechaSolicitud >= Estancia.Entrada)
+        {
+            throw new TransicionEstadoInvalidaException(
+                Estado,
+                EstadoReserva.CancelacionSolicitada,
+                "No se puede cancelar una reserva cuya estancia ya inició.");
+        }
+
+        var penalidad = calculadorPenalidad.Calcular(Estancia, fechaSolicitud);
+        SolicitudCancelacion = new SolicitudCancelacion(motivo, iniciador, penalidad, fechaSolicitud);
+        Estado = EstadoReserva.CancelacionSolicitada;
+
+        return penalidad;
     }
 }
