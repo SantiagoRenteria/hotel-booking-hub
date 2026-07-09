@@ -28,5 +28,7 @@ public sealed class CrearHabitacionCommandValidator : AbstractValidator<CrearHab
             .PrecisionScale(LongitudesHabitacion.PrecisionMonto, LongitudesHabitacion.EscalaMonto, ignoreTrailingZeros: false)
             .WithMessage($"Los impuestos exceden la precisión permitida ({LongitudesHabitacion.PrecisionMonto},{LongitudesHabitacion.EscalaMonto}).");
         RuleFor(x => x.Estado).IsInEnum().WithMessage("El estado de la habitación no es válido.");
+
+        RuleFor(x => x.Capacidad).GreaterThan(0).WithMessage("La capacidad debe ser mayor que cero.");
     }
 }

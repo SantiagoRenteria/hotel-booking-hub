@@ -30,5 +30,7 @@ public sealed class EditarHabitacionCommandValidator : AbstractValidator<EditarH
             .GreaterThanOrEqualTo(0).WithMessage("Los impuestos no pueden ser negativos.")
             .PrecisionScale(LongitudesHabitacion.PrecisionMonto, LongitudesHabitacion.EscalaMonto, ignoreTrailingZeros: false)
             .WithMessage($"Los impuestos exceden la precisión permitida ({LongitudesHabitacion.PrecisionMonto},{LongitudesHabitacion.EscalaMonto}).");
+
+        RuleFor(x => x.Capacidad).GreaterThan(0).WithMessage("La capacidad debe ser mayor que cero.");
     }
 }

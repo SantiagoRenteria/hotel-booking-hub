@@ -32,7 +32,8 @@ public sealed class CrearHabitacionCommandHandler(
         }
 
         var habitacion = Habitacion.Crear(
-            request.HotelId, request.Tipo, request.CostoBase, request.Impuestos, request.Ubicacion, request.Estado);
+            request.HotelId, request.Tipo, request.CostoBase, request.Impuestos, request.Ubicacion, request.Estado,
+            request.Capacidad);
 
         // Encola el evento de catálogo ANTES del SaveChanges: la fila de outbox y la habitación se persisten en
         // la MISMA transacción implícita del único SaveChanges del repositorio (atomicidad AC-E2.5.2, Opción U).

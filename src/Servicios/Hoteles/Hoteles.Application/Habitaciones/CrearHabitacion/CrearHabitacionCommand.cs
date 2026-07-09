@@ -11,4 +11,5 @@ public sealed record CrearHabitacionCommand(
     decimal CostoBase,
     decimal Impuestos,
     string Ubicacion,
-    EstadoHabitacion Estado) : ICommand<Result<HabitacionResponseDto>>;
+    EstadoHabitacion Estado,
+    int Capacidad) : ICommand<Result<HabitacionResponseDto>>;

@@ -10,10 +10,10 @@ public sealed class EditarHabitacionCommandHandlerTests
     private static readonly byte[] _rowVersion = [1, 2, 3, 4, 5, 6, 7, 8];
 
     private static Habitacion UnaHabitacion() =>
-        Habitacion.Crear(Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        Habitacion.Crear(Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada, capacidad: 2);
 
     private static EditarHabitacionCommand Comando(Guid id) =>
-        new(id, _rowVersion, "Suite Premium", 150m, 28.5m, "Piso 5");
+        new(id, _rowVersion, "Suite Premium", 150m, 28.5m, "Piso 5", Capacidad: 4);
 
     // AC-E2.4.2 — edición válida: 200 con datos nuevos; el estado NO cambia por edición.
     [Fact]

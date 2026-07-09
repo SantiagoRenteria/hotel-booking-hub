@@ -18,6 +18,13 @@ public sealed class Habitacion
     public EstadoHabitacion Estado { get; private set; }
 
     /// <summary>
+    /// Capacidad de huéspedes de la habitación (atributo de catálogo, &gt; 0). La búsqueda de disponibilidad
+    /// (E3.2) filtra por <c>capacidad &gt;= huéspedes</c>. Viaja como estado en los eventos de catálogo (no tiene
+    /// evento propio): editarla no emite ni versiona por sí sola.
+    /// </summary>
+    public int Capacidad { get; private set; }
+
+    /// <summary>
     /// Versión de secuencia del agregado (Story 2.5, AC-E2.5.4): parte monotónica del order key
     /// <c>(HabitacionId, Version)</c> de los eventos de catálogo. Cuenta SOLO las mutaciones que EMITEN evento
     /// (alta, cambio real de precio, deshabilitación); las que no emiten (editar sin tocar el precio, habilitar,
@@ -29,7 +36,8 @@ public sealed class Habitacion
     private Habitacion() { } // EF Core
 
     public static Habitacion Crear(
-        Guid hotelId, string tipo, decimal costoBase, decimal impuestos, string ubicacion, EstadoHabitacion estado)
+        Guid hotelId, string tipo, decimal costoBase, decimal impuestos, string ubicacion, EstadoHabitacion estado,
+        int capacidad)
     {
         if (hotelId == Guid.Empty)
         {
@@ -40,6 +48,7 @@ public sealed class Habitacion
         ArgumentException.ThrowIfNullOrWhiteSpace(ubicacion);
         ArgumentOutOfRangeException.ThrowIfNegative(costoBase);
         ArgumentOutOfRangeException.ThrowIfNegative(impuestos);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacidad);
 
         return new Habitacion
         {
@@ -50,6 +59,7 @@ public sealed class Habitacion
             Impuestos = impuestos,
             Ubicacion = ubicacion.Trim(),
             Estado = estado,
+            Capacidad = capacidad,
             Version = 1, // el alta es el primer evento del agregado (HabitacionAgregada.v1)
         };
     }
@@ -63,12 +73,13 @@ public sealed class Habitacion
     /// Editar solo datos no económicos NO emite ni versiona.
     /// </para>
     /// </summary>
-    public bool Editar(string tipo, decimal costoBase, decimal impuestos, string ubicacion)
+    public bool Editar(string tipo, decimal costoBase, decimal impuestos, string ubicacion, int capacidad)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tipo);
         ArgumentException.ThrowIfNullOrWhiteSpace(ubicacion);
         ArgumentOutOfRangeException.ThrowIfNegative(costoBase);
         ArgumentOutOfRangeException.ThrowIfNegative(impuestos);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacidad);
 
         var cambioPrecio = CostoBase != costoBase || Impuestos != impuestos;
 
@@ -76,6 +87,7 @@ public sealed class Habitacion
         CostoBase = costoBase;
         Impuestos = impuestos;
         Ubicacion = ubicacion.Trim();
+        Capacidad = capacidad; // estado de catálogo; no emite evento propio → no bumpea Version por sí sola
 
         if (cambioPrecio)
         {
