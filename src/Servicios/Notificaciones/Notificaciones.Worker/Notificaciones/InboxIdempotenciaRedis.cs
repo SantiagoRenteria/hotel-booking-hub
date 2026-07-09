@@ -21,13 +21,19 @@ public sealed class InboxIdempotenciaRedis(IConnectionMultiplexer redis, Opcione
 {
     public Task<bool> IntentarMarcarProcesadoAsync(Guid messageId, int version, string efecto, CancellationToken ct)
     {
-        _ = (redis, opciones); // TODO 5.1b GREEN: SET key val NX EX ttl.
-        throw new NotImplementedException("5.1b GREEN pendiente: SETNX+TTL sobre Redis.");
+        ct.ThrowIfCancellationRequested();
+        // SET key val NX EX ttl (atómico): crea la clave SOLO si no existe y le fija el TTL en la misma operación.
+        // Devuelve true si ganó la reserva (primera vez); false si ya estaba (duplicado → descartar el efecto).
+        return redis.GetDatabase().StringSetAsync(
+            Clave(messageId, version, efecto), "1", opciones.Ttl, when: When.NotExists);
     }
 
     public Task LiberarAsync(Guid messageId, int version, string efecto, CancellationToken ct)
     {
-        _ = redis; // TODO 5.1b GREEN: DEL de la reserva.
-        throw new NotImplementedException("5.1b GREEN pendiente: DEL de la reserva.");
+        ct.ThrowIfCancellationRequested();
+        return redis.GetDatabase().KeyDeleteAsync(Clave(messageId, version, efecto));
     }
+
+    private static string Clave(Guid messageId, int version, string efecto) =>
+        $"notif:inbox:{messageId:N}:{version}:{efecto}";
 }

@@ -1,5 +1,6 @@
 using Notificaciones.Worker;
 using Notificaciones.Worker.Notificaciones;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,9 +16,20 @@ builder.Services.AddHostedService<Worker>();
 builder.Services.AddSingleton<INotificador, NotificadorConsola>();
 
 // Inbox de idempotencia del consumidor (Story 5.1b): dedup del efecto por (MessageId, version, destinatario).
-// Fallback en memoria para desarrollo local sin orquestador; la variante Redis (SETNX+TTL) se cablea cuando el
-// transporte real esté conectado (misma política "Redis-si-configurado" de la caché de 3.2).
-builder.Services.AddSingleton<IInboxIdempotencia, InboxIdempotenciaEnMemoria>();
+// Redis (SETNX+TTL) si está configurado —la única dedup válida entre instancias del worker—; si no, fallback en
+// memoria para desarrollo local sin orquestador (misma política "Redis-si-configurado" de la caché de 3.2).
+var cadenaRedis = builder.Configuration.GetConnectionString("redis");
+if (!string.IsNullOrWhiteSpace(cadenaRedis))
+{
+    builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(cadenaRedis));
+    builder.Services.AddSingleton(new OpcionesInbox());
+    builder.Services.AddSingleton<IInboxIdempotencia, InboxIdempotenciaRedis>();
+}
+else
+{
+    builder.Services.AddSingleton<IInboxIdempotencia, InboxIdempotenciaEnMemoria>();
+}
+
 builder.Services.AddSingleton<ConsumidorReservaConfirmada>();
 builder.Services.AddSingleton<IProcesadorEvento>(sp => sp.GetRequiredService<ConsumidorReservaConfirmada>());
 
