@@ -19,10 +19,19 @@ para **construir la proyección de disponibilidad de E3 sin acoplarme a Hoteles*
 
 ## Tasks / Subtasks
 
+> **✅ Task 0 RESUELTO (party-mode formal 2026-07-09 · Winston/Amelia/Murat):**
+> - **D1 → (B) REPLICAR** un `EjecutorTransaccional`/`TransactionBehavior` **delgado** en `Hoteles.Infrastructure` (solo tx única READ COMMITTED + retry 1205 + `ChangeTracker.Clear` por intento; SIN traducción 2627→409, que es específica de Reservas). Compone con el rowversion existente: el ejecutor envuelve el `SaveChanges` que ya fija el `OriginalValue` del token; el `DbUpdateConcurrencyException` sube sin ser tocado por el retry de 1205. Voto 2-1 (Winston+Amelia por B; Murat por A con `IClasificadorErrores` inyectado + test de caracterización). Desempate del orquestador: menor riesgo/alcance (no tocar los 148 tests verdes de Reservas) para un 2º consumidor más simple; **el read-side genérico (`OutboxMessage`/`RelayOutbox`/`ProcesadorOutbox`) queda anotado como candidato a promover a `Comun` en la regla de tres**, no duplicado a la ligera.
+> - **D2 → (a) UNÁNIME:** columna `Version` explícita (int/long) en `Habitacion`, monotónica por agregado, incrementada en la MISMA tx del outbox por cada mutación que emite evento. NO derivar del rowversion (global/opaco, chicken-and-egg con el post-save) ni de la Seq (orden global, no por-agregado). `Version` (stream de eventos) y `rowversion` (concurrencia) coexisten y miden cosas distintas.
+> - **Tests exigidos por Murat (van en la implementación):** (i) monotonía en emisión — dos mutaciones consecutivas de la misma habitación emiten `version` estrictamente creciente y contigua; (ii) el gemelo de idempotencia+orden en E3 (v-repetida→no-op, v-vieja→descartada, v-siguiente→aplicada) queda como AC de E3, no de 2.5.
+
+<details><summary>Task 0 original (contexto de las alternativas evaluadas)</summary>
+
 > **Task 0 (party-mode, PRIMERO) — decisiones arquitectónicas.** Antes de tocar código, resolver con `/bmad-party-mode` (afecta contratos + arquitectura de mensajería + write-path ya implementado):
 > - **D1 — Alcance del write-path transaccional de Hoteles:** ¿reusar el `EjecutorTransaccional`/`TransactionBehavior`/`ColaOutbox`/`ContextoMensajeria`/`RelayOutbox`/`ProcesadorOutbox` de Reservas **promoviéndolos a `Comun`** (una sola implementación transversal), o **replicarlos** en `Hoteles.Infrastructure`? Trade-off: DRY/transversal vs acoplar dos BC a una pieza compartida. (La clasificación 2627/2601/1205 de Reservas es específica de su índice único; el de Hoteles no tiene overbooking, así que su `EjecutorTransaccional` es más simple — solo tx única + 1205 retry, sin 2627→409.)
 > - **D2 — De dónde sale el `version` del order key:** columna `Version` monotónica explícita en `Habitacion` (incrementada por cada cambio emitido) vs derivar del `rowversion`/secuencia. Recomendación previa (Winston): `Version` explícita (el `rowversion` no es un número de versión de negocio fiable).
 > - Documentar alternativas/decisión y solo entonces implementar.
+
+</details>
 
 - [ ] **Task 1 — Contratos de eventos de catálogo (AC: 1, 4)** *(TDD: contract test RED primero)*
   - [ ] En `HotelBookingHub.Comun.Eventos`: records `HabitacionAgregadaV1`, `PrecioHabitacionCambiadoV1`, `HabitacionDeshabilitadaV1` con su constante `Tipo` (`"HabitacionAgregada.v1"`, etc.), reutilizando el envelope `EventoIntegracion` (mismo `{ id, type, version, occurredAt, traceId, data }` de `ReservaConfirmadaV1`). `data.AggregateId` = `HabitacionId`; incluir los campos que E3 necesitará para proyectar (hotelId, tipo, costo/impuestos para el de precio, etc.)
