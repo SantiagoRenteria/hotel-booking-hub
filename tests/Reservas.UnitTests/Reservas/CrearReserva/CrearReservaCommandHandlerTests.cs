@@ -10,10 +10,10 @@ public sealed class CrearReservaCommandHandlerTests
 {
     private readonly RepositorioReservasFake _repo = new();
     private readonly DisponibilidadHabitacionFake _dispo = new();
-    private readonly PublicadorEventosFake _pub = new();
+    private readonly ColaOutboxFake _outbox = new();
 
     private CrearReservaCommandHandler CrearHandler() =>
-        new(_dispo, _repo, new CalculadorPrecio(), _pub);
+        new(_dispo, _repo, new CalculadorPrecio(), _outbox);
 
     private static HabitacionReservable HabitacionActiva(Guid id) => new(
         Id: id,
@@ -25,9 +25,9 @@ public sealed class CrearReservaCommandHandlerTests
         CostoBase: 100.50m,
         Impuesto: 19.99m);
 
-    // AC-E1.6a.4 — confirmación exitosa expone id (UUID v7), estado y precio.
+    // AC-E1.6a.4 — confirmación exitosa expone id (UUID v7), estado y precio; encola el evento.
     [Fact]
-    public async Task Happy_path_confirma_calcula_precio_persiste_y_publica_evento()
+    public async Task Happy_path_confirma_calcula_precio_stagea_y_encola_evento()
     {
         var comando = DatosPrueba.ComandoValido(); // estancia de 2 noches
         _dispo.Habitacion = HabitacionActiva(comando.HabitacionId);
@@ -40,28 +40,27 @@ public sealed class CrearReservaCommandHandlerTests
         Assert.Equal("Confirmada", resultado.Valor.Estado);
         Assert.Equal(240.98m, resultado.Valor.PrecioTotal); // (100.50 + 19.99) * 2
 
-        var reserva = Assert.Single(_repo.Confirmadas);
+        var reserva = Assert.Single(_repo.Agregadas);
         Assert.Equal(resultado.Valor.Id, reserva.Id);
 
-        var publicado = Assert.Single(_pub.Publicados);
-        Assert.Equal("reservas", publicado.Topico);
-        Assert.Equal(ReservaConfirmadaV1.Tipo, publicado.Evento.Type);
-        var data = Assert.IsType<ReservaConfirmadaV1>(publicado.Evento.Data);
-        Assert.Equal(resultado.Valor.Id, data.AggregateId);
+        var encolado = Assert.Single(_outbox.Encolados);
+        Assert.Equal(ReservaConfirmadaV1.Tipo, encolado.Tipo);
+        Assert.Equal(reserva.Id, encolado.AggregateId);
+        var data = Assert.IsType<ReservaConfirmadaV1>(encolado.Data);
         Assert.Equal(240.98m, data.PrecioTotal);
         Assert.Equal("juan@correo.com", data.HuespedEmail);
     }
 
     [Fact]
-    public async Task Habitacion_inexistente_devuelve_no_encontrado_sin_persistir_ni_publicar()
+    public async Task Habitacion_inexistente_devuelve_no_encontrado_sin_stagear_ni_encolar()
     {
         _dispo.Habitacion = null;
 
         var resultado = await CrearHandler().Handle(DatosPrueba.ComandoValido(), CancellationToken.None);
 
         Assert.Equal(EstadoResultado.NoEncontrado, resultado.Estado);
-        Assert.Empty(_repo.Confirmadas);
-        Assert.Empty(_pub.Publicados);
+        Assert.Empty(_repo.Agregadas);
+        Assert.Empty(_outbox.Encolados);
     }
 
     [Fact]
@@ -73,19 +72,6 @@ public sealed class CrearReservaCommandHandlerTests
         var resultado = await CrearHandler().Handle(comando, CancellationToken.None);
 
         Assert.Equal(EstadoResultado.NoEncontrado, resultado.Estado);
-        Assert.Empty(_repo.Confirmadas);
-    }
-
-    [Fact]
-    public async Task Carrera_perdida_en_el_motor_se_traduce_a_conflicto_y_no_publica()
-    {
-        var comando = DatosPrueba.ComandoValido();
-        _dispo.Habitacion = HabitacionActiva(comando.HabitacionId);
-        _repo.SimularNoDisponible = true;
-
-        var resultado = await CrearHandler().Handle(comando, CancellationToken.None);
-
-        Assert.Equal(EstadoResultado.Conflicto, resultado.Estado);
-        Assert.Empty(_pub.Publicados); // el evento solo se publica tras confirmar
+        Assert.Empty(_repo.Agregadas);
     }
 }

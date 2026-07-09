@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Reservas.Infrastructure.Persistencia;
 using Testcontainers.MsSql;
 using Xunit;
@@ -24,12 +25,17 @@ public sealed class SqlServerFixture : IAsyncLifetime
 
     public Task DisposeAsync() => _sql.DisposeAsync().AsTask();
 
-    public ReservasDbContext CrearContexto()
+    public ReservasDbContext CrearContexto(params IInterceptor[] interceptores)
     {
-        var options = new DbContextOptionsBuilder<ReservasDbContext>()
-            .UseSqlServer(_sql.GetConnectionString())
-            .Options;
-        return new ReservasDbContext(options);
+        var builder = new DbContextOptionsBuilder<ReservasDbContext>()
+            .UseSqlServer(_sql.GetConnectionString());
+
+        if (interceptores.Length > 0)
+        {
+            builder.AddInterceptors(interceptores);
+        }
+
+        return new ReservasDbContext(builder.Options);
     }
 }
 

@@ -13,7 +13,7 @@ public sealed record CrearReservaCommand(
     DateOnly Salida,
     IReadOnlyList<HuespedDto> Huespedes,
     ContactoEmergenciaDto ContactoEmergencia,
-    string AgenteEmail) : IRequest<Result<ReservaResponseDto>>;
+    string AgenteEmail) : ICommand<Result<ReservaResponseDto>>;
 
 /// <summary>Datos de un huésped en la petición (FR-10). Todos obligatorios.</summary>
 public sealed record HuespedDto(
