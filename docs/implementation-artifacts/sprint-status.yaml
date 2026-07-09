@@ -60,7 +60,7 @@ development_status:
   2-2-editar-hotel-y-eliminarlo-logicamente: done
   2-3-habilitar-deshabilitar-hotel: done
   2-4-gestionar-habitaciones-del-hotel: done
-  2-5-emision-del-contrato-de-eventos-de-catalogo: ready-for-dev
+  2-5-emision-del-contrato-de-eventos-de-catalogo: in-progress
   epic-2-retrospective: optional
 
   # ---- Epic 3: Búsqueda de disponibilidad y reservas del agente ----
