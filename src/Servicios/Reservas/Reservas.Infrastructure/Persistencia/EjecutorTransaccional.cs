@@ -1,4 +1,5 @@
 using System.Data;
+using HotelBookingHub.Comun.Excepciones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Reservas.Domain.Reservas;
@@ -30,6 +31,14 @@ public sealed class EjecutorTransaccional(ReservasDbContext db)
                         await stagearCambios(token);
                         await db.SaveChangesAsync(token);
                         await tx.CommitAsync(token);
+                    }
+                    catch (DbUpdateConcurrencyException ex)
+                    {
+                        // Concurrencia optimista (Story 4.2): el UPDATE ... WHERE RowVersion=@original afectó 0 filas
+                        // (otra operación resolvió/editó la reserva en medio). Desenlace DETERMINÍSTICO → 409 sin
+                        // retry (reintentar sin recargar volvería a fallar). La tx revierte al hacer dispose, así
+                        // que la liberación de slots de la perdedora NO se aplica (no hay doble liberación).
+                        throw new ConflictoConcurrenciaException(ex);
                     }
                     catch (DbUpdateException ex)
                         when (ex.InnerException is SqlException sql && ClasificacionSqlServer.EsViolacionDeUnico(sql.Number))
