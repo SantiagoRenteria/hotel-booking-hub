@@ -22,10 +22,20 @@ public sealed class EliminarHotelCommandValidatorTests
             .ShouldHaveValidationErrorFor(c => c.Id);
     }
 
+    // Fallo-cerrado del token (party-mode · Murat): sin rowVersion la baja NUNCA procede — el DELETE viaja con
+    // el token en el body; si un proxy lo descarta (body ausente → vacío/null), el validator corta con 400,
+    // jamás un borrado sin control de concurrencia. Se prueban ambos: vacío y null.
     [Fact]
     public void RowVersion_vacio_es_invalido()
     {
         _validator.TestValidate(Valido() with { RowVersion = [] })
+            .ShouldHaveValidationErrorFor(c => c.RowVersion);
+    }
+
+    [Fact]
+    public void RowVersion_null_es_invalido()
+    {
+        _validator.TestValidate(Valido() with { RowVersion = null! })
             .ShouldHaveValidationErrorFor(c => c.RowVersion);
     }
 }

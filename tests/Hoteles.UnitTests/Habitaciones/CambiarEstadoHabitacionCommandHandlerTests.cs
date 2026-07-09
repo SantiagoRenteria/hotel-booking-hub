@@ -67,6 +67,27 @@ public sealed class CambiarEstadoHabitacionCommandHandlerTests
         Assert.True(repo.GuardoConcurrencia);
     }
 
+    // AC-E2.4.3 — matriz de transiciones (party-mode · Murat): toda combinación origen→objetivo, incluidas las
+    // idempotentes, termina en el estado pedido. Unificar la transición concentra el riesgo en un solo método.
+    [Theory]
+    [InlineData(EstadoHabitacion.Habilitada, EstadoHabitacion.Habilitada)]
+    [InlineData(EstadoHabitacion.Habilitada, EstadoHabitacion.Deshabilitada)]
+    [InlineData(EstadoHabitacion.Deshabilitada, EstadoHabitacion.Habilitada)]
+    [InlineData(EstadoHabitacion.Deshabilitada, EstadoHabitacion.Deshabilitada)]
+    public async Task Matriz_de_transiciones_termina_en_el_estado_objetivo(EstadoHabitacion origen, EstadoHabitacion objetivo)
+    {
+        var habitacion = UnaHabitacion(origen);
+        var repo = new HabitacionRepositoryFake { Existente = habitacion };
+
+        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo)
+            .Handle(Comando(habitacion.Id, objetivo), CancellationToken.None);
+
+        Assert.True(resultado.EsExitoso);
+        Assert.Equal(objetivo, habitacion.Estado);
+        Assert.Equal(objetivo.ToString(), resultado.Valor!.Estado);
+        Assert.True(repo.GuardoConcurrencia);
+    }
+
     [Fact]
     public async Task Habitacion_inexistente_devuelve_404()
     {

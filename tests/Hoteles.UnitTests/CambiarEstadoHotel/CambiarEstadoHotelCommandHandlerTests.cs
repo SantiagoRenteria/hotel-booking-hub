@@ -69,6 +69,27 @@ public sealed class CambiarEstadoHotelCommandHandlerTests
         Assert.True(repo.GuardoConcurrencia); // igual arbitra la concurrencia (fuerza el UPDATE)
     }
 
+    // AC-E2.3.1/2 — matriz de transiciones (party-mode · Murat): toda combinación origen→objetivo, incluidas
+    // las idempotentes (habilitar un habilitado / deshabilitar un deshabilitado), termina en el estado pedido.
+    [Theory]
+    [InlineData(EstadoHotel.Habilitado, EstadoHotel.Habilitado)]
+    [InlineData(EstadoHotel.Habilitado, EstadoHotel.Deshabilitado)]
+    [InlineData(EstadoHotel.Deshabilitado, EstadoHotel.Habilitado)]
+    [InlineData(EstadoHotel.Deshabilitado, EstadoHotel.Deshabilitado)]
+    public async Task Matriz_de_transiciones_termina_en_el_estado_objetivo(EstadoHotel origen, EstadoHotel objetivo)
+    {
+        var hotel = HotelEn(origen);
+        var repo = new HotelRepositoryFake { Existente = hotel };
+
+        var resultado = await new CambiarEstadoHotelCommandHandler(repo)
+            .Handle(Comando(hotel.Id, objetivo), CancellationToken.None);
+
+        Assert.True(resultado.EsExitoso);
+        Assert.Equal(objetivo, hotel.Estado);
+        Assert.Equal(objetivo.ToString(), resultado.Valor!.Estado);
+        Assert.True(repo.GuardoConcurrencia); // incluso la transición idempotente arbitra el token
+    }
+
     // AC-E2.3.4 — inexistente o eliminado: 404, sin guardar.
     [Fact]
     public async Task Hotel_inexistente_devuelve_404()
