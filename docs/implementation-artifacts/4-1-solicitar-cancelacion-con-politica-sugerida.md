@@ -31,18 +31,14 @@ consuma (regla de propiedad de eventos, party-mode Winston).
 
 ## Tasks / Subtasks
 
-> **Task 0 (party-mode, PRIMERO) — modelo de dominio de cancelación (compartido por toda la Épica 4).**
-> Decisiones a cerrar con `/bmad-party-mode` (Winston + Amelia + Murat) antes de implementar:
-> - **Máquina de estados** en `EstadoReserva` (`Confirmada → CancelacionSolicitada → {Cancelada | Confirmada}`):
->   ¿guards en el agregado `Reserva` (métodos `SolicitarCancelacion`/`Resolver`) que lanzan/retornan según estado?
-> - **Modelo de penalidad:** ¿VO `PoliticaCancelacion`/`PenalidadSugerida` (porcentaje + referencia congelada)?
->   ¿domain service puro (como `CalculadorPrecio`) o regla en el agregado? Regla actual: `>=30`d→0%, `<30`d→100%.
-> - **Congelación:** persistir la penalidad + fecha de solicitud + motivo (categoría+texto) + `Iniciador` en la
->   `Reserva` (¿owned `SolicitudCancelacion`?). Migración.
-> - **Concurrencia:** `rowVersion` ya existe en `Reserva`; la solicitud duplicada (AC-E4.1.2) se arbitra por
->   guard de estado + optimistic concurrency (→ 409). Confirmar mapeo 409 vs 422 para estado no elegible.
-> - **Evento** `SolicitudCancelacionRegistrada.v1` en `Comun.Eventos` (contrato + contract test) — E4 lo define.
-> Documentar la decisión (como en 3.1/3.3) antes de codificar.
+> **✅ Task 0 RESUELTA (party-mode Winston + Murat, 2026-07-09; Amelia N/A por glitch de entorno).** Modelo de
+> dominio de cancelación (compartido por toda la Épica 4):
+> - **Guards por EXCEPCIÓN de dominio, no `Result`** (coherencia con `EstanciaInvalidaException`): `Reserva.SolicitarCancelacion/Resolver` lanzan `TransicionEstadoInvalidaException` (una sola, con estado origen/destino) → Api mapea a **409**. Guard DENTRO del método del agregado. "Estancia ya iniciada" (`hoy >= entrada`) = **no elegible → 409** (no penalidad 100%).
+> - **Penalidad: domain service PURO** `CalculadorPenalidad(Estancia, DateOnly fechaSolicitud) → PenalidadSugerida` (VO inmutable), familia de `CalculadorPrecio`. El **reloj (`TimeProvider`) se resuelve en el HANDLER** y se pasa como `DateOnly` — el dominio no toca el reloj (determinista). Regla `>=30`d→0% / `<30`d→100% con constante+`if` (NO tabla configurable). **CONGELADA en la solicitud; 4.2 NUNCA la recalcula.**
+> - **Persistencia: owned `SolicitudCancelacion` NULLABLE** en `Reserva` (motivo categoría+texto, `IniciadaPor`, penalidad congelada, `FechaSolicitud`); al resolver, la MISMA owned recibe `ResueltaPor`+`FechaResolucion`+resultado (un solo episodio, no dos owned). Migración. `EstadoReserva` como string (ya se mapea así).
+> - **Evento** `SolicitudCancelacionRegistrada.v1` en `Comun.Eventos`, **order key = `ReservaId`**, con **contract test propio de eventos de reserva** (separado del de catálogo). Por el outbox existente.
+> - **Concurrencia/doble liberación (4.2, invariante duro):** el borrado de `NochesHabitacion` va en la MISMA tx que la transición + `rowVersion++`. La 2ª resolución concurrente choca con `DbUpdateConcurrencyException` → aborta la tx (su borrado se revierte) → **409**. Candado optimista + guard de estado; SIN locks pesimistas ni contadores. Regla no negociable: borrado de slots comparte la tx del bump de versión.
+> - **Tests obligatorios (Murat):** bordes de penalidad (30d→0%, 29d→100%, día de entrada, estancia iniciada→no elegible); **congelación** (avanzar reloj entre solicitud y aprobación, % no cambia); round-trip de liberación con paso intermedio 409 (2→3→201); doble resolución concurrente (patrón G1, `Barrier`, 1×2xx/1×409, repetido N); tabla de transiciones prohibidas (`Cancelada→*`, salto directo, doble solicitud sin recongelar); outbox (exactamente-un `ReservaCancelada`, **rechazar NO emite `ReservaCancelada`**, atomicidad estado+evento).
 
 - [ ] **Task 1 — Máquina de estados + VOs de dominio (AC: 1, 3)** *(TDD + BDD)*
   - [ ] `EstadoReserva` gana `CancelacionSolicitada`, `Cancelada`. `Reserva.SolicitarCancelacion(motivo, iniciador, fechaSolicitud, politica)` con guard (solo desde `Confirmada` y estancia no iniciada); tests de tabla de transiciones (permitidas/rechazadas).
