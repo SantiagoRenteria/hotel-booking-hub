@@ -80,7 +80,8 @@ public sealed class CancelarEnUnPasoCommandHandler(
                     ResueltaPor: agente,
                     FechaResolucion: fecha,
                     PenalidadAplicadaPorcentaje: solicitud.PenalidadAplicadaPorcentaje!.Value,
-                    PenalidadFueOverride: solicitud.PenalidadFueOverride),
+                    PenalidadFueOverride: solicitud.PenalidadFueOverride,
+                    HuespedEmail: reserva.Huespedes.FirstOrDefault()?.Email),
                 traceId);
         }
         else
@@ -91,7 +92,8 @@ public sealed class CancelarEnUnPasoCommandHandler(
                     AggregateId: reserva.Id,
                     ResueltaPor: agente,
                     FechaResolucion: fecha,
-                    MotivoRechazo: solicitud.MotivoResolucion!),
+                    MotivoRechazo: solicitud.MotivoResolucion!,
+                    HuespedEmail: reserva.Huespedes.FirstOrDefault()?.Email),
                 traceId);
         }
 
