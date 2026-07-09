@@ -45,7 +45,14 @@ public sealed class BuscadorDisponibilidadSql(ReservasDbContext db) : IBuscadorD
             .OrderBy(p => p.CostoBase).ThenBy(p => p.HabitacionId)
             .Select(p => new
             {
-                p.HabitacionId, p.HotelId, p.Ciudad, p.Tipo, p.Ubicacion, p.Capacidad, p.CostoBase, p.Impuestos,
+                p.HabitacionId,
+                p.HotelId,
+                p.Ciudad,
+                p.Tipo,
+                p.Ubicacion,
+                p.Capacidad,
+                p.CostoBase,
+                p.Impuestos,
             });
 
         var filas = await candidatas.ToListAsync(ct);
