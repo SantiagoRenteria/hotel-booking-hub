@@ -44,6 +44,8 @@ public sealed class EmisionEventosCatalogoTests
         Assert.Equal(hotel.Id, data.HotelId);
         Assert.Equal("Suite", data.TipoHabitacion);
         Assert.Equal(100m, data.CostoBase);
+        Assert.Equal("Medellín", data.Ciudad); // denormalizado del hotel (party-mode A2)
+        Assert.Equal(3, data.Capacidad);
     }
 
     [Fact]
