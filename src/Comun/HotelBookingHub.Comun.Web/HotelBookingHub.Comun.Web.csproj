@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Contratos web transversales (Result→HTTP) compartidos por los *.Api de cada BC.
+    Es el ÚNICO componente de Comun que depende del framework web; Application NUNCA lo referencia
+    (así la capa de aplicación permanece web-agnóstica — Clean Architecture, decisión party-mode 2.1).
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HotelBookingHub.Comun\HotelBookingHub.Comun.csproj" />
+  </ItemGroup>
+
+</Project>
