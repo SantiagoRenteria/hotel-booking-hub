@@ -28,23 +28,49 @@ public sealed class ConsumidorReservaConfirmada(INotificador notificador, IInbox
             ?? throw new InvalidOperationException(
                 $"Evento {evento.Id} ({evento.Type}) sin data deserializable a {nameof(ReservaConfirmadaV1)}.");
 
-        _ = inbox; // TODO 5.1b GREEN: deduplicar el efecto por (MessageId, version, destinatario) antes de enviar.
-
         var estancia = $"{data.Entrada:yyyy-MM-dd} → {data.Salida:yyyy-MM-dd}";
         // InvariantCulture: el importe del correo NO debe variar con la config regional del host.
         var total = data.PrecioTotal.ToString("0.00", CultureInfo.InvariantCulture);
 
-        await notificador.NotificarAsync(
-            data.HuespedEmail,
-            $"Reserva confirmada en {data.HotelNombre}",
-            $"Hola {data.HuespedNombre}, tu reserva en {data.HotelNombre} ({data.Ciudad}) está confirmada para {estancia}. Total: {total}.",
+        // Cada correo es un efecto INDEPENDIENTE deduplicado por su propia clave (MessageId, version, destinatario):
+        // así un fallo parcial (el 2º correo falla) reintenta SOLO el pendiente sin re-enviar el que ya salió.
+        await EnviarIdempotenteAsync(
+            evento, efecto: "huesped", destinatario: data.HuespedEmail,
+            asunto: $"Reserva confirmada en {data.HotelNombre}",
+            cuerpo: $"Hola {data.HuespedNombre}, tu reserva en {data.HotelNombre} ({data.Ciudad}) está confirmada para {estancia}. Total: {total}.",
             ct);
 
-        await notificador.NotificarAsync(
-            data.AgenteEmail,
-            $"Reserva confirmada: {data.HotelNombre}",
-            $"La reserva de {data.HuespedNombre} en {data.HotelNombre} ({data.Ciudad}) para {estancia} quedó confirmada. Total: {total}.",
+        await EnviarIdempotenteAsync(
+            evento, efecto: "agente", destinatario: data.AgenteEmail,
+            asunto: $"Reserva confirmada: {data.HotelNombre}",
+            cuerpo: $"La reserva de {data.HuespedNombre} en {data.HotelNombre} ({data.Ciudad}) para {estancia} quedó confirmada. Total: {total}.",
             ct);
+    }
+
+    /// <summary>
+    /// Envía un correo <b>exactamente una vez</b> bajo re-entrega (AC-E5.1b.1): reserva atómica de la clave del
+    /// efecto (<c>SETNX</c>); si ya estaba reservada → duplicado, se descarta; si gana la reserva → envía y, si el
+    /// envío falla, LIBERA la reserva para que la re-entrega at-least-once reintente sin duplicar (sin pérdida).
+    /// </summary>
+    private async Task EnviarIdempotenteAsync(
+        EventoIntegracion evento, string efecto, string destinatario, string asunto, string cuerpo, CancellationToken ct)
+    {
+        if (!await inbox.IntentarMarcarProcesadoAsync(evento.Id, evento.Version, efecto, ct))
+        {
+            return; // Efecto ya realizado (o en curso) → dedup: no se duplica.
+        }
+
+        try
+        {
+            await notificador.NotificarAsync(destinatario, asunto, cuerpo, ct);
+        }
+        catch
+        {
+            // El efecto no llegó a producirse: liberar la reserva para que el reintento lo complete. Se propaga
+            // para que el transporte re-entregue (at-least-once); los efectos ya confirmados NO se repiten.
+            await inbox.LiberarAsync(evento.Id, evento.Version, efecto, ct);
+            throw;
+        }
     }
 
     /// <summary>Tras el transporte, <c>Data</c> llega como <c>JsonElement</c>; en invocación directa como el tipo.
