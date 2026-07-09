@@ -2,6 +2,11 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: code review of story-3.3 (2026-07-09)
+
+- **Reservas con `AgenteEmail` NULL invisibles en el listado (backfill de datos previos)** (edge, BAJA-MEDIA) — el aislamiento filtra `r.AgenteEmail == @agente`; una reserva con `AgenteEmail` NULL (creada antes de 3.3, o vía `Reserva.Crear` sin agente) evalúa `NULL == @agente` = UNKNOWN → no aparece para nadie. Es fail-closed correcto e inocuo en greenfield (no hay reservas pre-3.3; en producción el validador exige `AgenteEmail`). Al desplegar sobre datos existentes con reservas sin agente, hacer backfill del `AgenteEmail`. `[Reservas.Infrastructure/Proyeccion/LectorReservasAgenteSql.cs]`
+- **Listado de reservas sin paginación ni cota** (edge, BAJA) — `LectarReservasAgenteSql.ListarAsync` hace `ToListAsync` de TODAS las reservas del agente, sin `Take`/paginación. Fuera del alcance del AC-E3.3.1 (no pide paginación). Añadir paginación (`skip/take` o cursor) cuando el volumen histórico por agente lo justifique. `[Reservas.Infrastructure/Proyeccion/LectorReservasAgenteSql.cs, Reservas.Api/Program.cs]`
+
 ## Deferred from: code review of story-3.2 (2026-07-09)
 
 - **Estado de hotel que NO llega por un evento de toggle (backfill + creación-deshabilitada)** — la dimensión `ProyeccionHotelEstado` se alimenta SOLO de `HotelHabilitado/HotelDeshabilitado`, que Hoteles emite en la transición de estado (`CambiarEstadoHotel`). El cierre de AC-E3.2.2 está probado para el **ciclo de toggle** (crear habilitado → deshabilitar → rehabilitar). Quedan dos entradas de estado que NO pasan por un toggle y por eso no propagan (la fila ausente se trata como activo → sus habitaciones se ofertarían):
