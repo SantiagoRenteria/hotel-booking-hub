@@ -21,7 +21,7 @@ public sealed class CrearHabitacionCommandHandlerTests
         var hoteles = new HotelRepositoryFake { Existente = hotel };
         var habitaciones = new HabitacionRepositoryFake { RowVersionResultante = [1, 2, 3, 4] };
 
-        var resultado = await new CrearHabitacionCommandHandler(hoteles, habitaciones)
+        var resultado = await new CrearHabitacionCommandHandler(hoteles, habitaciones, new ColaOutboxFake())
             .Handle(Comando(hotel.Id), CancellationToken.None);
 
         Assert.True(resultado.EsExitoso);
@@ -40,7 +40,7 @@ public sealed class CrearHabitacionCommandHandlerTests
         var hoteles = new HotelRepositoryFake { Existente = null };
         var habitaciones = new HabitacionRepositoryFake();
 
-        var resultado = await new CrearHabitacionCommandHandler(hoteles, habitaciones)
+        var resultado = await new CrearHabitacionCommandHandler(hoteles, habitaciones, new ColaOutboxFake())
             .Handle(Comando(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(EstadoResultado.NoEncontrado, resultado.Estado);
