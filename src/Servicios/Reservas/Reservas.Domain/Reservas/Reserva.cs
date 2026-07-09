@@ -119,4 +119,17 @@ public sealed class Reserva
 
         return penalidad;
     }
+
+    /// <summary>
+    /// Resuelve la solicitud de cancelación (Story 4.2, AC-E4.2.1/.2/.3). Guard por excepción: solo desde
+    /// <see cref="EstadoReserva.CancelacionSolicitada"/> (una 2ª resolución ya no lo está → 409). Aprobar
+    /// (aplicando la penalidad congelada o condonándola) → <see cref="EstadoReserva.Cancelada"/> y LIBERA el
+    /// inventario (borra las <see cref="Noches"/>, invariante anti-overbooking de E1); rechazar → vuelve a
+    /// <see cref="EstadoReserva.Confirmada"/> sin tocar slots. La penalidad NUNCA se recalcula. Registra la
+    /// auditoría (quién/cuándo/resultado + default/override) en la MISMA <see cref="SolicitudCancelacion"/>.
+    /// </summary>
+    public void Resolver(DecisionCancelacion decision, string resueltaPor, DateOnly fechaResolucion, string? motivoRechazo)
+    {
+        throw new NotImplementedException();
+    }
 }
