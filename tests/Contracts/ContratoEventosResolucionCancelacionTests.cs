@@ -25,16 +25,18 @@ public sealed class ContratoEventosResolucionCancelacionTests
                 ResueltaPor: "agente@hotel.com",
                 FechaResolucion: new DateOnly(2026, 8, 20),
                 PenalidadAplicadaPorcentaje: 100m,
-                PenalidadFueOverride: false),
-            new[] { "aggregateId", "resueltaPor", "fechaResolucion", "penalidadAplicadaPorcentaje", "penalidadFueOverride" }];
+                PenalidadFueOverride: false,
+                HuespedEmail: "andres@example.com"),
+            new[] { "aggregateId", "resueltaPor", "fechaResolucion", "penalidadAplicadaPorcentaje", "penalidadFueOverride", "huespedEmail" }];
         yield return [
             SolicitudCancelacionRechazadaV1.Tipo,
             new SolicitudCancelacionRechazadaV1(
                 AggregateId: Guid.Parse("019f43ef-0000-7000-8000-0000000002bb"),
                 ResueltaPor: "agente@hotel.com",
                 FechaResolucion: new DateOnly(2026, 8, 20),
-                MotivoRechazo: "No procede la cancelación."),
-            new[] { "aggregateId", "resueltaPor", "fechaResolucion", "motivoRechazo" }];
+                MotivoRechazo: "No procede la cancelación.",
+                HuespedEmail: "andres@example.com"),
+            new[] { "aggregateId", "resueltaPor", "fechaResolucion", "motivoRechazo", "huespedEmail" }];
     }
 
     private static EventoIntegracion Envelope(string tipo, object data) => new(

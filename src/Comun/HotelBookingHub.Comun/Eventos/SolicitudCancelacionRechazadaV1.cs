@@ -10,7 +10,9 @@ public sealed record SolicitudCancelacionRechazadaV1(
     Guid AggregateId,          // = ReservaId (UUID v7); componente de la order key.
     string ResueltaPor,
     DateOnly FechaResolucion,
-    string MotivoRechazo)
+    string MotivoRechazo,
+    // Enriquecimiento aditivo (Story 5.3, party-mode opción a): destinatario del correo de rechazo (viajero).
+    string? HuespedEmail = null)
 {
     /// <summary>Tipo del evento (PascalCase español + semver). Va en <see cref="EventoIntegracion.Type"/>.</summary>
     public const string Tipo = "SolicitudCancelacionRechazada.v1";

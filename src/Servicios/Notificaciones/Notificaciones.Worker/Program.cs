@@ -37,6 +37,10 @@ builder.Services.AddSingleton<IProcesadorEvento>(sp => sp.GetRequiredService<Con
 // agente. Reutiliza INotificador + inbox idempotente. El enrutamiento por tipo de evento llega con el transporte.
 builder.Services.AddSingleton<ConsumidorSolicitudCancelacion>();
 
+// Consumidor de la resolución (Story 5.3): ReservaCancelada.v1 (penalidad final/condonación) y
+// SolicitudCancelacionRechazada.v1 (rechazo → sigue Confirmada). Notifica al viajero el desenlace final.
+builder.Services.AddSingleton<ConsumidorResolucionCancelacion>();
+
 // Tope de intentos + dead-letter para el mensaje-veneno (Story 5.1b Task 4): un fallo permanente no debe
 // re-reclamarse sin cota ni bloquear el stream. Contador en memoria (fallback local) + sink de dead-letter al log.
 builder.Services.AddSingleton<IContadorReintentos, ContadorReintentosEnMemoria>();
