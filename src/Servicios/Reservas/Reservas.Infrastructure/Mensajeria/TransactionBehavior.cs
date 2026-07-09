@@ -19,7 +19,15 @@ public sealed class TransactionBehavior<TRequest, TResponse>(EjecutorTransaccion
         contexto.MessageId = Guid.CreateVersion7();
 
         TResponse respuesta = default!;
-        await ejecutor.EjecutarAsync(async token => respuesta = await siguiente(token), ct);
+        await ejecutor.EjecutarAsync(
+            async token =>
+            {
+                // Reset por intento: el retry re-ejecuta el handler (re-encola), así que el conteo de
+                // eventos del guard "1 evento por comando" debe partir de cero en cada intento.
+                contexto.ReiniciarConteo();
+                respuesta = await siguiente(token);
+            },
+            ct);
         return respuesta;
     }
 }
