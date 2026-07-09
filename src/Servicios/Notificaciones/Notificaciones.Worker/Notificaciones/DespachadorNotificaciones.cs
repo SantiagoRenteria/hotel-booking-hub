@@ -19,7 +19,26 @@ public sealed class DespachadorNotificaciones(
 {
     public async Task DespacharAsync(EventoIntegracion evento, CancellationToken ct)
     {
-        _ = (contador, deadLetter, opciones); // TODO 5.1b GREEN: tope de intentos → dead-letter.
-        await procesador.ProcesarAsync(evento, ct);
+        try
+        {
+            await procesador.ProcesarAsync(evento, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var intentos = await contador.IncrementarAsync(evento.Id, ct);
+            if (intentos >= opciones.MaxIntentos)
+            {
+                // Tope agotado → apartar a dead-letter y hacer ACK (no relanzar): el veneno no re-reclama ni
+                // bloquea el stream. El contador se reinicia para no arrastrar el conteo a un id reutilizado.
+                await deadLetter.EnviarAsync(evento, ex.Message, (int)intentos, ct);
+                await contador.ReiniciarAsync(evento.Id, ct);
+                return;
+            }
+
+            throw; // Aún hay presupuesto de intentos → propagar para que el transporte re-entregue (at-least-once).
+        }
+
+        // Éxito: el mensaje dejó de ser candidato a veneno; se limpia su conteo de intentos.
+        await contador.ReiniciarAsync(evento.Id, ct);
     }
 }
