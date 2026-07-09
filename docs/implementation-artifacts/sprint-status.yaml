@@ -71,11 +71,10 @@ development_status:
   epic-3-retrospective: done
 
   # ---- Epic 4: Ciclo de vida de la reserva — cancelación con discreción ----
-  epic-4: in-progress
+  epic-4: done
   4-1-solicitar-cancelacion-con-politica-sugerida: done
   4-2-resolver-cancelacion-con-auditoria: done
-  4-3-atajo-de-un-paso-ciclo-de-vida-y-visibilidad: review
-  # (patches del code review aplicados; listo para merge)
+  4-3-atajo-de-un-paso-ciclo-de-vida-y-visibilidad: done
   epic-4-retrospective: optional
 
   # ---- Epic 5: Notificaciones por correo sin pérdida ni duplicado ----
