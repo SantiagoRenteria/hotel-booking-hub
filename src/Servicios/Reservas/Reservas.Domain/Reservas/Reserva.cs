@@ -119,4 +119,57 @@ public sealed class Reserva
 
         return penalidad;
     }
+
+    /// <summary>
+    /// Resuelve la solicitud de cancelación (Story 4.2, AC-E4.2.1/.2/.3). Guard por excepción: solo desde
+    /// <see cref="EstadoReserva.CancelacionSolicitada"/> (una 2ª resolución ya no lo está → 409). Aprobar
+    /// (aplicando la penalidad congelada o condonándola) → <see cref="EstadoReserva.Cancelada"/> y LIBERA el
+    /// inventario (borra las <see cref="Noches"/>, invariante anti-overbooking de E1); rechazar → vuelve a
+    /// <see cref="EstadoReserva.Confirmada"/> sin tocar slots. La penalidad NUNCA se recalcula. Registra la
+    /// auditoría (quién/cuándo/resultado + default/override) en la MISMA <see cref="SolicitudCancelacion"/>.
+    /// </summary>
+    public void Resolver(DecisionCancelacion decision, string resueltaPor, DateOnly fechaResolucion, string? motivo)
+    {
+        // Guard: solo se resuelve una solicitud en curso. Una 2ª resolución (ya Cancelada/Confirmada) → 409.
+        if (Estado != EstadoReserva.CancelacionSolicitada || SolicitudCancelacion is null)
+        {
+            var destino = decision == DecisionCancelacion.Rechazar
+                ? EstadoReserva.Confirmada
+                : EstadoReserva.Cancelada;
+            throw new TransicionEstadoInvalidaException(Estado, destino);
+        }
+
+        if (decision == DecisionCancelacion.Rechazar)
+        {
+            if (string.IsNullOrWhiteSpace(motivo))
+            {
+                throw new ArgumentException("El motivo del rechazo es obligatorio.", nameof(motivo));
+            }
+
+            SolicitudCancelacion.RegistrarRechazo(resueltaPor, fechaResolucion, motivo.Trim());
+            Estado = EstadoReserva.Confirmada; // sin tocar slots
+            return;
+        }
+
+        // Defensa: una reserva en CancelacionSolicitada SIEMPRE ocupa >=1 noche (vino de Confirmada con slots).
+        // Si _noches está vacía al aprobar, el agregado se cargó sin sus slots (p. ej. sin Include) y liberar
+        // sería un no-op silencioso → inventario fantasma. Fallar fuerte en vez de dejar el slot ocupado.
+        if (_noches.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "No se puede aprobar la cancelación sin las noches cargadas: se liberaría inventario de forma incompleta.");
+        }
+
+        // Aprobar: la penalidad NUNCA se recalcula. Aplicar usa la sugerida congelada; condonar la fija en 0.
+        var penalidadAplicada = decision == DecisionCancelacion.AprobarCondonandoPenalidad
+            ? 0m
+            : SolicitudCancelacion.PenalidadPorcentaje;
+
+        SolicitudCancelacion.RegistrarAprobacion(resueltaPor, fechaResolucion, penalidadAplicada, motivo);
+        Estado = EstadoReserva.Cancelada;
+
+        // Libera el inventario: borrar los slots hace que una nueva reserva sobre esas noches vuelva a caber
+        // (invariante anti-overbooking de E1). El borrado va en la MISMA tx que el bump de rowVersion (4.2).
+        _noches.Clear();
+    }
 }
