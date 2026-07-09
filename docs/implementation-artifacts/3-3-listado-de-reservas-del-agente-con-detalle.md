@@ -4,7 +4,7 @@
 baseline_commit: 7d0b39a9819a2e3a2facafca34a5ae239561d09e
 ---
 
-Status: review
+Status: done
 
 <!-- Generado por bmad-create-story. Complejidad NORMAL → tests convencionales + TDD (Red→Green visible);
 NO BDD/Gherkin ceremonial (decisión party-mode: BDD solo en 3.1 y E4). Tiene una decisión importante de
@@ -60,6 +60,15 @@ para **conciliar comisiones**.
 - [x] **Task 5 — Tests (unit + integración Testcontainers)**
   - [x] Unit: fail-closed (403) + 404 de ajena/inexistente + filtrado por agente. Integración: round-trip, contenido del listado/detalle, aislamiento con dos agentes, agente sin reservas → vacío.
 - [x] **Task 6 — Commits en rama `feature/3-3-listado-reservas` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings
+
+_Code review 2026-07-09 (Edge Case Hunter + Acceptance Auditor; Blind Hunter falló por glitch de entorno). **AC-E3.3.1 y AC-E3.3.2 CUMPLIDOS**, deuda 1.6a cerrada. 2 patch aplicados · 2 defer._
+
+- [x] **[Review][Patch] Aislamiento dependiente del collation SQL** (MEDIA) — `AgenteEmail` se `Trim`eaba pero no se normalizaba a minúsculas; en collation case-sensitive el agente no vería sus propias reservas, en case-insensitive se conflaten identidades. Fix: normalización canónica (`Trim().ToLowerInvariant()`) en `Reserva.Crear` y en `HttpContextoAgente` → el filtro es determinista sin depender del collation. `[Reserva.cs, HttpContextoAgente.cs]`
+- [x] **[Review][Patch] Cabecera `X-Agente` repetida/ambigua** (BAJA) — varios valores se concatenaban con coma y se aceptaban como identidad (200 vacío). Fix: si `Count != 1` → null (fail-closed). Test unitario de `HttpContextoAgente` añadido. `[HttpContextoAgente.cs]`
+- [x] **[Review][Defer] Reservas con `AgenteEmail` NULL (pre-3.3) invisibles** (BAJA-MEDIA) — `NULL == @agente` es UNKNOWN → no aparecen para nadie. Fail-closed correcto; inocuo en greenfield. Diferido: backfill si se despliega sobre datos con reservas previas.
+- [x] **[Review][Defer] Listado sin paginación ni cota** (BAJA) — `ListarAsync` trae todas las reservas del agente. Fuera del AC (no pide paginación); diferido para cuando el volumen lo exija.
 
 ## Dev Notes
 
