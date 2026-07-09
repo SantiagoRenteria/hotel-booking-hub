@@ -1,8 +1,10 @@
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
+using Hoteles.Application.Hoteles.CambiarEstadoHotel;
 using Hoteles.Application.Hoteles.CrearHotel;
 using Hoteles.Application.Hoteles.EditarHotel;
 using Hoteles.Application.Hoteles.EliminarHotel;
+using Hoteles.Domain.Hoteles;
 using Hoteles.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -64,6 +66,25 @@ app.MapDelete("/api/v1/hoteles/{id:guid}", async (Guid id, EliminarHotelCommand 
         return resultado.ToNoContentResult();
     })
     .WithName("EliminarHotel")
+    .WithTags("Hoteles");
+
+// CAP-1 · Habilitar / deshabilitar hotel (AC-E2.3.1) — operaciones dedicadas del ciclo de vida. El estado
+// objetivo lo fija la RUTA (no el cliente); el rowVersion (cuerpo) arbitra la concurrencia. 200 con el estado
+// nuevo; 404 si no existe/eliminado; 409 en conflicto.
+app.MapPost("/api/v1/hoteles/{id:guid}/habilitar", async (Guid id, CambiarEstadoHotelCommand comando, ISender sender, CancellationToken ct) =>
+    {
+        var resultado = await sender.Send(comando with { Id = id, EstadoObjetivo = EstadoHotel.Habilitado }, ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("HabilitarHotel")
+    .WithTags("Hoteles");
+
+app.MapPost("/api/v1/hoteles/{id:guid}/deshabilitar", async (Guid id, CambiarEstadoHotelCommand comando, ISender sender, CancellationToken ct) =>
+    {
+        var resultado = await sender.Send(comando with { Id = id, EstadoObjetivo = EstadoHotel.Deshabilitado }, ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("DeshabilitarHotel")
     .WithTags("Hoteles");
 
 app.Run();

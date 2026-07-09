@@ -55,4 +55,13 @@ public sealed class Hotel
 
     /// <summary>Da de baja lógica el hotel (AC-E2.2.2): marca <see cref="Eliminado"/> sin borrado físico.</summary>
     public void Eliminar() => Eliminado = true;
+
+    /// <summary>
+    /// Habilita el hotel (AC-E2.3.1). Idempotente. Junto con <see cref="Deshabilitar"/> es la ÚNICA vía de
+    /// transición del ciclo de vida: la edición (2.2) no toca el estado (un solo dueño de la regla).
+    /// </summary>
+    public void Habilitar() => Estado = EstadoHotel.Habilitado;
+
+    /// <summary>Deshabilita el hotel (AC-E2.3.1): deja de ofertarse. Idempotente. Ver <see cref="Habilitar"/>.</summary>
+    public void Deshabilitar() => Estado = EstadoHotel.Deshabilitado;
 }

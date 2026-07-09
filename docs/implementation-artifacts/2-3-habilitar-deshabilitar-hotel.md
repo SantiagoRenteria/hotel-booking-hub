@@ -1,6 +1,10 @@
+---
+baseline_commit: 63756d1
+---
+
 # Story 2.3: Habilitar / deshabilitar hotel
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -22,18 +26,17 @@ para **controlar al instante si se oferta**.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Dominio: transiciones de estado (AC: 1, 2)**
-  - [ ] `Hotel.Habilitar()` y `Hotel.Deshabilitar()` (fijan `Estado`); idempotentes (aplicar el mismo estado no es error). Documentar que son la ÚNICA vía de transición del ciclo de vida (la edición de 2.2 no toca `Estado`)
-- [ ] **Task 2 — Slices `HabilitarHotel` / `DeshabilitarHotel` (AC: 1, 2, 3, 4)**
-  - [ ] `HabilitarHotelCommand(Id, RowVersion)` y `DeshabilitarHotelCommand(Id, RowVersion)` → `Result<HotelResponseDto>`; handler: obtiene (404 si null/eliminado), aplica la transición, `GuardarConcurrenciaAsync` (409 en conflicto)
-  - [ ] Validators (id + rowVersion presentes) — mismo patrón que 2.2
-  - [ ] Evaluar si extraer el tronco común de ambos handlers (evitar duplicación) sin sobre-abstraer
-- [ ] **Task 3 — Endpoints + wiring (AC: 1, 3, 4)**
-  - [ ] `POST /api/v1/hoteles/{id:guid}/habilitar` y `POST /api/v1/hoteles/{id:guid}/deshabilitar` en `Hoteles.Api`, `comando with { Id = id }`, `ToOkResult()`. (El handler transversal y `UseExceptionHandler` ya están cableados en 2.2.)
-- [ ] **Task 4 — Tests (AC: 1, 2, 3, 4)**
-  - [ ] Unit: deshabilitar happy (200 + estado `Deshabilitado` + nuevo rowVersion), habilitar happy, idempotencia (deshabilitar un ya deshabilitado → 200), 404 (inexistente/eliminado), 409 (propagación de `ConflictoConcurrenciaException`); mapeo Result→HTTP
-  - [ ] **Integración (Testcontainers):** deshabilitar persiste `Estado=Deshabilitado`; concurrencia optimista real (1 confirma / 1 `409`); deshabilitar un hotel eliminado → 404 (query filter)
-- [ ] **Task 5 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Dominio: transiciones de estado (AC: 1, 2)**
+  - [x] `Hotel.Habilitar()` y `Hotel.Deshabilitar()` (fijan `Estado`, idempotentes); documentados como ÚNICA vía de transición (la edición de 2.2 no toca `Estado`)
+- [x] **Task 2 — Slice `CambiarEstadoHotel` (AC: 1, 2, 3, 4)**
+  - [x] **Unificado (DRY):** un `CambiarEstadoHotelCommand(Id, RowVersion, EstadoObjetivo)` + handler (dispatch `switch` exhaustivo a Habilitar/Deshabilitar) + validator, en vez de dos comandos con flujo duplicado. Las operaciones dedicadas viven en los endpoints (la ruta fija `EstadoObjetivo`)
+  - [x] Handler: obtiene (404 si null/eliminado), transición, `GuardarConcurrenciaAsync` (409 en conflicto); validator (id + rowVersion + estado válido)
+- [x] **Task 3 — Endpoints + wiring (AC: 1, 3, 4)**
+  - [x] `POST /api/v1/hoteles/{id:guid}/habilitar` y `.../deshabilitar`, `comando with { Id = id, EstadoObjetivo = ... }` (ruta autoritativa), `ToOkResult()`
+- [x] **Task 4 — Tests (AC: 1, 2, 3, 4)**
+  - [x] Unit: deshabilitar/habilitar happy (200 + estado + rowVersion), idempotencia, 404, 409, validator
+  - [x] **Integración (Testcontainers):** deshabilitar persiste `Estado=Deshabilitado`; concurrencia real (1 / 1 `409`); estado sobre hotel eliminado → no encontrado (query filter)
+- [x] **Task 5 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
 
 ## Dev Notes
 
@@ -82,10 +85,31 @@ para **controlar al instante si se oferta**.
 
 ### Agent Model Used
 
+claude-opus-4-8 (modo autónomo).
+
 ### Debug Log References
+
+- Sin incidencias. Slice fino sobre la maquinaria ya probada de 2.2 (concurrencia + transversal + mapeo).
 
 ### Completion Notes List
 
+- **DRY:** unificado en un solo `CambiarEstadoHotelCommand` con `EstadoObjetivo` (en vez de dos comandos con flujo duplicado); las operaciones dedicadas viven en los dos endpoints, que fijan el estado por ruta (`with { EstadoObjetivo = ... }`) — el cliente no puede fijar un estado arbitrario (solo aporta `rowVersion`). Un solo dueño de la transición; la edición (2.2) no toca el estado.
+- **Code review adversarial (1 capa, delta pequeño sobre infra ya revisada):** (1) el dispatch `if/else` degradaría en silencio un futuro tercer estado → cambiado a `switch` exhaustivo que lanza en el `default` (falla ruidosamente); (2) brecha de tests de wiring HTTP end-to-end de los endpoints → transversal a toda la API (ningún slice los tiene; se quitó `WebApplicationFactory` a propósito) → registrado en `deferred-work.md` para un `Hoteles.FunctionalTests` de una vez. Camino feliz, AC, concurrencia y convenciones: correctos.
+- **Idempotencia (AC-E2.3.2):** aplicar el estado ya vigente devuelve 200; como `GuardarConcurrenciaAsync` fuerza el UPDATE (heredado de 2.2), el rowVersion se incrementa igual (idempotencia de estado de negocio, no de replay de request — correcto para el contrato de concurrencia).
+- **Alcance honesto:** la propagación cross-BC a búsquedas de E3 (AC-E2.3.1) se completa en 2.5/E3; 2.3 prueba la transición local + concurrencia + 404.
+- **Gates finales:** build 0/0, `dotnet format` limpio. Tests: Hoteles unit 40/40, Hoteles integración 8/8, Comun.Web 11/11, Reservas unit 51/51, Reservas integración 11/11 (**121 total**; Reservas/Comun sin cambios en 2.3).
+
 ### File List
 
+**Nuevos:**
+- `src/Servicios/Hoteles/Hoteles.Application/Hoteles/CambiarEstadoHotel/{CambiarEstadoHotelCommand,CambiarEstadoHotelCommandHandler,CambiarEstadoHotelCommandValidator}.cs`
+- `tests/Hoteles.UnitTests/CambiarEstadoHotel/{CambiarEstadoHotelCommandHandlerTests,CambiarEstadoHotelCommandValidatorTests}.cs`
+- `tests/Hoteles.IntegrationTests/CambioEstadoHotelTests.cs`
+
+**Modificados:**
+- `src/Servicios/Hoteles/Hoteles.Domain/Hoteles/Hotel.cs` (`Habilitar`/`Deshabilitar`)
+- `src/Servicios/Hoteles/Hoteles.Api/Program.cs` (endpoints `:habilitar`/`:deshabilitar`)
+
 ### Change Log
+
+- 2026-07-09 — Implementada 2.3 (habilitar/deshabilitar hotel) como operación dedicada de ciclo de vida, unificada en `CambiarEstadoHotel` (DRY) reutilizando concurrencia + transversal de 2.2. Code review adversarial + fix del dispatch (`switch` exhaustivo). 121 tests verdes. Status → done.
