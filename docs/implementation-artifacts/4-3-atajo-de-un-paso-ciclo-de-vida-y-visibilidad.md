@@ -4,7 +4,7 @@ baseline_commit: c706c941ef4221da7a8ad41b5cf66582ccae5b7d
 
 # Story 4.3: Atajo de un paso, ciclo de vida y visibilidad
 
-Status: review
+Status: done
 
 <!-- Generado por bmad-create-story. Complejidad NORMAL-ALTA (compone 4.1+4.2; añade query de visibilidad).
 BDD (Given/When/Then) + TDD Red→Green. Sin Task 0 propio: reutiliza el modelo de dominio de 4.1/4.2. -->
