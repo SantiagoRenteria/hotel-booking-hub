@@ -22,6 +22,11 @@ para **conciliar comisiones**.
 
 ## Tasks / Subtasks
 
+> **✅ Task 0 RESUELTA (party-mode Winston/John/Amelia, 2026-07-09) — Opción (c): aislar por `AgenteEmail` de la reserva.**
+> Decisión de Santiago: el eje de aislamiento es **"mis reservas"** (las que el agente intermedió), no "hoteles que administro" — coherente con *conciliar comisiones*. Se aísla por `AgenteEmail` **persistido en la `Reserva`** (hoy el `CrearReservaCommand` lo recibe pero se descarta — deuda de 1.6a). NO se reabre el contrato de catálogo (se descarta (a) como gold-plating). La **identidad del agente** se resuelve **server-side** tras una costura `IContextoAgente` (impl. por header `X-Agente` hoy → claim de auth en Épica 6), **fail-closed** (sin identidad → NO devuelve todo: falla/vacío). El header es **deuda explícita de Épica 6**, NO un mecanismo de seguridad. **AC-E3.3.2 se reinterpreta como "reservas que hice".** Divergiría de "mis hoteles" solo si un agente reservara en hotel de otro (caso no soportado en el alcance actual; documentado).
+>
+> <details><summary>Contexto original de la decisión</summary>
+>
 > **Task 0 (party-mode, PRIMERO) — decisión de frontera BC: ¿cómo sabe Reservas qué hoteles son del agente?**
 > El aislamiento (AC-E3.3.2) exige mapear reserva → habitación → hotel → **agente-dueño**. Hoteles es dueño del
 > catálogo y del owner; Reservas solo tiene su read-model. Opciones:
@@ -35,6 +40,8 @@ para **conciliar comisiones**.
 > Resolver con `/bmad-party-mode` (Winston + John + Amelia) y documentar antes de implementar. Recomendación
 > previa: (c) si el `AgenteEmail`/agenteId ya viaja en el comando de reserva (más simple, sin tocar contrato de
 > catálogo), validando que satisface la conciliación de comisiones "de mis hoteles".
+>
+> </details>
 
 - [ ] **Task 1 — Cerrar la deuda de persistencia de huéspedes/contacto (habilita el DETALLE de AC-E3.3.1)** *(TDD)*
   - [ ] `Reserva` persiste huéspedes (owned collection) + contacto de emergencia (owned) — deuda DIFERIDA de 1.6a
