@@ -4,7 +4,7 @@ baseline_commit: 023e2bb3d96d99a0e3a4b84e0772b90959bcd731
 
 # Story 4.1: Solicitar cancelación con política sugerida
 
-Status: in-progress
+Status: review
 
 <!-- Generado por bmad-create-story. Complejidad ALTA (núcleo de dominio: máquina de estados + penalidad
 congelada + evento nuevo + concurrencia). 2ª VITRINA BDD: aplicar BDD (Given/When/Then) además de TDD Red→Green
@@ -44,21 +44,21 @@ consuma (regla de propiedad de eventos, party-mode Winston).
 > - **Concurrencia/doble liberación (4.2, invariante duro):** el borrado de `NochesHabitacion` va en la MISMA tx que la transición + `rowVersion++`. La 2ª resolución concurrente choca con `DbUpdateConcurrencyException` → aborta la tx (su borrado se revierte) → **409**. Candado optimista + guard de estado; SIN locks pesimistas ni contadores. Regla no negociable: borrado de slots comparte la tx del bump de versión.
 > - **Tests obligatorios (Murat):** bordes de penalidad (30d→0%, 29d→100%, día de entrada, estancia iniciada→no elegible); **congelación** (avanzar reloj entre solicitud y aprobación, % no cambia); round-trip de liberación con paso intermedio 409 (2→3→201); doble resolución concurrente (patrón G1, `Barrier`, 1×2xx/1×409, repetido N); tabla de transiciones prohibidas (`Cancelada→*`, salto directo, doble solicitud sin recongelar); outbox (exactamente-un `ReservaCancelada`, **rechazar NO emite `ReservaCancelada`**, atomicidad estado+evento).
 
-- [ ] **Task 1 — Máquina de estados + VOs de dominio (AC: 1, 3)** *(TDD + BDD)*
-  - [ ] `EstadoReserva` gana `CancelacionSolicitada`, `Cancelada`. `Reserva.SolicitarCancelacion(motivo, iniciador, fechaSolicitud, politica)` con guard (solo desde `Confirmada` y estancia no iniciada); tests de tabla de transiciones (permitidas/rechazadas).
-  - [ ] VO(s) de penalidad/solicitud (motivo categoría+texto, `Iniciador`, `PenalidadSugerida` congelada, fecha).
-- [ ] **Task 2 — Cálculo de la penalidad sugerida (AC: 1)** *(TDD, tests de borde)*
-  - [ ] Regla `>=30`d→0% / `<30`d→100% con **bordes** (exactamente 30 días, día de la entrada). Domain service puro o regla del VO (según Task 0).
-- [ ] **Task 3 — Command + handler + evento (AC: 1, 2, 3)** *(TDD Red→Green)*
-  - [ ] `SolicitarCancelacionCommand` + handler (`ICommand` → pasa por `TransactionBehavior`: agregado + outbox en una tx). Encola `SolicitudCancelacionRegistrada.v1`. Validación de entrada (motivo obligatorio) en validator.
-  - [ ] Guards → `Result`: no elegible → 409/422; duplicada → 409.
-- [ ] **Task 4 — Contrato del evento (BDD/contract test)**
-  - [ ] `SolicitudCancelacionRegistrada.v1` en `Comun.Eventos` + pin en `ContratoEventosCatalogoTests` (o test de contrato propio de eventos de reserva).
-- [ ] **Task 5 — Endpoint (AC: 1, 2, 3)**
-  - [ ] `POST /api/v1/reservas/{id}/cancelaciones` (o `.../solicitud-cancelacion`) en `Reservas.Api`; Result→HTTP; respuesta incluye la penalidad estimada. OpenAPI.
-- [ ] **Task 6 — Tests (unit + integración Testcontainers)**
-  - [ ] BDD del happy path (Given confirmada → When solicita → Then CancelacionSolicitada + penalidad congelada + evento en outbox); AC negativos (duplicada 409, no elegible 409/422); congelación persistida (round-trip).
-- [ ] **Task 7 — Commits TDD (Red→Green visibles) + BDD en rama `feature/4-1-solicitar-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Máquina de estados + VOs de dominio (AC: 1, 3)** *(TDD + BDD)*
+  - [x] `EstadoReserva` gana `CancelacionSolicitada`, `Cancelada`. `Reserva.SolicitarCancelacion(motivo, iniciador, fechaSolicitud, politica)` con guard (solo desde `Confirmada` y estancia no iniciada); tests de tabla de transiciones (permitidas/rechazadas).
+  - [x] VO(s) de penalidad/solicitud (motivo categoría+texto, `Iniciador`, `PenalidadSugerida` congelada, fecha).
+- [x] **Task 2 — Cálculo de la penalidad sugerida (AC: 1)** *(TDD, tests de borde)*
+  - [x] Regla `>=30`d→0% / `<30`d→100% con **bordes** (exactamente 30 días, día de la entrada). Domain service puro o regla del VO (según Task 0).
+- [x] **Task 3 — Command + handler + evento (AC: 1, 2, 3)** *(TDD Red→Green)*
+  - [x] `SolicitarCancelacionCommand` + handler (`ICommand` → pasa por `TransactionBehavior`: agregado + outbox en una tx). Encola `SolicitudCancelacionRegistrada.v1`. Validación de entrada (motivo obligatorio) en validator.
+  - [x] Guards por **excepción de dominio** (Task 0, supera la nota original de `Result`): no elegible / duplicada → `TransicionEstadoInvalidaException` → 409.
+- [x] **Task 4 — Contrato del evento (BDD/contract test)**
+  - [x] `SolicitudCancelacionRegistrada.v1` en `Comun.Eventos` + `ContratoSolicitudCancelacionRegistradaTests` (test de contrato propio de eventos de reserva).
+- [x] **Task 5 — Endpoint (AC: 1, 2, 3)**
+  - [x] `POST /api/v1/reservas/{id}/solicitud-cancelacion` en `Reservas.Api`; Result→HTTP (200 con penalidad; guards→409). OpenAPI vía `.WithName`/`.WithTags`.
+- [x] **Task 6 — Tests (unit + integración Testcontainers)**
+  - [x] BDD del happy path (Given confirmada → When solicita → Then CancelacionSolicitada + penalidad congelada + evento en outbox); AC negativos (duplicada 409, estancia iniciada 409); congelación persistida (round-trip).
+- [x] **Task 7 — Commits TDD (Red→Green visibles) + BDD en rama `feature/4-1-solicitar-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
 
 ## Dev Notes
 
@@ -93,10 +93,60 @@ consuma (regla de propiedad de eventos, party-mode Winston).
 
 ### Agent Model Used
 
+claude-opus-4-8 (Amelia, dev-story) — 2026-07-09.
+
 ### Debug Log References
+
+- Suite completa verde: 296 tests, 0 fallos (Reservas.UnitTests 108, Reservas.IntegrationTests 38, Contracts 16, Comun.Web 15, Hoteles.UnitTests 100, Hoteles.IntegrationTests 19).
+- TDD Red→Green visible en commits: `test(4.1): RED …` → `feat(4.1): GREEN …` para dominio y para el handler.
 
 ### Completion Notes List
 
+- **Task 0 (party-mode) implementada tal cual:** guards por EXCEPCIÓN de dominio (`TransicionEstadoInvalidaException` → 409), NO `Result` (esto supera la nota original de Task 1/3 que mencionaba `Result`; se documentó en los checkboxes).
+- **Penalidad congelada:** `CalculadorPenalidad` (domain service puro) `>=30`d→0% / `<30`d→100%; el reloj se resuelve en el handler (`TimeProvider`) y se pasa como `DateOnly` (determinismo). La penalidad se congela dentro del agregado y se persiste; el monto es informativo (`PenalidadSugerida.MontoSobre`).
+- **Estancia iniciada** (`fechaSolicitud >= entrada`) = no elegible → 409 (NO penalidad 100%), guard dentro del agregado.
+- **Duplicada** cubierta por el guard de estado (2ª solicitud ya no está `Confirmada` → 409) sin re-congelar.
+- **Persistencia:** owned reference NULLABLE `SolicitudCancelacion` (un solo episodio; 4.2 completará la resolución) + migración `AgregaSolicitudCancelacion`.
+- **Evento:** `SolicitudCancelacionRegistrada.v1` (order key = `ReservaId`) con contract test propio de eventos de reserva; encolado en la misma tx del agregado (patrón 1.6b), verificado end-to-end en el outbox.
+- **Diferido a 4.2 (fuera de alcance de 4.1):** resolución (aprobar/rechazar), borrado de `NochesHabitacion` en la misma tx + doble-liberación por `rowVersion`, estado `Cancelada`.
+
 ### File List
 
+**Dominio (Reservas.Domain):**
+- `Reservas/EstadoReserva.cs` (M — nuevos estados)
+- `Reservas/Reserva.cs` (M — owned `SolicitudCancelacion` + método `SolicitarCancelacion`)
+- `Reservas/TransicionEstadoInvalidaException.cs` (A)
+- `Reservas/IniciadorCancelacion.cs` (A)
+- `Reservas/MotivoCancelacion.cs` (A)
+- `Reservas/PenalidadSugerida.cs` (A)
+- `Reservas/SolicitudCancelacion.cs` (A)
+- `Servicios/CalculadorPenalidad.cs` (A)
+- `Puertos/IReservaRepository.cs` (M — `ObtenerAsync`)
+
+**Aplicación (Reservas.Application):**
+- `Reservas/SolicitarCancelacion/SolicitarCancelacionCommand.cs` (A — command + response DTO + request HTTP)
+- `Reservas/SolicitarCancelacion/SolicitarCancelacionCommandHandler.cs` (A)
+- `Reservas/SolicitarCancelacion/SolicitarCancelacionCommandValidator.cs` (A)
+
+**Comun:**
+- `Eventos/SolicitudCancelacionRegistradaV1.cs` (A)
+
+**Infraestructura (Reservas.Infrastructure):**
+- `Persistencia/ReservasDbContext.cs` (M — owned mapping)
+- `Persistencia/ReservaRepository.cs` (M — `ObtenerAsync`)
+- `Migraciones/20260709182050_AgregaSolicitudCancelacion.cs` (+ Designer + snapshot) (A/M)
+
+**Api:**
+- `Reservas.Api/Program.cs` (M — DI + endpoint)
+
+**Tests:**
+- `Reservas.UnitTests/Dominio/CalculadorPenalidadTests.cs` (A)
+- `Reservas.UnitTests/Dominio/ReservaCancelacionTests.cs` (A)
+- `Reservas.UnitTests/Reservas/SolicitarCancelacion/{RelojFijo,SolicitarCancelacionCommandHandlerTests,SolicitarCancelacionCommandValidatorTests}.cs` (A)
+- `Reservas.UnitTests/Reservas/CrearReserva/Fakes.cs` (M — `ObtenerAsync`)
+- `Contracts/ContratoSolicitudCancelacionRegistradaTests.cs` (A)
+- `Reservas.IntegrationTests/SolicitudCancelacionTests.cs` (A)
+
 ### Change Log
+
+- 2026-07-09 — Story 4.1 implementada (dominio + aplicación + infraestructura + api + tests). Estado → review.
