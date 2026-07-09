@@ -12,6 +12,14 @@ public sealed class EstanciaTests
         Assert.Equal(4, estancia.Noches); // [10,14) = noches del 10, 11, 12, 13
     }
 
+    [Fact]
+    public void Una_noche_es_el_minimo_valido()
+    {
+        var entrada = new DateOnly(2026, 8, 10);
+        var estancia = Estancia.Crear(entrada, entrada.AddDays(1)); // borde adyacente al guard
+        Assert.Equal(1, estancia.Noches);
+    }
+
     [Theory]
     [InlineData("2026-08-10", "2026-08-10")] // salida == entrada
     [InlineData("2026-08-14", "2026-08-10")] // salida < entrada

@@ -9,5 +9,12 @@ namespace Reservas.Domain.Servicios;
 public sealed class CalculadorPrecio
 {
     public decimal Calcular(decimal costoBase, decimal impuesto, Estancia estancia)
-        => (costoBase + impuesto) * estancia.Noches;
+    {
+        // El dinero nunca es negativo: costoBase/impuesto provienen del catálogo, no del usuario;
+        // un valor negativo es una violación de invariante, no un flujo de negocio esperado.
+        ArgumentOutOfRangeException.ThrowIfNegative(costoBase);
+        ArgumentOutOfRangeException.ThrowIfNegative(impuesto);
+
+        return (costoBase + impuesto) * estancia.Noches;
+    }
 }

@@ -4,7 +4,7 @@ baseline_commit: 0232148
 
 # Story 1.4: Cálculo de precio de la reserva (`CalculadorPrecio`)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -39,6 +39,17 @@ para **saber cuánto pagaré antes de confirmar**.
   - [x] Usar VO `Dinero` (`decimal`) si ya existe/procede; si no, esbozarlo mínimo
 - [x] **Task 3 — Refactor** — limpiar sin romper tests (Green→Refactor); nombres tri-idioma
 - [x] **Task 4 — Commit(s) que evidencien el ciclo TDD + push a `develop`** (Red, Green, Refactor visibles en el historial; autor Santiago Renteria)
+
+### Review Findings
+
+_bmad-code-review 2026-07-08 (Blind Hunter · Acceptance Auditor). **Edge Case Hunter falló** (respuesta irrelevante) y se omitió. Baseline `0232148..HEAD`. Ambos AC confirmados como cumplidos._
+
+- [x] [Review][Patch] `CalculadorPrecio` no protege contra dinero negativo — `Calcular(-100, 0, …)` devuelve total negativo en silencio. Añadir guard (`costoBase`/`impuesto` no negativos) + test. `[CalculadorPrecio.cs]`
+- [x] [Review][Patch] Los tests no fijan el manejo `decimal` ni la semántica del impuesto (valores "redondos" ocultan monto-vs-tasa y un regreso a `int`/`double` pasaría). Usar parámetros `string` parseados a `decimal` + caso con decimales no exactos. `[CalculadorPrecioTests.cs]`
+- [x] [Review][Patch] Falta el borde mínimo de `Estancia` (1 noche), adyacente al guard. Añadir `Crear(d, d.AddDays(1)) → Noches == 1`. `[EstanciaTests.cs]`
+- [x] [Review][Defer] Precio como clase concreta vs `IEstrategiaPrecio` (`patterns.md`) — `architecture.md` gobierna (domain service puro, YAGNI); refactor a interfaz solo si entran múltiples estrategias (temporada/descuento). — deferred
+
+**Descartados (falsos/defendibles):** aserción del mensaje exacto (la **AC-E1.4.2 lo exige**, no es fragilidad); **excepción vs `Result`** para el guard del VO (permitido por la story + idiomático en DDD, con la validación de usuario en 1.6a); VO `Dinero` no introducido (YAGNI, permitido por la story).
 
 ## Dev Notes
 
@@ -116,3 +127,4 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 ### Change Log
 
 - 2026-07-08 · Story 1.4 · `CalculadorPrecio` + VO `Estancia` (dominio puro, TDD Red→Green): precio `(base+impuesto)×noches` y guard de rango con mensaje exacto. 6/6 tests. Estado: `in-progress` → `review`.
+- 2026-07-08 · Code-review aplicado (3 patches): guard de dinero negativo en `CalculadorPrecio`; tests con `string`→`decimal` + caso decimal no exacto; borde de 1 noche en `Estancia`. Reservas.UnitTests 10/10. Estado: `review` → `done`.

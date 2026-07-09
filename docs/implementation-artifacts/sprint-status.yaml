@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-07-08
-last_updated: 2026-07-08T12:40
+last_updated: 2026-07-08T13:00
 project: hotel-booking-hub
 project_key: NOKEY
 tracking_system: file-system
@@ -47,7 +47,7 @@ development_status:
   1-1-esqueleto-ejecutable-de-un-comando: done
   1-2-spikes-de-validacion-de-ejecucion: done
   1-3-contrato-del-evento-reserva-confirmada: done
-  1-4-calculo-de-precio-de-la-reserva: review
+  1-4-calculo-de-precio-de-la-reserva: done
   1-5-anti-overbooking-slots-noches-habitacion: ready-for-dev
   1-6a-crear-confirmar-reserva-validacion-y-happy-path: ready-for-dev
   1-6b-atomicidad-transaccional-reserva-outbox: ready-for-dev
