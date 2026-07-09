@@ -4,7 +4,7 @@ baseline_commit: 94c29d09c929b42178764518bf8756bf2f2bceff
 
 # Story 3.2: Búsqueda de habitaciones disponibles
 
-Status: review
+Status: in-progress
 
 <!-- Generado por bmad-create-story. Complejidad NORMAL (query de lectura CQRS sobre la ProyeccionHabitacion
 de 3.1). Tests convencionales + TDD (Red→Green visible); NO BDD/Gherkin ceremonial (decisión party-mode:
@@ -46,12 +46,20 @@ produce 409 evitables, nunca overbooking.
 - [x] **Task 5 — Tests de integración (Testcontainers SQL + Redis)**
   - [x] Sembrar proyección + slots; verificar filtro real, AC negativos y caché (hit/refresh tras invalidación).
 - [x] **Task 6 — Commits TDD (Red→Green visibles) en rama `feature/3-2-busqueda-disponibilidad` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+- [ ] **Task 7 — Exclusión de habitaciones de hotel deshabilitado (AC-E3.2.2/FR-7)** *(decisión party-mode: Opción 1b — dimensión independiente de estado de hotel)*
+  - [ ] **Contrato:** nuevos eventos `HotelDeshabilitado.v1` / `HotelHabilitado.v1` en `Comun.Eventos` (payload `AggregateId=HotelId` + order key por `Version`).
+  - [ ] **Hoteles (Épica 2, aditivo):** `Hotel` gana `Version` monótona; `CambiarEstadoHotelCommandHandler` emite el evento por outbox (1 evento/comando) al habilitar/deshabilitar.
+  - [ ] **Reservas — dimensión independiente:** nuevo read-model `ProyeccionHotelEstado` (keyed por `HotelId`, LWW por `VersionEstadoHotel`); `ProyectorCatalogo` lo consume (inbox por `MessageId` ya sirve). NO cascada a `ProyeccionHabitacion` (preserva field-ownership y el estado individual de la habitación).
+  - [ ] **Búsqueda:** `BuscadorDisponibilidadSql` filtra `habitacionActiva AND hotelActivo` (join con `ProyeccionHotelEstado`; `COALESCE(hotelActivo, true)` por defecto).
+  - [ ] **Migración + backfill:** tabla nueva; **backfill de hoteles ya deshabilitados** (no hay historia de eventos) como tarea de release.
+  - [ ] **Tests (gate Murat):** reescribir el caso "hotel deshabilitado" al flujo real (no sembrar estado a mano); desorden (HotelDeshabilitado antes del alta; viejo por versión; permutación completa), ortogonalidad (deshabilitar hotel → deshabilitar habitación individual → rehabilitar hotel → esa habitación sigue fuera), carrera de alta tardía, doble idempotencia (inbox + versión), e2e con await determinista (sin `Sleep`).
+- [ ] **Task 8 — Aplicar los 8 `patch` del code review** (ver Review Findings): normalización caché↔SQL, degradar ante fallo de Redis en lectura, try/catch en invalidación post-commit, token leído una sola vez, test e2e de invalidación vía proyector, guarda de rango degenerado, TTL del token, dispose de `RedisCache` en tests.
 
 ### Review Findings
 
 _Code review 2026-07-09 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). 1 decisión · 8 patch · 1 defer · 3 descartados._
 
-- [ ] **[Review][Decision] AC-E3.2.2 — habitaciones de hotel deshabilitado NO se excluyen** — Deshabilitar un hotel (`CambiarEstadoHotelCommandHandler`) no emite evento ni cascada; no existe `HotelDeshabilitado.v1`. Sus habitaciones quedan `Habilitada` en la proyección y aparecen en la búsqueda. El comentario de `BuscadorDisponibilidadSql` ("incl. hotel deshabilitado, ya colapsado por 2.5") es falso y el test `[InlineData(4,"Deshabilitada")]` lo enmascara sembrando el estado a mano. Viola FR-7 / AC-E3.2.2. Requiere trabajo cross-BC (Épica 2 cerrada + contrato de eventos). **No en `deferred-work.md`.**
+- [ ] **[Review][Decision → RESUELTO: Opción 1b, party-mode 2026-07-09] AC-E3.2.2 — habitaciones de hotel deshabilitado NO se excluyen** — Deshabilitar un hotel (`CambiarEstadoHotelCommandHandler`) no emite evento ni cascada; no existe `HotelDeshabilitado.v1`. Sus habitaciones quedan `Habilitada` en la proyección y aparecen en la búsqueda. El comentario de `BuscadorDisponibilidadSql` ("incl. hotel deshabilitado, ya colapsado por 2.5") es falso y el test `[InlineData(4,"Deshabilitada")]` lo enmascara sembrando el estado a mano. Viola FR-7 / AC-E3.2.2. **Decisión (party-mode Winston/Amelia/John/Murat, unánime):** ver Task 7 (dimensión independiente de estado de hotel).
 - [ ] **[Review][Patch] Normalización asimétrica caché vs SQL** — la clave de caché normaliza `Trim().ToLowerInvariant()` pero el filtro SQL usa la ciudad cruda; entradas con espacios/caso distinto colapsan a la misma clave con resultados SQL distintos (envenenamiento) y la invalidación no cubre variantes de acento/caso. `[Cache/CacheDisponibilidadRedis.cs, Proyeccion/BuscadorDisponibilidadSql.cs]`
 - [ ] **[Review][Patch] Fallo de Redis en lectura tumba la búsqueda (500)** — `BuscadorDisponibilidadCacheado` no captura errores de la caché; una caída de Redis debería degradar a leer del read-model (best-effort). `[Proyeccion/BuscadorDisponibilidadCacheado.cs]`
 - [ ] **[Review][Patch] Invalidación tras commit sin try/catch** — un fallo de Redis tras `CommitAsync` propaga la excepción con la proyección ya confirmada; en la reentrega el dedup del inbox salta el evento y la invalidación se pierde para siempre. `[Proyeccion/ProyectorCatalogo.cs]`
