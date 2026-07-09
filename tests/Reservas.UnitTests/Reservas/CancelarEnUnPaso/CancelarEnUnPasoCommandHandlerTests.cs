@@ -98,6 +98,29 @@ public sealed class CancelarEnUnPasoCommandHandlerTests
     }
 
     [Fact]
+    public async Task El_evento_de_resolucion_del_atajo_aprobando_incluye_el_email_del_huesped()
+    {
+        // Story 5.3: el atajo también puebla HuespedEmail en el evento de resolución (ReservaCancelada).
+        var reserva = SembrarConEmails(huespedEmail: "andres@example.com", agenteEmail: Dueno);
+
+        await Handler(Dueno).Handle(Comando(reserva.Id, DecisionCancelacion.AprobarAplicandoPenalidad), CancellationToken.None);
+
+        var data = Assert.IsType<ReservaCanceladaV1>(_outbox.Encolados[1].Data); // [0]=Registrada, [1]=resolución
+        Assert.Equal("andres@example.com", data.HuespedEmail);
+    }
+
+    [Fact]
+    public async Task El_evento_de_resolucion_del_atajo_rechazando_incluye_el_email_del_huesped()
+    {
+        var reserva = SembrarConEmails(huespedEmail: "andres@example.com", agenteEmail: Dueno);
+
+        await Handler(Dueno).Handle(Comando(reserva.Id, DecisionCancelacion.Rechazar, "No procede."), CancellationToken.None);
+
+        var data = Assert.IsType<SolicitudCancelacionRechazadaV1>(_outbox.Encolados[1].Data);
+        Assert.Equal("andres@example.com", data.HuespedEmail);
+    }
+
+    [Fact]
     public async Task Sin_identidad_devuelve_prohibido_sin_encolar()
     {
         var reserva = SembrarConfirmada();

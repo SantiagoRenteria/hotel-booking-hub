@@ -4,7 +4,7 @@ baseline_commit: 763121ca100292ad4ac730f4305553593df64c3e
 
 # Story 5.3: Notificar la resolución de la cancelación
 
-Status: review
+Status: done
 
 <!-- Generado por bmad-create-story (lote Épica 5). Complejidad NORMAL. Consume DOS eventos de resolución
 (ReservaCancelada.v1 y SolicitudCancelacionRechazada.v1, definidos/probados en 4.2/4.3). Reutiliza INotificador
@@ -41,9 +41,9 @@ para **saber la penalidad final, si fue condonada, o que mi reserva sigue en pie
 
 ### Review Findings (bmad-code-review 2026-07-09 · Blind + Edge + Auditor)
 
-- [ ] [Review][Patch] P1 — La condonación se decide solo por `PenalidadAplicadaPorcentaje == 0m`, ignorando `PenalidadFueOverride`: un 0% NATURAL (sin override) se rotula "CONDONADA" (engañoso). Además, como en el dominio `override==true ⟹ aplicada==0`, la rama "ajuste del agente" (camino no-cero) es código muerto y el test `Aprobacion_con_override_...` (aplicada:50) es falsa cobertura. Usar `PenalidadFueOverride` para distinguir condonación real vs 0% natural; eliminar la rama muerta; reemplazar el test. [ConsumidorResolucionCancelacion.cs, ConsumidorResolucionCancelacionTests.cs]
-- [ ] [Review][Patch] P2 — El emisor 4.3 (`CancelarEnUnPaso`) puebla `HuespedEmail` en `ReservaCancelada`/`SolicitudCancelacionRechazada` sin test (solo 4.2 testeado). Añadir aserción del evento de resolución del atajo. [tests/Reservas.UnitTests/.../CancelarEnUnPasoCommandHandlerTests.cs]
-- [ ] [Review][Patch] P3 — La ruta real de deserialización (`Data` como `JsonElement` tras el transporte) no está ejercida por los tests del consumidor de resolución. Añadir un test con `Data` = `JsonElement`. [tests/Notificaciones.UnitTests/ConsumidorResolucionCancelacionTests.cs]
+- [x] [Review][Patch] P1 — RESUELTO: `CorreoAprobacion` distingue condonación real (`PenalidadFueOverride` + 0% → "el agente CONDONÓ") del 0% natural ("No aplica penalidad"); se eliminó la rama muerta de ajuste. Tests: `Condonacion_por_el_agente_menciona_al_agente` + `Penalidad_natural_cero_sin_override_no_se_rotula_condonada` (reemplaza el test falso). [ConsumidorResolucionCancelacion.cs, ConsumidorResolucionCancelacionTests.cs]
+- [x] [Review][Patch] P2 — RESUELTO: `El_evento_de_resolucion_del_atajo_aprobando/rechazando_incluye_el_email_del_huesped` en `CancelarEnUnPasoCommandHandlerTests`. [tests/Reservas.UnitTests/.../CancelarEnUnPasoCommandHandlerTests.cs]
+- [x] [Review][Patch] P3 — RESUELTO: `Data_como_JsonElement_se_deserializa_igual` ejercita el round-trip real del transporte. [tests/Notificaciones.UnitTests/ConsumidorResolucionCancelacionTests.cs]
 - [x] [Review][Defer] D2 (recurrente) — El atajo de un paso (4.3) emite `SolicitudCancelacionRegistrada` + la resolución; con 5.3 ya implementado, el viajero recibiría el acuse "estimada/por resolver" (5.2) Y el desenlace (5.3) casi simultáneos y contradictorios (peor en rechazo). Ya registrado como D2 en el review de 5.2; ahora es observable. Suprimir el acuse de solicitud del atajo o correlacionar, al cablear el transporte. [CancelarEnUnPasoCommandHandler.cs] — deferred
 - [x] [Review][Defer] D4 (recurrente) — `EnvioIdempotenteCorreos` omite destinatario nulo/vacío en silencio; el correo de resolución (el más crítico de la épica) podría perderse sin rastro. Ya registrado (D4 de 5.2): añadir log/observabilidad. [EnvioIdempotenteCorreos.cs] — deferred
 - [x] [Review][Defer] D5 — FR-21 dice "notifica al viajero (y al agente)" en la resolución, pero solo se implementó `HuespedEmail` (los AC-E5.3.1/.2 solo exigen al viajero; YAGNI). Confirmar con producto si la resolución debe avisar también al agente; si sí, añadir `AgenteEmail` a los eventos de resolución (aditivo) + copy del agente. [ReservaCanceladaV1.cs, SolicitudCancelacionRechazadaV1.cs] — deferred
@@ -116,3 +116,4 @@ claude-opus-4-8 (dev-story autónomo, Épica 5).
 - 2026-07-09 — Ciclo A: enriquecimiento aditivo de `ReservaCancelada.v1`/`SolicitudCancelacionRechazada.v1` con `HuespedEmail` + emisores 4.2/4.3. Red→Green.
 - 2026-07-09 — Ciclo B: `ConsumidorResolucionCancelacion` (penalidad final / condonación / rechazo) sobre `EnvioIdempotenteCorreos`. Red→Green.
 - 2026-07-09 — Regresión completa (388 tests) verde + `dotnet format` limpio; Status → review.
+- 2026-07-09 — Code review (Blind + Edge + Auditor): 3 patch, 3 defer. Corregidos P1 (condonación usa `PenalidadFueOverride`, elimina rama muerta), P2 (test emisor 4.3 resolución), P3 (test JsonElement). Deferidos D2/D4/D5 en `deferred-work.md`. Regresión 392 tests verde.
