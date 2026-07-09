@@ -47,6 +47,23 @@ produce 409 evitables, nunca overbooking.
   - [x] Sembrar proyección + slots; verificar filtro real, AC negativos y caché (hit/refresh tras invalidación).
 - [x] **Task 6 — Commits TDD (Red→Green visibles) en rama `feature/3-2-busqueda-disponibilidad` + PR a `develop`** (autor Santiago Renteria; sin trailers)
 
+### Review Findings
+
+_Code review 2026-07-09 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). 1 decisión · 8 patch · 1 defer · 3 descartados._
+
+- [ ] **[Review][Decision] AC-E3.2.2 — habitaciones de hotel deshabilitado NO se excluyen** — Deshabilitar un hotel (`CambiarEstadoHotelCommandHandler`) no emite evento ni cascada; no existe `HotelDeshabilitado.v1`. Sus habitaciones quedan `Habilitada` en la proyección y aparecen en la búsqueda. El comentario de `BuscadorDisponibilidadSql` ("incl. hotel deshabilitado, ya colapsado por 2.5") es falso y el test `[InlineData(4,"Deshabilitada")]` lo enmascara sembrando el estado a mano. Viola FR-7 / AC-E3.2.2. Requiere trabajo cross-BC (Épica 2 cerrada + contrato de eventos). **No en `deferred-work.md`.**
+- [ ] **[Review][Patch] Normalización asimétrica caché vs SQL** — la clave de caché normaliza `Trim().ToLowerInvariant()` pero el filtro SQL usa la ciudad cruda; entradas con espacios/caso distinto colapsan a la misma clave con resultados SQL distintos (envenenamiento) y la invalidación no cubre variantes de acento/caso. `[Cache/CacheDisponibilidadRedis.cs, Proyeccion/BuscadorDisponibilidadSql.cs]`
+- [ ] **[Review][Patch] Fallo de Redis en lectura tumba la búsqueda (500)** — `BuscadorDisponibilidadCacheado` no captura errores de la caché; una caída de Redis debería degradar a leer del read-model (best-effort). `[Proyeccion/BuscadorDisponibilidadCacheado.cs]`
+- [ ] **[Review][Patch] Invalidación tras commit sin try/catch** — un fallo de Redis tras `CommitAsync` propaga la excepción con la proyección ya confirmada; en la reentrega el dedup del inbox salta el evento y la invalidación se pierde para siempre. `[Proyeccion/ProyectorCatalogo.cs]`
+- [ ] **[Review][Patch] Carrera del token generacional** — `Obtener` y `Guardar` releen el token por separado; una invalidación entre la lectura SQL y el guardado cachea dato viejo bajo el token nuevo. Leer el token una sola vez por búsqueda. `[Cache/CacheDisponibilidadRedis.cs]`
+- [ ] **[Review][Patch] Falta test e2e de invalidación por evento de catálogo** — ningún test recorre `ProyectorCatalogo.ProcesarAsync` → `InvalidarCiudadAsync`; el literal de AC-E3.2.3 ("invalidación disparada por un evento de catálogo") queda sin cobertura. `[tests/Reservas.IntegrationTests/CacheDisponibilidadTests.cs]`
+- [ ] **[Review][Patch] Buscador sin defensa ante rango degenerado / huéspedes<=0** — vía puerto directo (sin pipeline), `salida<=entrada` o `huespedes<=0` reportan todo el inventario. Guarda defensiva que devuelve vacío. `[Proyeccion/BuscadorDisponibilidadSql.cs]`
+- [ ] **[Review][Patch] Token de ciudad sin TTL** — `disp:tok:{ciudad}` nunca expira; bajo `maxmemory-lru` podría evacuarse y resetear la generación. Añadir TTL largo. `[Cache/CacheDisponibilidadRedis.cs]`
+- [ ] **[Review][Patch] RedisCache no se dispone en tests** — `RedisFixture.CrearCache()` crea `RedisCache` (IDisposable) sin liberarlo. `[tests/Reservas.IntegrationTests/RedisFixture.cs]`
+- [x] **[Review][Defer] Eventos LWW no-op rotan el token igualmente** — `AplicarPrecio`/`AplicarDeshabilitada` descartados por versión igual invalidan la ciudad (misses de caché extra; solo eficiencia). `[Proyeccion/ProyectorCatalogo.cs]` — deferred.
+
+_Descartados (ruido/falsos positivos):_ (1) "¿el ValidationBehavior corre para la query?" — sí: `Result<T>` implementa `IResultadoInvalidable`, el behavior aplica a `IRequest`, no solo `ICommand`. (2) `Impuestos ?? 0m` — inofensivo (hidratada garantiza el valor). (3) Caché no invalidada por cambios de Reservas (reserva/cancelación) — por diseño best-effort, aceptado en Task 3.
+
 ## Dev Notes
 
 ### Dependencia dura: Story 3.1

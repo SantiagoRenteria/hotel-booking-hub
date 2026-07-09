@@ -2,6 +2,10 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: code review of story-3.2 (2026-07-09)
+
+- **Eventos LWW no-op rotan el token de caché igualmente** (auditor, BAJA) — en `ProyectorCatalogo.AplicarAsync`, los casos `PrecioHabitacionCambiado`/`HabitacionDeshabilitada` devuelven la fila afectada aunque `AplicarPrecio`/`AplicarDeshabilitada` descarten el evento por versión vieja/igual (LWW no cambió nada); eso rota el token de la ciudad y provoca misses de caché extra sin cambio real. Solo eficiencia (correcto funcionalmente). Fix: que los métodos del CRDT reporten si mutaron y solo invalidar cuando hubo cambio. `[Reservas.Infrastructure/Proyeccion/ProyectorCatalogo.cs, ProyeccionHabitacion.cs]`
+
 ## Deferred from: code review of story-1.1 (2026-07-08)
 
 - **`gitleaks-action@v2` y repos de organización** — la acción es gratuita en cuentas personales; en un repo propiedad de una GitHub Organization exige `GITLEAKS_LICENSE`. Hoy el repo es personal (funciona). Si se mueve a un org, o migrar a invocar el binario/imagen de gitleaks directamente (sin la action), o proveer la licencia. `[.github/workflows/ci.yml]`
