@@ -86,6 +86,15 @@ public sealed class DespachadorNotificacionesTests
         Assert.Empty(deadLetter.Apartados);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void F3_MaxIntentos_invalido_es_rechazado(int maxIntentos)
+    {
+        // Un tope < 1 degrada la garantía (dead-letter al primer fallo o reintento infinito): debe fallar temprano.
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OpcionesDespachador(maxIntentos));
+    }
+
     [Fact]
     public async Task Fallo_transitorio_se_recupera_sin_dead_letter()
     {

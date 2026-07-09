@@ -4,7 +4,15 @@ namespace Notificaciones.Worker.Notificaciones;
 
 /// <summary>Opciones del <see cref="DespachadorNotificaciones"/>.</summary>
 /// <param name="MaxIntentos">Tope de intentos antes de mandar el mensaje a dead-letter (debe ser ≥ 1).</param>
-public sealed record OpcionesDespachador(int MaxIntentos = 5);
+public sealed record OpcionesDespachador(int MaxIntentos = 5)
+{
+    // Un tope < 1 degrada la garantía en silencio (dead-letter al primer fallo si es 0; reintento infinito que
+    // bloquea el stream si es negativo). Se rechaza en construcción para fallar temprano, no en runtime (F3).
+    public int MaxIntentos { get; } =
+        MaxIntentos >= 1
+            ? MaxIntentos
+            : throw new ArgumentOutOfRangeException(nameof(MaxIntentos), MaxIntentos, "MaxIntentos debe ser ≥ 1.");
+}
 
 /// <summary>
 /// Envuelve el procesamiento de un evento (Story 5.1b Task 4) con <b>tope de intentos + dead-letter</b>: un
