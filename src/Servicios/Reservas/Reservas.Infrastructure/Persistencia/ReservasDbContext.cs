@@ -67,6 +67,14 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
                 s.Property(x => x.IniciadaPor).HasColumnName("CancelacionIniciadaPor").HasConversion<string>().HasMaxLength(20);
                 s.Property(x => x.PenalidadPorcentaje).HasColumnName("CancelacionPenalidadPorcentaje").HasPrecision(5, 2);
                 s.Property(x => x.FechaSolicitud).HasColumnName("CancelacionFechaSolicitud");
+
+                // Resolución (Story 4.2): mismo owned, columnas nullable hasta que el agente resuelve.
+                s.Property(x => x.ResueltaPor).HasColumnName("CancelacionResueltaPor").HasMaxLength(256);
+                s.Property(x => x.FechaResolucion).HasColumnName("CancelacionFechaResolucion");
+                s.Property(x => x.Resultado).HasColumnName("CancelacionResultado").HasConversion<string>().HasMaxLength(20);
+                s.Property(x => x.PenalidadAplicadaPorcentaje).HasColumnName("CancelacionPenalidadAplicadaPorcentaje").HasPrecision(5, 2);
+                s.Property(x => x.PenalidadFueOverride).HasColumnName("CancelacionPenalidadFueOverride");
+                s.Property(x => x.MotivoResolucion).HasColumnName("CancelacionMotivoResolucion").HasMaxLength(1000);
             });
 
             // Huéspedes (FR-10) como owned collection en su propia tabla; Documento es un VO anidado.

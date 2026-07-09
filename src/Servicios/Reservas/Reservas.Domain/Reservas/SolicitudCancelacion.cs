@@ -16,6 +16,24 @@ public sealed class SolicitudCancelacion
 
     public DateOnly FechaSolicitud { get; private set; }
 
+    // ---- Resolución (Story 4.2): mismo episodio, campos NULOS hasta que el agente resuelve. ----
+
+    /// <summary>Correo del agente que resolvió; null mientras está pendiente.</summary>
+    public string? ResueltaPor { get; private set; }
+
+    public DateOnly? FechaResolucion { get; private set; }
+
+    public ResultadoResolucion? Resultado { get; private set; }
+
+    /// <summary>Penalidad efectivamente aplicada al APROBAR (solo si <see cref="Resultado"/> == Aprobada).</summary>
+    public decimal? PenalidadAplicadaPorcentaje { get; private set; }
+
+    /// <summary><c>true</c> si el agente sobrescribió la penalidad sugerida congelada (p. ej. condonó).</summary>
+    public bool PenalidadFueOverride { get; private set; }
+
+    /// <summary>Motivo de la resolución (obligatorio al rechazar; nota opcional al aprobar).</summary>
+    public string? MotivoResolucion { get; private set; }
+
     private SolicitudCancelacion() { } // EF Core
 
     internal SolicitudCancelacion(
@@ -31,6 +49,29 @@ public sealed class SolicitudCancelacion
         FechaSolicitud = fechaSolicitud;
     }
 
-    /// <summary>Reconstruye el VO de penalidad congelada a partir del porcentaje persistido.</summary>
+    /// <summary>Reconstruye el VO de penalidad congelada (SUGERIDA) a partir del porcentaje persistido.</summary>
     public PenalidadSugerida Penalidad => PenalidadSugerida.Crear(PenalidadPorcentaje);
+
+    /// <summary>Indica si el episodio ya fue resuelto (aprobado o rechazado).</summary>
+    public bool EstaResuelta => Resultado is not null;
+
+    /// <summary>Registra una APROBACIÓN con la penalidad efectivamente aplicada (override si difiere de la congelada).</summary>
+    internal void RegistrarAprobacion(string resueltaPor, DateOnly fechaResolucion, decimal penalidadAplicadaPorcentaje, string? nota)
+    {
+        ResueltaPor = resueltaPor;
+        FechaResolucion = fechaResolucion;
+        Resultado = ResultadoResolucion.Aprobada;
+        PenalidadAplicadaPorcentaje = penalidadAplicadaPorcentaje;
+        PenalidadFueOverride = penalidadAplicadaPorcentaje != PenalidadPorcentaje;
+        MotivoResolucion = nota;
+    }
+
+    /// <summary>Registra un RECHAZO con su motivo (obligatorio).</summary>
+    internal void RegistrarRechazo(string resueltaPor, DateOnly fechaResolucion, string motivo)
+    {
+        ResueltaPor = resueltaPor;
+        FechaResolucion = fechaResolucion;
+        Resultado = ResultadoResolucion.Rechazada;
+        MotivoResolucion = motivo;
+    }
 }
