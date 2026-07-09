@@ -4,7 +4,7 @@ baseline_commit: 506bff5
 
 # Story 2.5: Emisión del contrato de eventos de catálogo
 
-Status: in-progress
+Status: done
 
 <!-- Generado por bmad-create-story (reemplaza el borrador manual previo). Historia de ALTA COMPLEJIDAD → TDD real (ciclo Red→Green visible en commits) + party-mode para las decisiones arquitectónicas señaladas. -->
 
@@ -151,10 +151,10 @@ claude-opus-4-8 (Amelia / dev-story). Decisiones arquitectónicas vía `/bmad-pa
 
 Revisión adversarial de 3 capas (Blind Hunter / Edge Case Hunter / Acceptance Auditor) sobre el diff `506bff5..HEAD`. Los 4 AC quedaron verificados y probados; sin violaciones duras.
 
-- [ ] **[Review][Decision] Reordenamiento intra-agregado ante fallo parcial de publicación → posible pérdida de evento** [Hoteles.Infrastructure/Outbox/ProcesadorOutbox.cs] — el `catch { … continue; }` deja que un evento posterior (Version mayor) del MISMO agregado se publique antes que uno anterior fallido; con eventos-delta, E3 podría descartar el reintento tardío (v-vieja) y perder el cambio. Hazard NUEVO de Hoteles (múltiples eventos por agregado) que Reservas no tenía (1 evento por reserva). Decidido en party-mode.
-- [ ] **[Review][Patch] Falta test de atomicidad del camino UPDATE (Editar/CambiarEstado): 409/fallo descarta la fila de outbox staged** [tests/Hoteles.IntegrationTests/OutboxCatalogoTests.cs] — T2 solo cubre el INSERT (Crear). Correcto por construcción pero sin prueba directa del rollback en el UPDATE.
-- [ ] **[Review][Patch] Endurecer T6 a cardinalidad exacta (`== 1`)** [tests/Hoteles.IntegrationTests/OutboxCatalogoTests.cs] — atraparía un doble-procesamiento en el mismo ciclo.
-- [ ] **[Review][Patch] Unificar el acceso a traceId entre handlers** [Hoteles.Application/Habitaciones/*] — `CrearHabitacion` usa helper `TraceIdActual()`; Editar/CambiarEstado inlinean `Activity.Current?.TraceId.ToString()`. Cosmético.
+- [x] **[Review][Decision→Patch] Reordenamiento intra-agregado ante fallo parcial de publicación → posible pérdida de evento** [Hoteles.Infrastructure/Outbox/ProcesadorOutbox.cs] — RESUELTO (party-mode 3-0, Opción A+B): head-of-line por `AggregateId` en el relay (RED `4fc794b` → GREEN `9d03f62`). El productor ya no adelanta un evento posterior del mismo agregado ante un fallo; la convergencia cross-instance queda como AC vinculante de E3 (3.1). Solo en Hoteles (Reservas emite 1 evento/reserva → no-op).
+- [x] **[Review][Patch] Test de atomicidad del camino UPDATE** [tests/Hoteles.IntegrationTests/OutboxCatalogoTests.cs] — añadido `Fallo_al_escribir_el_outbox_al_editar_no_persiste_ni_el_precio_ni_el_evento` (rollback del único SaveChanges en Editar).
+- [x] **[Review][Patch] Endurecer T6 a cardinalidad exacta (`== 1`)** [tests/Hoteles.IntegrationTests/OutboxCatalogoTests.cs] — `Assert.Equal(1, enviadas)` + `Assert.Single(publicador.Publicados)`.
+- [x] **[Review][Patch] Unificar el acceso a traceId entre handlers** [Hoteles.Application/Habitaciones/*] — los 3 handlers inlinean `Activity.Current?.TraceId.ToString()`; helper eliminado.
 - [x] **[Review][Defer] Migración `Version=0` en filas preexistentes (backfill de `HabitacionAgregada`)** [Hoteles.Infrastructure/Migraciones] — inocuo en greenfield; backfill al desplegar sobre datos existentes. Ver deferred-work.
 - [x] **[Review][Defer] Sin dead-letter / tope de intentos en el relay (mensaje-veneno)** [Hoteles.Infrastructure/Outbox/ProcesadorOutbox.cs] — paridad con Reservas; límite operativo. Ver deferred-work.
 - [x] **[Review][Defer] Reclamo del outbox no atómico (doble publicación con N réplicas del relay)** [Hoteles.Infrastructure/Outbox/ProcesadorOutbox.cs] — by-design at-least-once + instancia única + dedup E5. Ver deferred-work.

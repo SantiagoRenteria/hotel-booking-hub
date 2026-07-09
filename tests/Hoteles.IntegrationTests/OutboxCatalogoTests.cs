@@ -99,6 +99,37 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
         Assert.Equal(0, await verify.OutboxMessages.CountAsync());
     }
 
+    // T2b (AC-E2.5.2) — atomicidad del camino UPDATE: si falla el outbox al EDITAR el precio, ni el cambio de
+    // dominio (precio/Version) ni el evento quedan (rollback del único SaveChanges de GuardarConcurrenciaAsync).
+    [Fact]
+    public async Task Fallo_al_escribir_el_outbox_al_editar_no_persiste_ni_el_precio_ni_el_evento()
+    {
+        var hotelId = await CrearHotelAsync();
+        Guid habId;
+        byte[] rowVersion;
+
+        await using (var db = fixture.CrearContexto())
+        {
+            await LimpiarOutboxAsync(db);
+            (habId, rowVersion) = await CrearHabitacionAsync(db, hotelId); // deja HabitacionAgregada.v1
+        }
+
+        await using (var db = fixture.CrearContexto(new InterceptorFallaOutbox()))
+        {
+            var handler = new EditarHabitacionCommandHandler(new HabitacionRepository(db), new ColaOutbox(db));
+            var comando = new EditarHabitacionCommand(habId, rowVersion, "Suite", 999m, 99m, "Piso 3"); // precio nuevo
+            await Assert.ThrowsAnyAsync<Exception>(() => handler.Handle(comando, CancellationToken.None));
+        }
+
+        await using var verify = fixture.CrearContexto();
+        var hab = await verify.Habitaciones.FirstAsync(h => h.Id == habId);
+        Assert.Equal(100m, hab.CostoBase); // el precio NO cambió
+        Assert.Equal(1, hab.Version);      // la Version NO se incrementó
+        // Solo queda el evento de alta; ningún PrecioHabitacionCambiado.
+        Assert.Equal(0, await verify.OutboxMessages.CountAsync(o => o.Type == PrecioHabitacionCambiadoV1.Tipo));
+        Assert.Equal(1, await verify.OutboxMessages.CountAsync(o => o.AggregateId == habId));
+    }
+
     // T5 (AC-E2.5.4) — order key monotónico: alta + 2 cambios de precio + deshabilitar → versions 1,2,3,4 contiguas.
     [Fact]
     public async Task Las_mutaciones_emisoras_producen_versions_monotonicas_y_contiguas()
@@ -150,10 +181,11 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
         await using (var db = fixture.CrearContexto())
         {
             var enviadas = await Procesador(publicador).ProcesarLoteAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
-            Assert.True(enviadas >= 1);
+            Assert.Equal(1, enviadas); // exactamente una (había una sola pendiente tras limpiar)
         }
 
-        Assert.Contains(publicador.Publicados, e => e.Type == HabitacionAgregadaV1.Tipo);
+        var publicado = Assert.Single(publicador.Publicados);
+        Assert.Equal(HabitacionAgregadaV1.Tipo, publicado.Type);
         await using var verify = fixture.CrearContexto();
         var fila = await verify.OutboxMessages.SingleAsync(o => o.AggregateId == habId);
         Assert.Equal(OutboxMessage.Enviada, fila.Estado);
