@@ -200,6 +200,55 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
         Assert.True(final.Intentos >= 2);
     }
 
+    // Head-of-line por agregado (code review 2.5 · party-mode Opción A): ante un fallo transitorio de
+    // publicación, un evento POSTERIOR (version mayor) del MISMO agregado NO se adelanta al fallido; los de
+    // OTROS agregados sí avanzan. Al vencer el lease se reintenta en orden. Determinista: publicador selectivo
+    // (falla solo en HAB_1 v2), relay por invocación explícita, reloj controlado por el parámetro `ahora`.
+    [Fact]
+    public async Task El_relay_no_adelanta_un_evento_posterior_del_mismo_agregado_ante_un_fallo()
+    {
+        var hab1 = Guid.CreateVersion7();
+        var hab2 = Guid.CreateVersion7();
+        var hotel = Guid.CreateVersion7();
+
+        await using (var db = fixture.CrearContexto())
+        {
+            await LimpiarOutboxAsync(db);
+            var cola = new ColaOutbox(db);
+            // Orden de Seq por inserción: HAB_1 v2 (Seq1), HAB_1 v3 (Seq2), HAB_2 v5 (Seq3).
+            cola.Encolar(PrecioHabitacionCambiadoV1.Tipo, 2, hab1, new PrecioHabitacionCambiadoV1(hab1, hotel, 150m, 28m), null);
+            cola.Encolar(HabitacionDeshabilitadaV1.Tipo, 3, hab1, new HabitacionDeshabilitadaV1(hab1, hotel), null);
+            cola.Encolar(HabitacionAgregadaV1.Tipo, 5, hab2, new HabitacionAgregadaV1(hab2, hotel, "Suite", 100m, 19m, "Piso 1", "Habilitada"), null);
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+
+        var t0 = DateTimeOffset.UtcNow;
+
+        // Ciclo 1: el publicador falla SOLO en (HAB_1, v2). v3 de HAB_1 debe quedar bloqueado; HAB_2 v5 avanza.
+        var ciclo1 = new PublicadorEspiaSelectivo((agg, version) => agg == hab1 && version == 2);
+        await using (var db = fixture.CrearContexto())
+        {
+            await Procesador(ciclo1).ProcesarLoteAsync(db, t0, CancellationToken.None);
+        }
+
+        Assert.Equal([(hab2, 5)], ciclo1.Publicados); // solo HAB_2; v3 de HAB_1 NO se adelantó
+        await using (var check = fixture.CrearContexto())
+        {
+            Assert.Equal(OutboxMessage.Pendiente, (await check.OutboxMessages.SingleAsync(o => o.AggregateId == hab1 && o.Type == PrecioHabitacionCambiadoV1.Tipo)).Estado);
+            Assert.Equal(OutboxMessage.Pendiente, (await check.OutboxMessages.SingleAsync(o => o.AggregateId == hab1 && o.Type == HabitacionDeshabilitadaV1.Tipo)).Estado);
+            Assert.Equal(OutboxMessage.Enviada, (await check.OutboxMessages.SingleAsync(o => o.AggregateId == hab2)).Estado);
+        }
+
+        // Ciclo 2: publicador sano, lease vencido → se reintentan v2 y v3 EN ORDEN; HAB_2 no se republica.
+        var ciclo2 = new PublicadorEspiaSelectivo((_, _) => false);
+        await using (var db = fixture.CrearContexto())
+        {
+            await Procesador(ciclo2).ProcesarLoteAsync(db, t0.AddSeconds(60), CancellationToken.None);
+        }
+
+        Assert.Equal([(hab1, 2), (hab1, 3)], ciclo2.Publicados); // v2 antes que v3; HAB_2 (ya Enviada) no reaparece
+    }
+
     private static int VersionDelPayload(string payload)
     {
         var envelope = JsonNode.Parse(payload)!.AsObject();
