@@ -66,8 +66,8 @@ development_status:
   # ---- Epic 3: Búsqueda de disponibilidad y reservas del agente ----
   epic-3: in-progress
   3-1-proyeccion-de-habitaciones-idempotente-y-ordenada: ready-for-dev
-  3-2-busqueda-de-habitaciones-disponibles: backlog
-  3-3-listado-de-reservas-del-agente-con-detalle: backlog
+  3-2-busqueda-de-habitaciones-disponibles: ready-for-dev
+  3-3-listado-de-reservas-del-agente-con-detalle: ready-for-dev
   epic-3-retrospective: optional
 
   # ---- Epic 4: Ciclo de vida de la reserva — cancelación con discreción ----
