@@ -68,11 +68,12 @@ public sealed class BusquedaDisponibilidadTests(SqlServerFixture fixture)
         Assert.Equal(19m, dto.Impuestos);
     }
 
-    // AC-E3.2.2 (tabla) — atributos que la descartan: capacidad insuficiente o deshabilitada (incluye hotel
-    // deshabilitado, que la proyección ya colapsó al estado "Deshabilitada").
+    // AC-E3.2.2 (tabla) — atributos de la propia habitación que la descartan: capacidad insuficiente o
+    // deshabilitada individualmente. El caso "hotel deshabilitado" es una dimensión aparte y se cubre por su
+    // flujo real de eventos en HotelDeshabilitadoBusquedaTests (no se siembra aquí).
     [Theory]
     [InlineData(1, "Habilitada")]    // capacidad < huéspedes(2)
-    [InlineData(4, "Deshabilitada")] // no activa
+    [InlineData(4, "Deshabilitada")] // habitación deshabilitada por sí misma
     public async Task Habitacion_que_no_cumple_atributos_no_aparece(int capacidad, string estado)
     {
         var ciudad = CiudadUnica();

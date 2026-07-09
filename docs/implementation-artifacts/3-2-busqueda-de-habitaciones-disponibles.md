@@ -4,7 +4,7 @@ baseline_commit: 94c29d09c929b42178764518bf8756bf2f2bceff
 
 # Story 3.2: Búsqueda de habitaciones disponibles
 
-Status: review
+Status: done
 
 <!-- Generado por bmad-create-story. Complejidad NORMAL (query de lectura CQRS sobre la ProyeccionHabitacion
 de 3.1). Tests convencionales + TDD (Red→Green visible); NO BDD/Gherkin ceremonial (decisión party-mode:
@@ -38,7 +38,7 @@ produce 409 evitables, nunca overbooking.
   - [x] Lee la `ProyeccionHabitacion` (3.1): filtra por ciudad, `activa == true`, `capacidad >= huéspedes`, y todas las noches de `[entrada, salida)` libres (sin solapamiento con noches ocupadas del read-model).
   - [x] Semiabierto `[entrada, salida)`: la noche de salida NO se cuenta (consistente con `Estancia`/`NochesHabitacion` de E1). Validación de entrada (fechas, huéspedes >= 1) en el validator.
 - [x] **Task 2 — AC negativo explícito (AC: 2)** *(tests de tabla)*
-  - [x] Casos: reservada-en-rango, deshabilitada, hotel-deshabilitado (colapsado a estado "Deshabilitada"), capacidad-insuficiente, solapamiento-parcial de fechas → NO aparece. Bordes de rango (salida == entrada de otra reserva → SÍ disponible por semiabierto). También fila no hidratada → NO aparece.
+  - [x] Casos: reservada-en-rango, deshabilitada individualmente, capacidad-insuficiente, solapamiento-parcial de fechas → NO aparece. Bordes de rango (salida == entrada de otra reserva → SÍ disponible por semiabierto). También fila no hidratada → NO aparece. (El caso **hotel deshabilitado** es una dimensión aparte, cubierta por su flujo real de eventos en Task 7.)
 - [x] **Task 3 — Caché de lectura Redis (AC: 3)** *(según decisión de invalidación)*
   - [x] Cachear el resultado por clave normalizada `(ciudad, entrada, salida, huéspedes)` con TTL; invalidar ante evento de catálogo que afecte la ciudad. **Decisión (sin party-mode, resoluble):** claves generacionales por ciudad (token en `disp:tok:{ciudad}`) → invalidación O(1) sin escaneo; TTL corto (30 s) cubre best-effort los cambios de disponibilidad no invalidados de forma dirigida.
 - [x] **Task 4 — Endpoint (AC: 1, 2, 3)**
@@ -69,6 +69,8 @@ _Code review 2026-07-09 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). 
 - [x] **[Review][Patch] Token de ciudad sin TTL** — `disp:tok:{ciudad}` nunca expira; bajo `maxmemory-lru` podría evacuarse y resetear la generación. Añadir TTL largo. `[Cache/CacheDisponibilidadRedis.cs]`
 - [x] **[Review][Patch] RedisCache no se dispone en tests** — `RedisFixture.CrearCache()` crea `RedisCache` (IDisposable) sin liberarlo. `[tests/Reservas.IntegrationTests/RedisFixture.cs]`
 - [x] **[Review][Defer] Eventos LWW no-op rotan el token igualmente** — `AplicarPrecio`/`AplicarDeshabilitada` descartados por versión igual invalidan la ciudad (misses de caché extra; solo eficiencia). `[Proyeccion/ProyectorCatalogo.cs]` — deferred.
+
+**Re-review (2026-07-09, tras Task 7/8):** Acceptance Auditor confirma **AC-E3.2.2 CERRADO** (flujo real e2e, tests sin sembrar estado de hotel). Residuales cerrados: comentario/spec corregidos y eventos de hotel añadidos al contract test (`ContratoEventosCatalogoTests`). La capa Edge Case Hunter falló por glitch de entorno (×2); el análisis de bordes se hizo manualmente → único hueco: estado de hotel que no llega por toggle (backfill + creación-deshabilitada), documentado en `deferred-work.md` (fuera del alcance del toggle que cierra el AC; amerita historia/party-mode propio). Suite completa: 250 tests en verde.
 
 _Descartados (ruido/falsos positivos):_ (1) "¿el ValidationBehavior corre para la query?" — sí: `Result<T>` implementa `IResultadoInvalidable`, el behavior aplica a `IRequest`, no solo `ICommand`. (2) `Impuestos ?? 0m` — inofensivo (hidratada garantiza el valor). (3) Caché no invalidada por cambios de Reservas (reserva/cancelación) — por diseño best-effort, aceptado en Task 3.
 
@@ -135,7 +137,7 @@ claude-opus-4-8 (bmad-dev-story, modo autónomo).
 ### Completion Notes List
 
 - **Query CQRS (Task 1/2):** `BuscarDisponibilidadQuery` es `IRequest<Result<IReadOnlyList<HabitacionDisponibleDto>>>` (NO `ICommand` → no pasa por `TransactionBehavior`). El filtro SQL cruza `ProyeccionHabitacion` (catálogo, filtrando por hidratada + estado "Habilitada" + capacidad) con `NochesHabitacion` (slots ocupados) exigiendo cero solapamiento en `[entrada, salida)` (semiabierto). Búsqueda sin resultados = 200 con lista vacía, no 404.
-- **AC negativo (Task 2):** cubierto por tabla + facts: capacidad insuficiente, deshabilitada (incluye hotel deshabilitado, ya colapsado por 2.5 al estado "Deshabilitada"), otra ciudad, fila no hidratada, reservada-en-rango, solapamiento parcial; y el borde semiabierto adyacente que SÍ debe aparecer.
+- **AC negativo (Task 2):** cubierto por tabla + facts: capacidad insuficiente, deshabilitada individualmente, otra ciudad, fila no hidratada, reservada-en-rango, solapamiento parcial; y el borde semiabierto adyacente que SÍ debe aparecer. (El caso **hotel deshabilitado** se cierra en Task 7 con su dimensión y flujo real de eventos, NO colapsando el estado de la habitación.)
 - **Caché (Task 3):** decoradora `BuscadorDisponibilidadCacheado` sobre `IDistributedCache` (Redis) con **claves generacionales por ciudad** — invalidar = rotar el token `disp:tok:{ciudad}` (O(1), sin escaneo). El `ProyectorCatalogo` invalida la ciudad afectada FUERA de la transacción del read-model (un fallo de Redis no revierte la proyección ya confirmada). TTL 30 s como red de seguridad best-effort para cambios de disponibilidad no invalidados de forma dirigida.
 - **Endpoint (Task 4):** `GET /api/v1/habitaciones/disponibles` mapea `Result→ToOkResult`. Redis se registra si hay cadena "redis"; si no, `AddDistributedMemoryCache` para desarrollo local sin Aspire.
 - **Deuda conocida heredada de 3.1:** una habitación rehabilitada podría seguir "Deshabilitada" si el re-alta no llega por eventos (asimetría 2.5, ya registrada en `deferred-work.md`) — fuera de alcance de 3.2.
