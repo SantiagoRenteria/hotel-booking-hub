@@ -38,6 +38,17 @@ Cierra el criterio obligatorio HU2-5 (FR-19, mínimo) con bajo riesgo: el correo
   - [x] El consumidor emite exactamente 2 correos (huésped + agente) con datos de la reserva; deserialización desde `JsonElement`; ignora otros tipos. Nuevo proyecto `tests/Notificaciones.UnitTests`.
 - [x] **Task 5 — Commits TDD (Red→Green) en rama `feature/5-1a-notificacion-confirmacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
 
+### Review Findings
+
+<!-- Code review adversarial (Blind + Edge + Acceptance), 2026-07-09. Veredicto Auditor: cumplimiento completo
+de AC-E5.1a.1; dedup correctamente fuera de alcance (5.1b). -->
+
+- [x] [Review][Patch] NRE si `data` deserializa a null [ConsumidorReservaConfirmada.cs] — ✅ `Deserializar` devuelve nullable + `?? throw InvalidOperationException` con Id/Type + test `Payload_nulo_lanza_error_descriptivo_no_NRE`.
+- [x] [Review][Patch] `PrecioTotal` dependiente de la cultura [ConsumidorReservaConfirmada.cs] — ✅ formateado con `CultureInfo.InvariantCulture`.
+- [x] [Review][Defer] Envío no atómico de los 2 correos / re-entrega duplica el correo del huésped [ConsumidorReservaConfirmada.cs] — deferido a **5.1b**: exactamente-una-vez (dedup por `MessageId`) + tolerancia a fallo parcial es el núcleo de esa historia; el sink de Fase 1 no falla.
+- [x] [Review][Defer] `JsonException`/mensaje-veneno sin dead-letter ni tope de intentos [ConsumidorReservaConfirmada.cs] — deferido a **5.1b Task 4** (dead-letter del consumidor).
+- [x] [Review][Defer] El consumidor está registrado en DI pero ningún transporte real lo invoca (el worker sigue en latido) [Program.cs, Worker.cs] — deferido; el transporte Dapr es placeholder **en todo el sistema** (precedente E3: `ProyectorCatalogo` también solo se invoca en tests). El AC-E5.1a.1 se verifica en test/demo. Cablear la suscripción real es un ítem de infra transversal.
+
 ## Dev Notes
 
 ### Arquitectura y archivos a tocar
