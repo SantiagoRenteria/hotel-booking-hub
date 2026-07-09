@@ -90,20 +90,56 @@ Feature: Reprocesar el mismo evento no duplica ni altera la proyección
     Y el estado proyectado es idéntico al de la primera entrega
 ```
 
-### AC-E3.1.3 — Reconciliación / rebuild
+### AC-E3.1.3 — Reconciliación / recompute idempotente (reformulado · party-mode D4)
+
+> **Nota (D4):** no hay event-store durable cross-BC → "rebuild desde event-log" es inalcanzable. La
+> reconciliación de 3.1 es un **recompute idempotente desde las tablas base locales de Reservas**. El rebuild
+> de atributos de catálogo (solo provienen de eventos de Hoteles) requiere un snapshot API de Hoteles que no
+> existe → **diferido** (ver `deferred-work.md`).
 
 ```gherkin
-Feature: La proyección puede reconstruirse a un estado correcto
+Feature: La proyección se recomputa idempotentemente desde las tablas base locales
 
-  Scenario: Un rebuild converge la proyección corrupta o rezagada
-    Dado una ProyeccionHabitacion corrupta, incompleta o rezagada
-    Cuando corre el job de reconciliación/rebuild desde la fuente de verdad
-    Entonces la proyección converge al estado correcto (mismos atributos que la fuente)
-    Y el job es idempotente (correrlo dos veces da el mismo resultado)
+  Scenario: El recompute de disponibilidad converge desde NochesHabitacion
+    Dado una ProyeccionHabitacion con la disponibilidad corrupta o rezagada
+    Cuando corre el job de recompute desde las tablas base de Reservas (NochesHabitacion)
+    Entonces la disponibilidad proyectada converge al estado derivado de los slots locales
+
+  Scenario: El recompute es idempotente
+    Dado el job de recompute
+    Cuando se ejecuta dos veces seguidas
+    Entonces el resultado es idéntico (sin duplicar filas ni slots)
 ```
 
 ## Tasks / Subtasks
 
+> **✅ Task 0 RESUELTO (party-mode formal 2026-07-09 · Winston/Amelia/Murat):**
+> - **D1 → bus fake in-proc inyectable.** Interfaz `IConsumidorEventosCatalogo.Procesar(EventEnvelope)` con el
+>   contrato de envelope de 2.5 (`data` como `JsonElement`). El bus fake es solo arnés de tests deterministas
+>   (orden de entrega = input del test, sin concurrencia/timing); un futuro subscriber Dapr llama al MISMO
+>   handler → solo cambia el adaptador de transporte. NO leer el outbox de Hoteles (acoplaría la frontera BC).
+> - **D2 → tabla SQL `ProyeccionHabitacion`** en la BD de Reservas (3.2 la cruza con `NochesHabitacion` por
+>   join relacional). Redis queda para caché de lectura (3.2) + fast-path opcional, NO para el read-model.
+> - **D3 → idempotencia+orden DUROS en SQL, misma transacción (REFINA AC-E3.1.4).** Tabla `inbox_mensajes`
+>   (`MessageId` PK) + guarda de orden `UPDATE ... WHERE HabitacionId=@id AND Version < @v` (compare-and-set) +
+>   upsert del read-model, TODO en una `BEGIN TX ... COMMIT`. Redis `SETNX+TTL` (24–48h) es **fast-path
+>   best-effort, NO la autoridad** (Murat probó el data-loss del dual-write: SETNX en Redis + fallo del commit
+>   SQL = evento perdido). Order key = `(aggregateId, version)`, **nunca `occurredAt`** (relojes no monotónicos).
+>   La misma guarda `Version <= lastApplied → no-op` resuelve desorden Y reentrega. **Matiz para E5:** el
+>   "único inbox" del epics es el *concepto* (dedup por `MessageId`); el store difiere por efecto — E3 (upsert
+>   SQL) = transaccional-SQL; E5 (email, efecto externo no transaccionable) = Redis SETNX. Anotado para E5.
+> - **D4 → recompute idempotente local (2-1 Winston+Murat sobre Amelia; reescribe AC-E3.1.3).** No existe
+>   event-store durable cross-BC → "rebuild desde event-log" es inalcanzable. La reconciliación de 3.1 es un
+>   **recompute idempotente de la proyección desde las tablas base locales de Reservas** (`NochesHabitacion` +
+>   filas materializadas). El rebuild de **atributos de catálogo** (que solo vienen de eventos de Hoteles)
+>   requiere un snapshot API de Hoteles que NO existe → **diferido explícito** (deuda registrada en deferred-work).
+> - **Orden de implementación (Winston):** (1) `EventEnvelope` + tabla `ProyeccionHabitacion(Version)` + upsert
+>   compare-and-set; (2) proyector fold determinista + tests desorden/idempotencia con bus fake (sin Redis);
+>   (3) inbox SQL (misma tx) + Redis fast-path opcional encima; (4) recompute local al final. La corrección vive
+>   en SQL; Redis y el bus son aceleradores apagables sin perder consistencia.
+>
+> <details><summary>Task 0 original (alternativas evaluadas)</summary>
+>
 > **Task 0 (party-mode, PRIMERO) — decisiones arquitectónicas.** Antes de tocar código, resolver con
 > `/bmad-party-mode` (afectan contrato de consumo + almacenamiento del read-model + fuente de reconciliación):
 > - **D1 — Transporte de los eventos de catálogo al consumidor.** El productor 2.5 usa `PublicadorEventosLog`
@@ -126,18 +162,20 @@ Feature: La proyección puede reconstruirse a un estado correcto
 >   (c) reconstruir disponibilidad desde `NochesHabitacion` + último estado de catálogo conocido? Decisión
 >   arquitectónica real; documentar alternativas antes de implementar.
 > - Documentar alternativas/decisión y solo entonces implementar.
+>
+> </details>
 
-- [ ] **Task 1 — Contrato de consumo + inbox de idempotencia (AC: E3.1.4, E3.1.2)** *(TDD Red→Green)*
-  - [ ] `IInbox` (o `IDeduplicador`) en `Reservas.Application`; implementación Redis `SETNX + TTL` por `MessageId` en `Reservas.Infrastructure/Idempotencia/`. Test de integración con Redis real (Testcontainers): primer `MessageId` procesa, repetidos no.
-  - [ ] Escenario BDD `AC-E3.1.2` como test ejecutable (mismo evento ×N → 0 duplicados).
+- [ ] **Task 1 — Contrato de consumo + inbox de idempotencia en SQL (AC: E3.1.4, E3.1.2)** *(TDD Red→Green)* *(D1/D3)*
+  - [ ] `IConsumidorEventosCatalogo.Procesar(EventEnvelope)` en `Reservas.Application` (envelope de 2.5; `data` como `JsonElement`). Inbox durable = tabla `inbox_mensajes` (`MessageId` PK) en `Reservas.Infrastructure/Idempotencia/`, escrito en la MISMA transacción que el upsert. Redis `SETNX+TTL` como fast-path opcional (NO autoridad).
+  - [ ] Escenario BDD `AC-E3.1.2` como test ejecutable (mismo evento ×N → 0 duplicados); AC negativo del dual-write (fallo del commit SQL tras SETNX no pierde el evento).
 - [ ] **Task 2 — Proyector idempotente y ordenado (AC: E3.1.0, E3.1.1)** *(TDD + BDD)*
   - [ ] `ProyeccionHabitacion` (read-model, según D2) + `ProyectorHabitacion` que aplica los 3 eventos de catálogo; upsert con guarda de orden: descarta `version <= Version` aplicada por `aggregateId`.
   - [ ] Escenarios BDD `AC-E3.1.1` (incl. `Scenario Outline` de órdenes de llegada) como tests ejecutables contra SQL real.
   - [ ] Reemplazar el placeholder `DisponibilidadHabitacionSembrada` (1.6a) por la lectura de la proyección real; mantener verdes los tests de Reservas que lo usaban.
 - [ ] **Task 3 — Transporte/consumo de eventos (AC: E3.1.0)** *(según D1)*
   - [ ] Adaptador de consumo (bus fake inyectable o suscripción Dapr) que entrega el envelope al proyector pasando por el inbox; el `data` llega como `JsonElement` (no castear al tipo concreto — patrón `PublicadorEventosLog`).
-- [ ] **Task 4 — Job de reconciliación/rebuild (AC: E3.1.3)** *(según D4)*
-  - [ ] Job idempotente que reconstruye la proyección a la fuente de verdad; test que parte de una proyección corrupta/rezagada y verifica convergencia.
+- [ ] **Task 4 — Job de recompute idempotente local (AC: E3.1.3)** *(D4)*
+  - [ ] Job que recomputa la disponibilidad de la proyección desde las tablas base locales (`NochesHabitacion`); idempotente (×2 → idéntico, sin doblar slots). El rebuild de atributos de catálogo (snapshot de Hoteles) queda DIFERIDO (deferred-work). Test que parte de disponibilidad corrupta/rezagada y verifica convergencia.
 - [ ] **Task 5 — Suite de propiedades distribuidas (Testcontainers SQL + Redis, colección aislada)**
   - [ ] Todos los escenarios Gherkin como tests; desorden/reentrega deterministas (sin `Task.WhenAll` ni timing real); colección `DisableParallelization` propia (patrón `OutboxFaultInjection`).
 - [ ] **Task 6 — Commits TDD (Red→Green visibles) en rama `feature/3-1-proyeccion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
