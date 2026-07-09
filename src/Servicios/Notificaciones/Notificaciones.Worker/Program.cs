@@ -19,6 +19,14 @@ builder.Services.AddSingleton<INotificador, NotificadorConsola>();
 // transporte real esté conectado (misma política "Redis-si-configurado" de la caché de 3.2).
 builder.Services.AddSingleton<IInboxIdempotencia, InboxIdempotenciaEnMemoria>();
 builder.Services.AddSingleton<ConsumidorReservaConfirmada>();
+builder.Services.AddSingleton<IProcesadorEvento>(sp => sp.GetRequiredService<ConsumidorReservaConfirmada>());
+
+// Tope de intentos + dead-letter para el mensaje-veneno (Story 5.1b Task 4): un fallo permanente no debe
+// re-reclamarse sin cota ni bloquear el stream. Contador en memoria (fallback local) + sink de dead-letter al log.
+builder.Services.AddSingleton<IContadorReintentos, ContadorReintentosEnMemoria>();
+builder.Services.AddSingleton<IColaDeadLetter, ColaDeadLetterLog>();
+builder.Services.AddSingleton(new OpcionesDespachador());
+builder.Services.AddSingleton<DespachadorNotificaciones>();
 
 var app = builder.Build();
 
