@@ -57,6 +57,18 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
                 c.Property(x => x.Telefono).HasColumnName("ContactoTelefono").HasMaxLength(40);
             });
 
+            // Solicitud de cancelación (Story 4.1) como owned reference NULLABLE: columnas en la propia tabla
+            // Reservas, todas nulas mientras la reserva no tenga un episodio de cancelación. Un solo episodio
+            // (4.2 completará esta misma owned con la resolución — decisión party-mode Task 0).
+            b.OwnsOne(r => r.SolicitudCancelacion, s =>
+            {
+                s.Property(x => x.MotivoCategoria).HasColumnName("CancelacionMotivoCategoria").HasMaxLength(80);
+                s.Property(x => x.MotivoDetalle).HasColumnName("CancelacionMotivoDetalle").HasMaxLength(1000);
+                s.Property(x => x.IniciadaPor).HasColumnName("CancelacionIniciadaPor").HasConversion<string>().HasMaxLength(20);
+                s.Property(x => x.PenalidadPorcentaje).HasColumnName("CancelacionPenalidadPorcentaje").HasPrecision(5, 2);
+                s.Property(x => x.FechaSolicitud).HasColumnName("CancelacionFechaSolicitud");
+            });
+
             // Huéspedes (FR-10) como owned collection en su propia tabla; Documento es un VO anidado.
             b.OwnsMany(r => r.Huespedes, h =>
             {
