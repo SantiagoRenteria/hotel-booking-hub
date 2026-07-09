@@ -17,7 +17,7 @@
 
     <!-- Higiene general -->
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- NO usar InvariantGlobalization: Microsoft.Data.SqlClient requiere ICU y falla en modo invariante. -->
   </PropertyGroup>
 
 </Project>

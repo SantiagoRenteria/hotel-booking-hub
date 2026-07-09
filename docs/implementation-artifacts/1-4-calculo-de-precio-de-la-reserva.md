@@ -1,6 +1,10 @@
+---
+baseline_commit: 0232148
+---
+
 # Story 1.4: Cálculo de precio de la reserva (`CalculadorPrecio`)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -25,16 +29,27 @@ para **saber cuánto pagaré antes de confirmar**.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — TDD del value object `Estancia` (AC: 2)** *(Red primero)*
-  - [ ] Test: `Estancia` con `salida <= entrada` → excepción/`Result` inválido con el mensaje exacto `"La fecha de salida debe ser posterior a la de entrada"`
-  - [ ] Test: número de noches = `(salida - entrada).Days` sobre `DateOnly`
-  - [ ] Implementar `Estancia` (VO con `DateOnly Entrada`, `DateOnly Salida`, factory con guard) en `Reservas.Domain`
-- [ ] **Task 2 — TDD de `CalculadorPrecio` (AC: 1)** *(Red primero)*
-  - [ ] Tests de la tabla de ejemplos (incluye impuesto 0, 1 noche, varias noches)
-  - [ ] Implementar `CalculadorPrecio` como **domain service puro** en `Reservas.Domain/Servicios/`: `(costoBase + impuesto) × noches`, todo en `decimal`
-  - [ ] Usar VO `Dinero` (`decimal`) si ya existe/procede; si no, esbozarlo mínimo
-- [ ] **Task 3 — Refactor** — limpiar sin romper tests (Green→Refactor); nombres tri-idioma
-- [ ] **Task 4 — Commit(s) que evidencien el ciclo TDD + push a `develop`** (Red, Green, Refactor visibles en el historial; autor Santiago Renteria)
+- [x] **Task 1 — TDD del value object `Estancia` (AC: 2)** *(Red primero)*
+  - [x] Test: `Estancia` con `salida <= entrada` → excepción/`Result` inválido con el mensaje exacto `"La fecha de salida debe ser posterior a la de entrada"`
+  - [x] Test: número de noches = `(salida - entrada).Days` sobre `DateOnly`
+  - [x] Implementar `Estancia` (VO con `DateOnly Entrada`, `DateOnly Salida`, factory con guard) en `Reservas.Domain`
+- [x] **Task 2 — TDD de `CalculadorPrecio` (AC: 1)** *(Red primero)*
+  - [x] Tests de la tabla de ejemplos (incluye impuesto 0, 1 noche, varias noches)
+  - [x] Implementar `CalculadorPrecio` como **domain service puro** en `Reservas.Domain/Servicios/`: `(costoBase + impuesto) × noches`, todo en `decimal`
+  - [x] Usar VO `Dinero` (`decimal`) si ya existe/procede; si no, esbozarlo mínimo
+- [x] **Task 3 — Refactor** — limpiar sin romper tests (Green→Refactor); nombres tri-idioma
+- [x] **Task 4 — Commit(s) que evidencien el ciclo TDD + push a `develop`** (Red, Green, Refactor visibles en el historial; autor Santiago Renteria)
+
+### Review Findings
+
+_bmad-code-review 2026-07-08 (Blind Hunter · Acceptance Auditor). **Edge Case Hunter falló** (respuesta irrelevante) y se omitió. Baseline `0232148..HEAD`. Ambos AC confirmados como cumplidos._
+
+- [x] [Review][Patch] `CalculadorPrecio` no protege contra dinero negativo — `Calcular(-100, 0, …)` devuelve total negativo en silencio. Añadir guard (`costoBase`/`impuesto` no negativos) + test. `[CalculadorPrecio.cs]`
+- [x] [Review][Patch] Los tests no fijan el manejo `decimal` ni la semántica del impuesto (valores "redondos" ocultan monto-vs-tasa y un regreso a `int`/`double` pasaría). Usar parámetros `string` parseados a `decimal` + caso con decimales no exactos. `[CalculadorPrecioTests.cs]`
+- [x] [Review][Patch] Falta el borde mínimo de `Estancia` (1 noche), adyacente al guard. Añadir `Crear(d, d.AddDays(1)) → Noches == 1`. `[EstanciaTests.cs]`
+- [x] [Review][Defer] Precio como clase concreta vs `IEstrategiaPrecio` (`patterns.md`) — `architecture.md` gobierna (domain service puro, YAGNI); refactor a interfaz solo si entran múltiples estrategias (temporada/descuento). — deferred
+
+**Descartados (falsos/defendibles):** aserción del mensaje exacto (la **AC-E1.4.2 lo exige**, no es fragilidad); **excepción vs `Result`** para el guard del VO (permitido por la story + idiomático en DDD, con la validación de usuario en 1.6a); VO `Dinero` no introducido (YAGNI, permitido por la story).
 
 ## Dev Notes
 
@@ -88,8 +103,28 @@ para **saber cuánto pagaré antes de confirmar**.
 
 ### Agent Model Used
 
+Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
+
 ### Debug Log References
+
+- Ciclo TDD: **RED** (tests compilan-fallan por tipos inexistentes: `CS0234`/`CS0246`) → **GREEN** (build 0/0, `dotnet test` 6/6) → refactor (no requerido).
+- `dotnet format --verify-no-changes` limpio; suite completa: Contracts 2/2, Reservas.UnitTests 6/6.
 
 ### Completion Notes List
 
+- **AC-E1.4.1 ✅** — `CalculadorPrecio.Calcular(costoBase, impuesto, Estancia)` = `(costoBase + impuesto) × noches` en `decimal`. Tabla verificada: `(100.00, 19.00, 3) → 357.00`, `(80.00, 0.00, 1) → 80.00`.
+- **AC-E1.4.2 ✅** — `Estancia.Crear` lanza `EstanciaInvalidaException` con el mensaje exacto `"La fecha de salida debe ser posterior a la de entrada"` cuando `salida <= entrada` (cubre `==` y `<`); no se calcula precio.
+- Dominio **puro sin I/O** (unit-testeable): rango semiabierto `[Entrada, Salida)` → `Noches = Salida.DayNumber - Entrada.DayNumber` (coherente con el anti-solape de slots de 1.5). Dinero en `decimal`, fechas en `DateOnly`.
+- VO con factory + setters privados (guard del invariante). `Dinero` no se introdujo (YAGNI; `decimal` cumple el patrón de dinero). Alimenta la Story 1.6a (happy path del comando).
+
 ### File List
+
+- `src/Servicios/Reservas/Reservas.Domain/Reservas/Estancia.cs` (nuevo — VO)
+- `src/Servicios/Reservas/Reservas.Domain/Reservas/EstanciaInvalidaException.cs` (nuevo)
+- `src/Servicios/Reservas/Reservas.Domain/Servicios/CalculadorPrecio.cs` (nuevo — domain service puro)
+- `tests/Reservas.UnitTests/Dominio/EstanciaTests.cs`, `tests/Reservas.UnitTests/Dominio/CalculadorPrecioTests.cs` (nuevos)
+
+### Change Log
+
+- 2026-07-08 · Story 1.4 · `CalculadorPrecio` + VO `Estancia` (dominio puro, TDD Red→Green): precio `(base+impuesto)×noches` y guard de rango con mensaje exacto. 6/6 tests. Estado: `in-progress` → `review`.
+- 2026-07-08 · Code-review aplicado (3 patches): guard de dinero negativo en `CalculadorPrecio`; tests con `string`→`decimal` + caso decimal no exacto; borde de 1 noche en `Estancia`. Reservas.UnitTests 10/10. Estado: `review` → `done`.

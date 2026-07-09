@@ -1,6 +1,10 @@
+---
+baseline_commit: b3e2216
+---
+
 # Story 1.5: Anti-overbooking — slots `NochesHabitacion` + índice único + arbitraje
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -21,22 +25,28 @@ para **garantizar cero overbooking aun bajo concurrencia**.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Modelo y schema (AC: 0)**
-  - [ ] Entidad `Reserva` (aggregate root, `Reservas.Domain`) con identidad UUID v7 y `rowversion`
-  - [ ] Slot `NochesHabitacion(HabitacionId, Noche, ReservaId)` con clave **clustered compuesta** `(HabitacionId, Noche)` (es el árbitro; sin surrogate)
-  - [ ] `OutboxMessages` con `UNIQUE(MessageId)` (tabla lista; el relay llega en 1.6b)
-  - [ ] Config EF Core: `HasKey(x=>x.Id).IsClustered(false)` + `HasIndex(x=>x.Seq).IsUnique().IsClustered()` + `Property(x=>x.Seq).UseIdentityColumn()` para `Reserva`; `NochesHabitacion.HasKey(x=>new{ x.HabitacionId, x.Noche })`
-  - [ ] Migración EF Core code-first + estrategia de aplicación por BC (documentada)
-- [ ] **Task 2 — Repositorio / inserción de slots con arbitraje (AC: 1, 2)**
-  - [ ] Insertar los slots `[entrada, salida)` en orden determinístico `ORDER BY HabitacionId, Noche`
-  - [ ] Clasificar `SqlException.Number`: `2627`/`2601` → traducir a resultado de conflicto (409, sin retry); `1205` → reintentable
-  - [ ] Política de retry 1205 (3×, backoff+jitter) — puede vivir en el `TransactionBehavior` (usar snippet del spike 1.2)
-- [ ] **Task 3 — Tests de integración (AC: 1, 2, 3)**
-  - [ ] `Reservas.IntegrationTests` con Testcontainers.MsSql; migración aplicada al arrancar el contenedor (AC-E1.5.0)
-  - [ ] Concurrencia sobre la misma noche → 1 gana, resto 2627/2601 → 409
-  - [ ] **Falso 409:** adyacentes `[D1→D2]`/`[D2→D3]` → ambas OK, `conflicts == 0`; habitaciones distintas mismas fechas → ambas OK
-  - [ ] Deadlock 1205 → retry acotado (simular/forzar si es viable)
-- [ ] **Task 4 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Modelo y schema (AC: 0)**
+  - [x] Entidad `Reserva` (aggregate root, `Reservas.Domain`) con identidad UUID v7 y `rowversion`
+  - [x] Slot `NochesHabitacion(HabitacionId, Noche, ReservaId)` con clave **clustered compuesta** `(HabitacionId, Noche)` (es el árbitro; sin surrogate)
+  - [x] `OutboxMessages` con `UNIQUE(MessageId)` (tabla lista; el relay llega en 1.6b)
+  - [x] Config EF Core: `HasKey(x=>x.Id).IsClustered(false)` + `HasIndex(x=>x.Seq).IsUnique().IsClustered()` + `Property(x=>x.Seq).UseIdentityColumn()` para `Reserva`; `NochesHabitacion.HasKey(x=>new{ x.HabitacionId, x.Noche })`
+  - [x] Migración EF Core code-first + estrategia de aplicación por BC (documentada)
+- [x] **Task 2 — Repositorio / inserción de slots con arbitraje (AC: 1, 2)**
+  - [x] Insertar los slots `[entrada, salida)` en orden determinístico `ORDER BY HabitacionId, Noche`
+  - [x] Clasificar `SqlException.Number`: `2627`/`2601` → traducir a resultado de conflicto (409, sin retry); `1205` → reintentable
+  - [x] Política de retry 1205 (3×, backoff+jitter) — puede vivir en el `TransactionBehavior` (usar snippet del spike 1.2)
+- [x] **Task 3 — Tests de integración (AC: 1, 2, 3)**
+  - [x] `Reservas.IntegrationTests` con Testcontainers.MsSql; migración aplicada al arrancar el contenedor (AC-E1.5.0)
+  - [x] Concurrencia sobre la misma noche → 1 gana, resto 2627/2601 → 409
+  - [x] **Falso 409:** adyacentes `[D1→D2]`/`[D2→D3]` → ambas OK, `conflicts == 0`; habitaciones distintas mismas fechas → ambas OK
+  - [~] Deadlock 1205 → retry acotado — **diferido a 1.6b**: `PoliticaReintentos` queda como componente unit-testeado (predicado sintético), pero el 1205 NO se forzó aquí y el cableado del retry vive en el `TransactionBehavior` del pipeline (llega con 1.6). El test con 1205 forzado se hace en 1.6b (ver `deferred-work.md`).
+- [x] **Task 4 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings (code review 2026-07-08)
+
+- [x] [Review][Patch] Honestidad del doc: el subtask de Task 3 «Deadlock 1205 → retry acotado (simular/forzar si es viable)» estaba marcado `[x]` pero **no se simuló ni forzó** un 1205, y `PoliticaReintentos` **no está cableada** a `ConfirmarAsync`. El predicado por defecto `PoliticaReintentos.EsDeadlock` (desenvuelve `SqlException`/`DbUpdateException`) tiene cobertura cero (los tests usan un predicado sintético). **Resuelto:** subtask re-marcado `[~]` (diferido a 1.6b) + nota de completitud de AC-E1.5.2 tensada a ⚠️ parcial. `[1-5-...md (Task 3), ReservaRepository.cs:34]`
+- [x] [Review][Defer] Cablear `PoliticaReintentos` en el `TransactionBehavior` + test de integración con **1205 forzado** (cierra la cobertura real de `PoliticaReintentos.EsDeadlock` y prueba el retry end-to-end). Al integrar, **crear un `DbContext`/scope nuevo por intento** (no reusar el grafo `Added` tras un fallo, como ya hacen los tests con `CrearContexto()`). `[Reservas.Infrastructure/Persistencia/ReservaRepository.cs, PoliticaReintentos.cs]` — deferido a 1.6b (por diseño: el retry vive en el pipeline del Mediator, no en el repositorio).
+- [x] [Review][Defer] Guarda de **longitud máxima de estancia**: `Estancia.Crear` solo valida `salida > entrada`; una estancia de años genera un slot por noche en una sola transacción (escalado de bloqueos / memoria del ChangeTracker / timeout). Añadir tope en la validación de `CrearReservaCommand`. `[Reservas.Domain/Reservas/Estancia.cs (1.4), CrearReservaCommand validation]` — deferido a 1.6a (validación de comando).
 
 ## Dev Notes
 
@@ -95,8 +105,35 @@ para **garantizar cero overbooking aun bajo concurrencia**.
 
 ### Agent Model Used
 
+Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
+
 ### Debug Log References
+
+- `dotnet test` — **Reservas.UnitTests 18/18** (clasificación 2627/2601/1205, política de reintentos) + **Reservas.IntegrationTests 4/4** (Testcontainers.MsSql, SQL Server 2022 real).
+- Migración `InicialReservas` generada por EF: `PK_Reservas` no-clustered + `IX_Reservas_Seq` único clustered + `PK_NochesHabitacion (HabitacionId, Noche)` compuesta clustered + `IX_OutboxMessages_MessageId` único (verificado en el DDL).
+- Fix 1: `TreatWarningsAsErrors` convirtió en error el ctor obsoleto de `MsSqlBuilder` → API con imagen por constructor.
+- Fix 2: **`InvariantGlobalization` eliminado** de `Directory.Build.props` — `Microsoft.Data.SqlClient` requiere ICU y falla en modo invariante (habría roto también los servicios al conectar a SQL). Hallazgo real del test de integración.
+- `dotnet format` auto-corrigió los archivos de migración de EF (CRLF/BOM/namespace en bloque → LF/file-scoped).
 
 ### Completion Notes List
 
+- **AC-E1.5.0 ✅** — migración EF crea `Reservas`, `NochesHabitacion` (PK clustered compuesta) y `OutboxMessages` (`UNIQUE(MessageId)`); aplicada por `MigrateAsync` en el fixture de Testcontainers.
+- **AC-E1.5.1 ✅** — 2 reservas concurrentes por la misma noche → 1 confirmada, 1 `HabitacionNoDisponibleException` (2627/2601), **1 sola fila** en `NochesHabitacion`. El índice único arbitra en el motor.
+- **AC-E1.5.2 ⚠️ parcial** — `PoliticaReintentos` (reintenta solo deadlock 1205, 3× backoff+jitter) está construida y unit-testeada con un predicado sintético; slots insertados en orden ascendente por noche; la violación de único NO se reintenta. **Pendiente en 1.6b:** cablear la política al camino de confirmación vía `TransactionBehavior` y probar el retry con un **1205 forzado** en integración (el predicado por defecto `EsDeadlock` no es unit-testeable porque `SqlException` no tiene ctor público). Registrado en `deferred-work.md`.
+- **AC-E1.5.3 ✅** — falso 409 cubierto: adyacentes `[10,12)`/`[12,14)` ambas confirman (rango semiabierto); habitaciones distintas mismas fechas ambas confirman.
+- Claves ADR-017 (UUID v7 no-clustered + `Seq` shadow clustered) y arbitraje ADR-016 materializados. Alimenta 1.6a (comando) y 1.6b (outbox en la misma tx + retry en `TransactionBehavior`).
+- **Consideración de CI (para 1.6c):** los tests de integración ahora corren en el job `build-test` (requieren Docker; ok en `ubuntu-latest`). La segmentación en un stage secuencial aislado (`G1`, `DisableParallelization`) se formaliza en 1.6c.
+
 ### File List
+
+- `src/Servicios/Reservas/Reservas.Domain/Reservas/` — `Reserva.cs`, `NocheHabitacion.cs`, `EstadoReserva.cs`, `HabitacionNoDisponibleException.cs` (nuevos)
+- `src/Servicios/Reservas/Reservas.Domain/Puertos/IReservaRepository.cs` (nuevo)
+- `src/Servicios/Reservas/Reservas.Infrastructure/Persistencia/` — `ReservasDbContext.cs`, `ReservaRepository.cs`, `ClasificacionSqlServer.cs`, `PoliticaReintentos.cs`, `OutboxMessage.cs`, `DesignTimeReservasDbContextFactory.cs` (nuevos)
+- `src/Servicios/Reservas/Reservas.Infrastructure/Migraciones/*_InicialReservas*.cs` + `ReservasDbContextModelSnapshot.cs` (migración EF)
+- `Reservas.Infrastructure.csproj` (+ EF Design), `Directory.Packages.props` (+ EF Design, Testcontainers.MsSql), `Directory.Build.props` (−InvariantGlobalization)
+- `tests/Reservas.UnitTests/Persistencia/` — `ClasificacionSqlServerTests.cs`, `PoliticaReintentosTests.cs` (nuevos; +ref a Infrastructure)
+- `tests/Reservas.IntegrationTests/` — `SqlServerFixture.cs`, `AntiOverbookingTests.cs`, csproj (nuevo proyecto, añadido a la solución)
+
+### Change Log
+
+- 2026-07-08 · Story 1.5 · anti-overbooking: `Reserva`+`NocheHabitacion` (slots) + `ReservasDbContext` (claves ADR-017) + migración EF + repositorio con arbitraje 2627/1205 + `PoliticaReintentos`. Unit 18/18, integración 4/4 (Testcontainers.MsSql). Fix: `InvariantGlobalization` eliminado (incompatible con SqlClient). Estado: `in-progress` → `review`.

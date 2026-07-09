@@ -1,6 +1,10 @@
+---
+baseline_commit: 4dc2564
+---
+
 # Story 1.6c: Money test — confirmación única bajo concurrencia
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -28,21 +32,28 @@ para **garantizar cero overbooking bajo carga**.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — `ReservaTestDataBuilder` / seed determinista (AC: 1)**
-  - [ ] Builder en `TestKit` que siembra 1 `Hotel` + 1 `Habitacion` + 1 noche disponible, reproducible
-  - [ ] Semilla parametrizable; el N (rango 30–100) se sortea y se registra en la salida del test
-- [ ] **Task 2 — Arnés de concurrencia (AC: 2, 3)**
-  - [ ] Lanzar N `CrearReservaCommand` concurrentes reales sobre el mismo slot (paralelismo verdadero, no secuencial)
-  - [ ] Recolectar respuestas y clasificar: `201` vs `409` vs (defecto) excepción no mapeada
-- [ ] **Task 3 — Aserciones exactas (AC: 2, 3)**
-  - [ ] `confirmadas == 1`; `rechazadas == N-1` (número **exacto**, no `>= 1`)
-  - [ ] `count(Reserva Confirmada) == 1`; `count(OutboxMessages) == 1`; `0` filas outbox para las rechazadas
-  - [ ] `0` excepciones no mapeadas; `1205` agotado → `409` (nunca `500`); retries 1205 acotados a 3
-  - [ ] Registrar N y semilla en la salida
-- [ ] **Task 4 — Aislamiento de la collection (AC: 3)**
-  - [ ] Collection xUnit `G1` con `[CollectionDefinition(DisableParallelization = true)]`, contenedor propio, reset por test (`Respawn`)
-  - [ ] En CI corre como **stage secuencial aparte**, nunca en el `dotnet test` masivo paralelo
-- [ ] **Task 5 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — `ReservaTestDataBuilder` / seed determinista (AC: 1)**
+  - [x] `ReservaTestDataBuilder` (ObjectMother) que produce un `CrearReservaCommand` válido reproducible para una habitación + 1 noche (la disponibilidad sembrada trata cualquier habitación como activa; no hay tablas Hotel/Habitacion hasta E2)
+  - [x] N (rango 30–100) sorteado con semilla registrada en la salida del test (`ITestOutputHelper`)
+- [x] **Task 2 — Arnés de concurrencia (AC: 2, 3)**
+  - [x] N `CrearReservaCommand` concurrentes REALES (`Task.WhenAll`, un scope DI por comando) sobre el mismo slot, por el pipeline de producción (mediator → Validation → Transaction → handler → EjecutorTransaccional → SQL)
+  - [x] Clasifica: `201` (Result.Ok) vs `409` (`HabitacionNoDisponibleException`) vs `Inesperado` (excepción no mapeada / Result inesperado)
+- [x] **Task 3 — Aserciones exactas (AC: 2, 3)**
+  - [x] `confirmadas == 1`; `rechazadas == N-1` (exacto)
+  - [x] `count(Reserva Confirmada) == 1`; `count(OutboxMessages) == 1`; 0 filas outbox para las rechazadas (rollback)
+  - [x] `0` excepciones no mapeadas; `1205` agotado → `409` (mapeo añadido en `EjecutorTransaccional`, nunca `500`); retries 1205 acotados a 3 (de 1.5)
+  - [x] N y semilla registrados en la salida
+- [x] **Task 4 — Aislamiento de la collection (AC: 3)**
+  - [x] Collection xUnit `G1` con `[CollectionDefinition("G1", DisableParallelization = true)]`, contenedor propio; reset por test vía `HelpersOutbox.LimpiarAsync` (en vez de `Respawn` para no añadir dependencia)
+  - [x] CI: stage secuencial aparte (`--filter "Category=G1"`); el pool paralelo corre `--filter "Category!=G1"`
+- [x] **Task 5 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings (code review 2026-07-08)
+
+- [x] [Review][Patch] El catch de "1205 agotado → 409" solo atrapaba `DbUpdateException`, pero un 1205 puede aflorar como `SqlException` cruda (commit/begin) que `PoliticaReintentos.EsDeadlock` ya contempla → escaparía como 500 (viola "nunca 500"). **Resuelto:** el catch externo usa el MISMO predicado `PoliticaReintentos.EsDeadlock(ex)` (cubre crudo y envuelto). `[EjecutorTransaccional.cs]`
+- [x] [Review][Patch] La semilla del fuzz solo se logueaba, no era inyectable → reproducibilidad incompleta. **Resuelto:** `MONEYTEST_SEED` (env var) reproduce una corrida; si no está, se sortea y registra. `[MoneyTestG1Tests.cs]`
+- [x] [Review][Defer] La rama "1205 agotado → 409" no tiene aserción que la ejercite (bajo contención de fila única los perdedores reciben 2627, no 1205; forzar un 1205 real es impráctico — `SqlException` sin ctor público). Se cubre con el test de integración de 1205 forzado ya diferido en 1.5. `[EjecutorTransaccional.cs]` — deferido (ver deferred-work 1.5).
+- Dismiss: `confirmadas==0` por ganador víctima de deadlock (contención de fila única → sin ciclo → imposible); builder sin filas Hotel/Habitacion (no hay tablas hasta E2, documentado); 201/409 a nivel de comando (mapeo HTTP probado en 1.6a/b).
 
 ## Dev Notes
 
@@ -97,8 +108,29 @@ para **garantizar cero overbooking bajo carga**.
 
 ### Agent Model Used
 
+Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
+
 ### Debug Log References
+
+- `dotnet build` 0/0; `dotnet format --verify-no-changes` limpio.
+- **Money test G1 3/3** (Testcontainers.MsSql, contenedor propio): `N=2`, `N=50`, y fuzzeado `N∈[30,100]` con semilla registrada. Partición CI verificada: `Category!=G1` → Contracts 2/2 + UnitTests 52/52 + IntegrationTests no-G1 8/8; `Category=G1` → 3/3.
+- Concurrencia REAL vía `Task.WhenAll` con un scope DI por comando sobre el pipeline de producción; el árbitro `UNIQUE(HabitacionId, Noche)` da 1 ganador + N-1 perdedores (2627 → `HabitacionNoDisponibleException`). El bloqueo de clave hace que los perdedores esperen al commit del ganador y reciban 2627 (no 1205) → determinista.
+- **AC-E1.6c.3:** añadido en `EjecutorTransaccional` el mapeo de deadlock 1205 AGOTADO (tras 3 reintentos) → `HabitacionNoDisponibleException` (409), para garantizar "nunca 500". Cambio aditivo sobre 1.6b (no altera 2627→409 ni el camino feliz); no requirió party-mode (comportamiento prescrito por el AC, sin fork de diseño).
 
 ### Completion Notes List
 
+- **AC-E1.6c.1 ✅** — `ReservaTestDataBuilder` (ObjectMother) produce un comando válido reproducible; N sorteado 30–100 con semilla en la salida.
+- **AC-E1.6c.2 ✅** — tabla exacta verificada: `N=2 → 1/1`, `N=50 → 1/49`; `count(Reserva Confirmada)==1`, `count(OutboxMessages)==1`, 0 filas outbox para las rechazadas.
+- **AC-E1.6c.3 ✅** — exactamente `1×201`, `N-1×409`, `0` excepciones no mapeadas; 1205 agotado → 409 (nunca 500); retries 1205 acotados a 3 (de 1.5). Collection `G1` aislada (`DisableParallelization=true`, contenedor propio) + stage CI secuencial aparte.
+- Reutiliza sin reimplementar: `CrearReserva` (1.6a), arbitraje (1.5), atomicidad+relay (1.6b). NO toca consumidor (E5) ni proyección (E3) — la deuda `[DEUDA-VERIF:E5/E3]` sigue en 1.6b.
+- **Cierra AC-E1 (productor).** Épica 1 completa: fundación ejecutable + anti-overbooking probado bajo concurrencia real.
+
 ### File List
+
+- `src/Servicios/Reservas/Reservas.Infrastructure/Persistencia/EjecutorTransaccional.cs` (1205 agotado → 409)
+- `.github/workflows/ci.yml` (partición `Category!=G1` paralelo + `Category=G1` secuencial)
+- `tests/Reservas.IntegrationTests/` — `SqlServerFixture.cs` (+`CadenaConexion`), `ReservaTestDataBuilder.cs`, `MoneyTestG1Tests.cs` (+ collection `G1`) (nuevos)
+
+### Change Log
+
+- 2026-07-08 · Story 1.6c · money test G1: arnés de concurrencia real (N `CrearReservaCommand` vía `Task.WhenAll`, scope DI por comando) sobre el pipeline de producción + `ReservaTestDataBuilder` + collection `G1` aislada + partición CI. `EjecutorTransaccional`: 1205 agotado → 409. Money test 3/3 (N=2/50/fuzz 30–100). Estado: `ready-for-dev` → `in-progress` → `review`.

@@ -4,7 +4,7 @@ baseline_commit: 6ea494b6dbf749787d56b883759d85a1cbbf8be6
 
 # Story 1.1: Esqueleto ejecutable de un comando (walking skeleton)
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -20,8 +20,9 @@ para **revisar la solución sin instalar el SDK de .NET ni los workloads de Aspi
 
 1. **AC-E1.1.1 — Arranque reproducible.** Dado un checkout limpio sin SDK de .NET instalado, cuando ejecuto `docker compose up`, entonces los servicios (`ApiGateway`, `Hoteles.Api`, `Reservas.Api`, `Notificaciones.Worker`) alcanzan estado *healthy* y `GET /health` responde `200` en cada servicio.
 2. **AC-E1.1.2 — Estructura y gobernanza desde el primer commit.** Existen 4 assemblies por BC (`.Domain`, `.Application`, `.Infrastructure`, `.Api`), `Directory.Packages.props` (CPM) y `Directory.Build.props` (`net10.0`, `Nullable`, `ImplicitUsings`, `TreatWarningsAsErrors` con `CA2016`); `NetArchTest` verifica que `Reservas.Domain` no referencia `Microsoft.EntityFrameworkCore`.
-3. **AC-E1.1.3 — CI verde y smoke test de compose.** En un push a `develop`, el pipeline pasa `build` + `dotnet format` + `gitleaks`, y el smoke test (`docker compose up` + verificación de `/health`) pasa, detectando *drift* del compose a mano (ADR-007).
+3. **AC-E1.1.3 — CI verde y smoke test de compose.** En cada push/PR a `develop` el pipeline pasa `build` + `dotnet format` + `dotnet test` + `gitleaks`. El **smoke test** (`docker compose up` + verificación de `/health`) corre en la **integración hacia `main`** (push/PR a `main`) —gate pesado, consistente con la arquitectura (E2E bloqueante en `main`)— detectando *drift* del compose a mano (ADR-007).
 4. **AC-E1.1.4 — Salto asíncrono real cableado (no un standing skeleton).** Dado el esqueleto en marcha, cuando un servicio publica un evento de prueba por Dapr pub/sub, entonces `Notificaciones.Worker` lo consume (publish→consume verificado de punta a punta), probando que el componente Dapr, la suscripción y el sidecar están cableados desde el día uno.
+   > **Estado: de-risked.** Se verificó en sesión (publish→consume con Dapr CLI + Redis) y luego se **retiró el mock** por decisión de Santiago (no dejar código de prueba en producción). El cableado Dapr **permanente** —con el evento real `ReservaConfirmada` + outbox— llega en 1.6b/E5. Ver Task 5.
 
 ## Tasks / Subtasks
 
@@ -46,18 +47,36 @@ para **revisar la solución sin instalar el SDK de .NET ni los workloads de Aspi
 - [x] **Task 4 — Salud, telemetría y recursos declarados (AC: 1 · impl.)**
   - [x] Cada servicio: `builder.AddServiceDefaults()` + `app.MapDefaultEndpoints()` (`/health`, `/alive`); `MapDefaultEndpoints` ajustado para exponer salud en todos los entornos (smoke Production)
   - [x] `AppHost` declara SQL Server ×2 + Redis + RabbitMQ + dashboard OTel (por `OTEL_EXPORTER_OTLP_ENDPOINT`)
-  - [ ] *(pendiente runtime)* verificar que los recursos alcanzan estado *healthy* al ejecutar
-- [ ] **Task 5 — Salto asíncrono real por Dapr pub/sub (AC: 4) — DIFERIDO (requiere Dapr CLI)**
-  - [x] Costura creada: puerto `IPublicadorEventos` en `Comun` (el adaptador Dapr se enchufa aquí)
-  - [x] Componentes Dapr placeholder en `deploy/dapr/` (`pubsub.yaml`, `statestore.yaml`)
-  - [ ] Endpoint de prueba que publica por Dapr + suscripción en el Worker + test publish→consume cross-proceso *(requiere Dapr CLI; se completa en la verificación de ejecución / con 1.6b–E5)*
-- [~] **Task 6 — `docker-compose` a mano + smoke test (AC: 1, 3) — AUTORADO, runtime no verificado**
+  - [x] **Verificado en runtime:** los 4 servicios alcanzan `(healthy)` bajo `docker compose up`
+- [x] **Task 5 — Salto asíncrono por Dapr pub/sub (AC: 4) — DE-RISKED en la 1.1; wiring real diferido a 1.6b/E5**
+  - [x] **Validado (de-risking):** se cableó `Dapr.AspNetCore` (publicador en Reservas + suscriptor en el Worker) y se **verificó publish→consume cross-proceso** con Dapr CLI 1.18 (`dapr init --slim`) + Redis — 2 eventos publicados (202) → Worker los consumió logueando los UUID v7. Evidencia en el Change Log.
+  - [x] **Mock retirado (decisión de Santiago):** el endpoint `/_smoke/ping` + la suscripción `/smoke` + el paquete `Dapr.AspNetCore` se **eliminaron** para no dejar código de prueba en producción. Reservas.Api y el Worker quedan como esqueletos limpios (solo `/health`).
+  - [x] Costura conservada: puerto `IPublicadorEventos` + envelope `EventoIntegracion` en `Comun`; componentes Dapr en `deploy/dapr/`.
+  - [ ] **Pendiente (1.6b/E5):** el cableado Dapr **permanente** con el evento real `ReservaConfirmada`, outbox transaccional y suscripción idempotente. *(AC-E1.1.4: el salto quedó de-risked, no cableado en el código de la 1.1.)*
+- [x] **Task 6 — `docker-compose` a mano + smoke test (AC: 1, 3) — VERIFICADO**
   - [x] `deploy/docker-compose.yml` (SQL ×2, Redis, RabbitMQ, dashboard Aspire, 4 servicios; `USER` no root, tags fijos, `HEALTHCHECK`, `Dockerfile` multi-stage parametrizado; secreto SQL por `.env`)
-  - [ ] *(pendiente runtime)* `docker compose up` en frío → `/health` 200 sin SDK
+  - [x] **Verificado:** `docker compose up` → 9 contenedores arriba, `/health` `200` en gateway:8080/hoteles:8081/reservas:8082/notificaciones:8083, los 4 `(healthy)`. *(Fix: RabbitMQ 5672 no se publica al host — rango reservado de Windows; los servicios lo alcanzan por la red interna.)*
 - [x] **Task 7 — CI en GitHub Actions (AC: 3)**
-  - [x] `.github/workflows/ci.yml`: `restore` + `dotnet format --verify-no-changes` + `build` (Release) + `dotnet test` + `gitleaks` (activos y verdes); job `smoke-compose` scaffolded (`if: false`) hasta verificar el stack
+  - [x] `.github/workflows/ci.yml`: `restore` + `dotnet format --verify-no-changes` + `build` (Release) + `dotnet test` + `gitleaks` (activos y verdes); job `smoke-compose` **habilitado** y gateado a push/PR a `main` (gate pesado de integración)
   - [x] `NetArchTest` incluido en el stage de test
 - [x] **Task 8 — Commit + push a `develop`** (autor Santiago Renteria, sin trailers)
+
+### Review Findings
+
+_bmad-code-review 2026-07-08 (Blind Hunter · Edge Case Hunter · Acceptance Auditor). Baseline `6ea494b..HEAD`._
+
+- [x] [Review][Decision] Smoke test no corre en `develop` — **Resuelto (decisión de Santiago): mantener gate a `main` + ajustar el texto de AC-E1.1.3** (patch aplicado). Consistente con la arquitectura (E2E bloqueante en `main`). `[.github/workflows/ci.yml]`
+- [x] [Review][Patch] Dashboard Aspire no recibe trazas — el OTLP del contenedor liga a `localhost`; falta `DOTNET_DASHBOARD_OTLP_ENDPOINT_URL: http://0.0.0.0:18889` (falla silenciosa; los servicios exportan a `aspire-dashboard:18889`). `[deploy/docker-compose.yml]`
+- [x] [Review][Patch] Residuo de scaffold `weatherforecast` en los `.http` (contradice "limpieza del scaffold"). `[src/Servicios/Hoteles/Hoteles.Api/Hoteles.Api.http:3, src/Servicios/Reservas/Reservas.Api/Reservas.Api.http:3]`
+- [x] [Review][Patch] `UseHttpsRedirection()` en APIs solo-HTTP tras el gateway (ruido en logs + footgun; HTTPS es responsabilidad del Gateway). `[Hoteles.Api/Program.cs, Reservas.Api/Program.cs]`
+- [x] [Review][Patch] Comentarios "AUTORADO — verificación pendiente" obsoletos (compose/Dockerfile ya verificados). `[Dockerfile, deploy/docker-compose.yml]`
+- [x] [Review][Patch] Robustez CI: pasar `--env-file deploy/.env` explícito al smoke (inmune a cómo Compose resuelve `.env`). `[.github/workflows/ci.yml]`
+- [x] [Review][Patch] Higiene: sin newline final en `Directory.Packages.props` y `Reservas.UnitTests.csproj` (no rompe CI —`dotnet format` pasa— pero contradice `insert_final_newline`).
+- [x] [Review][Defer] `gitleaks-action@v2` exige `GITLEAKS_LICENSE` en repos de organización — OK en cuenta personal; endurecer si se mueve a un org. — deferred
+- [x] [Review][Defer] `depends_on` semántica "started" (no "healthy") + infra sin healthchecks — inocuo hoy; sembrar `condition: service_healthy` cuando los servicios conecten a BD (Story 1.5+). — deferred
+- [x] [Review][Defer] El smoke da confianza parcial (apps `Healthy` aunque SQL caiga, no lo consumen aún) — aceptable en scope; revisitar con lógica de negocio. — deferred
+
+**Descartados (falsos positivos, verificados):** tag `rabbitmq:*-alpine` "inexistente" (la imagen corrió en el `compose up`); `.gitignore` no ignora `.env` (`git check-ignore` confirma que sí); CI de format falla por newline (el comando exacto `dotnet format --verify-no-changes` pasa); `aspire-dashboard:9.0` desalineado (imagen versionada aparte; corrió OK); nombres en inglés de `EventoIntegracion` (envelope transversal estilo CloudEvents en `Comun`, defendible).
 
 ## Dev Notes
 
@@ -176,10 +195,16 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 - **NetArchTest** (AC-E1.1.2) verde. Puerto `IPublicadorEventos` + `EventoIntegracion` en `Comun` (costura del salto async).
 - CI (`.github/workflows/ci.yml`): build + format + test + gitleaks activos; `docker-compose` + `Dockerfile` + componentes Dapr autorados; **cero secretos** (password SQL por `deploy/.env`, ignorado).
 
-**Pendiente (documentado, la historia queda `in-progress`):**
-- **AC-E1.1.4 (salto async real por Dapr):** DIFERIDO — requiere **Dapr CLI** (no instalado). La costura (`IPublicadorEventos` + componentes Dapr placeholder) queda lista; el publish→consume cross-proceso + su test se completan en la verificación de ejecución (con 1.6b/E5).
-- **AC-E1.1.1 (compose → healthy) y AC-E1.1.3 (smoke en CI):** el `docker-compose`/`Dockerfile` están autorados pero **no verificados en runtime** esta sesión (levantar SQL Server ×2 + broker es pesado); el job `smoke-compose` queda scaffolded (`if: false`). Verificación de runtime pendiente.
-- **Nota:** el SDK .NET 10 generó `HotelBookingHub.slnx` (no `.sln`); referencias en README/docs pueden actualizarse.
+**Verificado en runtime (cierre de la historia):**
+- **AC-E1.1.4 (salto async por Dapr):** ⚠️ **de-risked, no cableado en el código final.** Se verificó publish→consume cross-proceso (Dapr CLI 1.18 + Redis, 2 eventos consumidos) y luego se **retiró el mock** (`/_smoke/ping` + suscripción + `Dapr.AspNetCore`) por decisión de Santiago para no dejar código de prueba. El cableado Dapr **permanente** (con `ReservaConfirmada` + outbox) llega en 1.6b/E5. La costura (`IPublicadorEventos`/`EventoIntegracion`) queda en `Comun`.
+- **AC-E1.1.1 (compose → healthy):** ✅ `docker compose up` → 9 contenedores; `/health` `200` en los 4 servicios, todos `(healthy)`. Sin SDK (imágenes autocontenidas). Fix aplicado: RabbitMQ 5672 no publicado al host (rango reservado de Windows).
+- **AC-E1.1.3 (CI):** ✅ build + format + test + gitleaks verificados; `smoke-compose` verificado localmente y habilitado en CI (gate a `main`).
+
+**Notas / gotchas (para tener presentes en la implementación):**
+- El SDK .NET 10 generó `HotelBookingHub.slnx` (no `.sln`).
+- Windows reserva rangos de puertos (WSL/Hyper-V): 6060 (Dapr scheduler → `dapr init --slim`) y 5672 (RabbitMQ AMQP → no publicar al host).
+- `dotnet run` bajo Dapr requiere `--no-launch-profile` para respetar el `--app-port`.
+- **AC-E1.1.1/1.1.2/1.1.3 verificados**; **AC-E1.1.4 de-risked** (mock retirado; wiring Dapr real en 1.6b/E5) → esqueleto listo para review.
 
 ### File List
 
@@ -188,7 +213,7 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 - `Dockerfile`, `.dockerignore` (nuevos)
 - `.editorconfig` (modificado: regla naming const→PascalCase), `.gitignore` (modificado: `.env` + excepción `.env.example`)
 - `.github/workflows/ci.yml` (nuevo)
-- `deploy/docker-compose.yml`, `deploy/.env.example`, `deploy/dapr/pubsub.yaml`, `deploy/dapr/statestore.yaml` (nuevos)
+- `deploy/docker-compose.yml` (RabbitMQ AMQP no publicado al host), `deploy/.env.example`, `deploy/dapr/pubsub.yaml`, `deploy/dapr/statestore.yaml`, `deploy/dapr/local/pubsub.yaml` (nuevos)
 - `src/AppHost/AppHost/AppHost.cs` (modificado), `src/AppHost/AppHost/AppHost.csproj` (refs)
 - `src/AppHost/ServiceDefaults/Extensions.cs` (modificado: salud en todos los entornos), `ServiceDefaults.csproj`
 - `src/ApiGateway/{ApiGateway.csproj, Program.cs, appsettings.json}` (modificados)
@@ -200,4 +225,6 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 
 ### Change Log
 
-- 2026-07-08 · Story 1.1 · esqueleto ejecutable: solución + CPM + estructura 4-assemblies/BC + Aspire + YARP + health + NetArchTest + CI + compose (autorado). Build/test/format verdes. Dapr async jump y verificación de compose en runtime: pendientes (Dapr CLI / stack pesado). Estado: `in-progress`.
+- 2026-07-08 · Story 1.1 · esqueleto ejecutable: solución + CPM + estructura 4-assemblies/BC + Aspire + YARP + health + NetArchTest + CI + compose. Build/test/format verdes.
+- 2026-07-08 · Verificación de runtime: salto async Dapr (publish→consume) OK; `docker compose up` → 4 servicios `(healthy)`, `/health` 200; `smoke-compose` habilitado en CI (gate a `main`). Estado: `in-progress` → `review`.
+- 2026-07-08 · Limpieza (decisión de Santiago): retirado el mock del salto async (`/_smoke/ping` + suscripción `/smoke` + paquete `Dapr.AspNetCore`) para no dejar código de prueba en producción. Reservas.Api y Worker quedan como esqueletos limpios (`/health`). Salto Dapr queda **de-risked** (verificado en sesión); wiring real con `ReservaConfirmada` en 1.6b/E5. Build/test/format verdes.

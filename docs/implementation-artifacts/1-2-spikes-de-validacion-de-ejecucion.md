@@ -1,6 +1,10 @@
+---
+baseline_commit: 99dec38cfbbefc7a769b6802797d7f1c1e6c2554
+---
+
 # Story 1.2: Spikes de validación de ejecución (Sprint 0, timeboxed)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -20,21 +24,21 @@ para **confirmar el diseño (o disparar el Plan B) antes de invertir en el core*
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Spike de arbitraje 2627/1205 (AC: 1)**
-  - [ ] Tabla temporal `NochesHabitacion(HabitacionId, Noche, ReservaId)` con `UNIQUE(HabitacionId, Noche)` sobre Testcontainers.MsSql
-  - [ ] Test que lanza 2..N INSERT concurrentes sobre la misma `(HabitacionId, Noche)` bajo `READ COMMITTED`
-  - [ ] Clasificar por `SqlException.Number`: `2627`/`2601` (único) vs `1205` (deadlock); **pattern matching por Number, nunca por mensaje**
-  - [ ] Confirmar: exactamente 1 gana; los perdedores por único son determinísticos (409 sin retry); 1205 es reintentable
-  - [ ] **Go/no-go documentado.** Si no cierra en el timebox → activar Plan B (SERIALIZABLE sin retry) y registrarlo
-- [ ] **Task 2 — Spike del pipeline del mediator (AC: 2)**
-  - [ ] `IRequestHandler<TRequest,TResponse>` con `Task<TResponse> Handle(TRequest, CancellationToken)`, `TResponse = Result/Result<T>`
-  - [ ] Behaviors como decorators `IPipelineBehavior<,>`: `Logging → Validation → Transaction → Outbox → Handler`
-  - [ ] Comando trivial que escribe una fila de dominio + una fila `OutboxMessages` en el **mismo** `SaveChangesAsync`
-  - [ ] Test que verifica orden de composición y atomicidad (dominio + outbox en la misma tx)
-- [ ] **Task 3 — Destilar el aprendizaje (AC: 3)**
-  - [ ] Guardar snippets de referencia (clasificación de `SqlException`, `TransactionBehavior` con retry 1205, registro `AddMediatorPipeline`) en un doc consumible (p. ej. `docs/implementation-artifacts/spikes-referencia.md`)
-  - [ ] Registrar la decisión go/no-go (y Plan B si aplica)
-- [ ] **Task 4 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Spike de arbitraje 2627/1205 (AC: 1)**
+  - [x] Tabla temporal `NochesHabitacion(HabitacionId, Noche, ReservaId)` con `UNIQUE(HabitacionId, Noche)` sobre Testcontainers.MsSql
+  - [x] Test que lanza 2..N INSERT concurrentes sobre la misma `(HabitacionId, Noche)` bajo `READ COMMITTED`
+  - [x] Clasificar por `SqlException.Number`: `2627`/`2601` (único) vs `1205` (deadlock); **pattern matching por Number, nunca por mensaje**
+  - [x] Confirmar: exactamente 1 gana; los perdedores por único son determinísticos (409 sin retry); 1205 es reintentable
+  - [x] **Go/no-go documentado.** Si no cierra en el timebox → activar Plan B (SERIALIZABLE sin retry) y registrarlo
+- [x] **Task 2 — Spike del pipeline del mediator (AC: 2)**
+  - [x] `IRequestHandler<TRequest,TResponse>` con `Task<TResponse> Handle(TRequest, CancellationToken)`, `TResponse = Result/Result<T>`
+  - [x] Behaviors como decorators `IPipelineBehavior<,>`: `Logging → Validation → Transaction → Outbox → Handler`
+  - [x] Comando trivial que escribe una fila de dominio + una fila `OutboxMessages` en el **mismo** `SaveChangesAsync`
+  - [x] Test que verifica orden de composición y atomicidad (dominio + outbox en la misma tx)
+- [x] **Task 3 — Destilar el aprendizaje (AC: 3)**
+  - [x] Guardar snippets de referencia (clasificación de `SqlException`, `TransactionBehavior` con retry 1205, registro `AddMediatorPipeline`) en un doc consumible (p. ej. `docs/implementation-artifacts/spikes-referencia.md`)
+  - [x] Registrar la decisión go/no-go (y Plan B si aplica)
+- [x] **Task 4 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
 
 ## Dev Notes
 
@@ -92,8 +96,30 @@ El `architecture.md` declara **"diseño completo, ejecución NO validada"**. Est
 
 ### Agent Model Used
 
+Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
+
 ### Debug Log References
+
+- Spike ejecutado fuera del repo (scratchpad, throwaway). `dotnet test` → **3/3 Passed**:
+  - `ArbitrajeSpike.Indice_unico_arbitra_N_inserciones_concurrentes` → `N=50 | confirmadas=1 | conflicto-unico(2627/2601)=49 | deadlock(1205)=0 | otros=0` (Testcontainers.MsSql, SQL Server 2022 real).
+  - `MediatorSpike.Pipeline_compone_en_orden_canonico` → `orden = Logging → Validation → Transaction → Outbox → Handler`.
+  - `MediatorSpike.Dominio_y_outbox_comparten_un_solo_SaveChanges` → `filas afectadas en un SaveChanges = 2`; rollback → sin residuo.
 
 ### Completion Notes List
 
+**Decisión: GO en ambos spikes (sin Plan B).** El código del spike era desechable y se eliminó; el aprendizaje persiste en [spikes-referencia.md](spikes-referencia.md).
+- **AC-E1.2.1 ✅** — el índice `UNIQUE(HabitacionId, Noche)` arbitra bajo READ COMMITTED; clasificación por `SqlException.Number` (2627/2601 vs 1205) validada; cero overbooking (1 fila). No hace falta `SERIALIZABLE`.
+- **AC-E1.2.2 ✅** — pipeline compone en orden canónico; dominio + outbox en un solo `SaveChangesAsync` (atómico, rollback todo-o-nada).
+- **AC-E1.2.3 ✅** — snippets de referencia + decisión go/no-go en `spikes-referencia.md` (alimentan 1.5 y 1.6b).
+- Nota: 0×1205 en la corrida (inserción de fila única → gana por PK 2627, nominal); la ruta de retry de 1205 queda codificada/reservada para el patrón batch de 1.5/1.6c.
+- Sin impacto en la solución ni en el CI (spike fuera del repo). `dotnet build`/`test` del repo intactos.
+
 ### File List
+
+- `docs/implementation-artifacts/spikes-referencia.md` (nuevo — artefacto persistente del spike)
+- *(código del spike: throwaway, fuera del repo, eliminado — no versionado)*
+
+### Change Log
+
+- 2026-07-08 · Story 1.2 · spikes de Sprint 0 ejecutados (Testcontainers.MsSql + SQLite): arbitraje 2627/1205 y wiring del mediator validados empíricamente. **GO** en ambos, sin Plan B. Aprendizaje destilado en `spikes-referencia.md`; código throwaway eliminado. Estado: `in-progress` → `review`.
+- 2026-07-08 · Cierre: `review` → `done` (decisión de Santiago). Se omite el code-review formal por ser un spike sin código productivo (el único artefacto es el doc de referencia).

@@ -1,6 +1,7 @@
 @Hoteles.Api_HostAddress = http://localhost:5047
 
-GET {{Hoteles.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+# Health del servicio (Story 1.1). Los endpoints de negocio (CAP-1/2) llegan en la Épica 2.
+GET {{Hoteles.Api_HostAddress}}/health
+Accept: text/plain
 
 ###

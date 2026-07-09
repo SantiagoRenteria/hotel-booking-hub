@@ -1,6 +1,10 @@
+---
+baseline_commit: c1f278c9c68fcaeb00cff905de5890c9ffc4bab9
+---
+
 # Story 1.3: Contrato del evento `ReservaConfirmada` (claves de dedup y orden congeladas)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -20,20 +24,20 @@ para **poder deduplicar y ordenar sin acoplarme a la implementación del product
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Definir el envelope de evento en `Comun` (AC: 1)**
-  - [ ] Tipo `EventoIntegracion` (o envelope) en `src/Comun/HotelBookingHub.Comun/Eventos/` con `{ id, type, version, occurredAt, traceId, data }`
-  - [ ] `type` en formato PascalCase español + semver (`ReservaConfirmada.v1`)
-  - [ ] `id` = `MessageId` (dedup key); `data` incluye `aggregateId` y `version` (order key)
-  - [ ] Serialización System.Text.Json `camelCase`; enums como string; `DateTimeOffset` ISO 8601; `decimal` para dinero
-- [ ] **Task 2 — Payload `ReservaConfirmada.v1` (AC: 1)**
-  - [ ] DTO del `data` de `ReservaConfirmada` con los campos que consumirán Notificaciones (huésped, agente, hotel, estancia, precio) y `aggregateId`/`version`
-  - [ ] Documentar en el propio archivo: dedup key → la consume E5; order key → la consume E3
-- [ ] **Task 3 — Contract test de snapshot (AC: 1)**
-  - [ ] Proyecto `tests/Contracts/` (sin containers, rápido, corre en cada PR)
-  - [ ] Test que serializa un `ReservaConfirmada.v1` de ejemplo y lo compara contra un snapshot/JSON Schema versionado
-  - [ ] Verificar presencia y no-nulidad de `id`, `type` (con semver), `aggregateId`, `version`
-  - [ ] Un cambio incompatible en esas claves **rompe** el test
-- [ ] **Task 4 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Definir el envelope de evento en `Comun` (AC: 1)**
+  - [x] Tipo `EventoIntegracion` (o envelope) en `src/Comun/HotelBookingHub.Comun/Eventos/` con `{ id, type, version, occurredAt, traceId, data }`
+  - [x] `type` en formato PascalCase español + semver (`ReservaConfirmada.v1`)
+  - [x] `id` = `MessageId` (dedup key); `data` incluye `aggregateId` y `version` (order key)
+  - [x] Serialización System.Text.Json `camelCase`; enums como string; `DateTimeOffset` ISO 8601; `decimal` para dinero
+- [x] **Task 2 — Payload `ReservaConfirmada.v1` (AC: 1)**
+  - [x] DTO del `data` de `ReservaConfirmada` con los campos que consumirán Notificaciones (huésped, agente, hotel, estancia, precio) y `aggregateId`/`version`
+  - [x] Documentar en el propio archivo: dedup key → la consume E5; order key → la consume E3
+- [x] **Task 3 — Contract test de snapshot (AC: 1)**
+  - [x] Proyecto `tests/Contracts/` (sin containers, rápido, corre en cada PR)
+  - [x] Test que serializa un `ReservaConfirmada.v1` de ejemplo y lo compara contra un snapshot/JSON Schema versionado
+  - [x] Verificar presencia y no-nulidad de `id`, `type` (con semver), `aggregateId`, `version`
+  - [x] Un cambio incompatible en esas claves **rompe** el test
+- [x] **Task 4 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
 
 ## Dev Notes
 
@@ -86,8 +90,29 @@ para **poder deduplicar y ordenar sin acoplarme a la implementación del product
 
 ### Agent Model Used
 
+Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
+
 ### Debug Log References
+
+- `dotnet test tests/Contracts` → **2/2 Passed** (`Envelope_conserva_sus_claves_y_el_type_lleva_semver`, `Data_conserva_las_claves_congeladas_y_los_formatos`).
+- `dotnet build` 0 errores/0 warnings (TreatWarningsAsErrors); `dotnet format --verify-no-changes` limpio.
+- Fix de CPM: el template de `Contracts.csproj` traía `Version=` inline → removido (versiones en `Directory.Packages.props`). Fix de naming: campo `_opciones` (regla `_camelCase` del `.editorconfig`).
 
 ### Completion Notes List
 
+- **AC-E1.3.1 ✅** — contract test que congela la **forma** de `ReservaConfirmada.v1`:
+  - Envelope `{ id, type, version, occurredAt, traceId, data }`; `type` con semver (`ReservaConfirmada.v1`); `id` (dedup key) presente y no vacío; `version` (order key, parte 2) presente.
+  - `data` con claves congeladas (`aggregateId` = order key parte 1, + hotel/habitación/estancia/huésped/agente/precio); `DateOnly` como `yyyy-MM-dd`; dinero como `decimal` (número, no string).
+  - Un rename/quita de cualquier clave **rompe** el test. Documentado: dedup key → E5; order key → E3.
+- **Alcance:** solo forma. La semántica (dedupe/orden) se prueba en E5/E3. No hay relay ni consumidor aquí.
+- `EventoIntegracion` (envelope) ya existía desde 1.1; esta historia añadió el payload tipado + el contract test en un proyecto `Contracts` nuevo (rápido, sin containers, corre en cada PR vía `dotnet test`).
+
 ### File List
+
+- `src/Comun/HotelBookingHub.Comun/Eventos/ReservaConfirmadaV1.cs` (nuevo — payload tipado)
+- `tests/Contracts/Contracts.csproj` (nuevo; versiones vía CPM), `tests/Contracts/ContratoReservaConfirmadaTests.cs` (nuevo)
+- `HotelBookingHub.slnx` (añadido el proyecto `Contracts`)
+
+### Change Log
+
+- 2026-07-08 · Story 1.3 · contrato de `ReservaConfirmada.v1`: payload tipado en `Comun` + contract test de forma en `tests/Contracts` (2/2). Congela dedup key (`id`) y order key (`aggregateId`+`version`). Estado: `in-progress` → `review`.
