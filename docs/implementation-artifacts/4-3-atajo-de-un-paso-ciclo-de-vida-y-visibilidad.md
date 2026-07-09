@@ -4,7 +4,7 @@ baseline_commit: c706c941ef4221da7a8ad41b5cf66582ccae5b7d
 
 # Story 4.3: Atajo de un paso, ciclo de vida y visibilidad
 
-Status: in-progress
+Status: review
 
 <!-- Generado por bmad-create-story. Complejidad NORMAL-ALTA (compone 4.1+4.2; añade query de visibilidad).
 BDD (Given/When/Then) + TDD Red→Green. Sin Task 0 propio: reutiliza el modelo de dominio de 4.1/4.2. -->
@@ -38,17 +38,17 @@ expiración automática).
 > - **Handler del atajo:** compone `SolicitarCancelacion` (4.1) + `Resolver` (4.2) sobre el MISMO agregado trackeado (`ObtenerConNochesAsync`) → un `SaveChanges` → dos `Encolar`. Encolar SolicitudCancelacionRegistrada ANTES que la resolución; ambos con `AggregateId = ReservaId`.
 > - **Tests obligatorios (Murat):** atajo-aprobado → exactamente {Registrada, ReservaCancelada} (2 filas); atajo-rechazo → {Registrada, Rechazada} y `Count(ReservaCancelada)==0`; estabilidad de MessageId ante 1205 forzado (2 filas, no 4); **colisión de MessageId → 500 (no 409) + test gemelo overbooking → 409**; regresión mono-evento (`CrearReserva` = 1 fila, id == comando); money-test G1 sigue verde; guard relajado a N pero fail-fast.
 
-- [ ] **Task 1 — Atajo de un paso (AC: 1)** *(TDD + BDD)*
-  - [ ] `CancelarEnUnPasoCommand` + handler que compone solicitar + resolver en UNA transacción, emitiendo **ambos** eventos (solicitud y resolución) por outbox → auditoría completa. Reutiliza las transiciones de dominio de 4.1/4.2 (no duplicar lógica).
-- [ ] **Task 2 — Guards del ciclo de vida (AC: 2)** *(tests de tabla)*
-  - [ ] Test exhaustivo de la matriz de transiciones del agregado (`Confirmada → CancelacionSolicitada → {Cancelada | Confirmada}`); toda transición no permitida (p. ej. `Cancelada → *`, `Confirmada → Cancelada` directo fuera del atajo) → rechazada por guard. Cierra AC-E4.3.2 a nivel de dominio.
-- [ ] **Task 3 — Visibilidad de pendientes con antigüedad (AC: 3)** *(TDD)*
-  - [ ] `ListarCancelacionesPendientesQuery` (o extender el listado de 3.3) → ítems con "días en espera" = `hoy - fechaSolicitud` (reloj inyectable). Aislado por agente (`IContextoAgente`, patrón 3.3). Sin expiración automática (solo se expone la antigüedad).
-- [ ] **Task 4 — Endpoints (AC: 1, 3)**
-  - [ ] Atajo: `POST /api/v1/reservas/{id}/cancelaciones/atajo` (solicitar+resolver). Visibilidad: `GET /api/v1/reservas/cancelaciones-pendientes`. Result→HTTP.
-- [ ] **Task 5 — Tests (unit + integración Testcontainers)**
-  - [ ] BDD del atajo (Given confirmada → When atajo → Then ambos eventos + estado final). Matriz de guards. Antigüedad correcta (reloj fijo). Aislamiento por agente.
-- [ ] **Task 6 — Commits TDD (Red→Green) + BDD en rama `feature/4-3-atajo-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Atajo de un paso (AC: 1)** *(TDD + BDD)*
+  - [x] `CancelarEnUnPasoCommand` + handler que compone `SolicitarCancelacion` (4.1) + `Resolver` (4.2) en UNA transacción, emitiendo **ambos** eventos por el outbox multi-evento (Task 0) → auditoría completa. No duplica lógica de transición.
+- [x] **Task 2 — Guards del ciclo de vida (AC: 2)** *(tests de tabla)*
+  - [x] `CicloDeVidaCancelacionTests`: matriz de transiciones (`Confirmada → CancelacionSolicitada → {Cancelada | Confirmada}`); prohibidas (`Cancelada → *`, `Confirmada → Cancelada` directo, doble solicitud) → guard. Cierra AC-E4.3.2.
+- [x] **Task 3 — Visibilidad de pendientes con antigüedad (AC: 3)** *(TDD)*
+  - [x] `ListarCancelacionesPendientesQuery` → ítems con "días en espera" = `hoy - fechaSolicitud` (reloj inyectable). Aislado por agente (`IContextoAgente`). Sin expiración automática. Puerto `ILectorCancelacionesPendientes` + SQL.
+- [x] **Task 4 — Endpoints (AC: 1, 3)**
+  - [x] Atajo: `POST /api/v1/reservas/{id}/cancelaciones/atajo`. Visibilidad: `GET /api/v1/reservas/cancelaciones-pendientes`. Result→HTTP.
+- [x] **Task 5 — Tests (unit + integración Testcontainers)**
+  - [x] BDD del atajo (ambos eventos + estado final + slot). Matriz de guards. Antigüedad correcta (reloj fijo). Aislamiento por agente. + gemelos de clasificación 2627 (overbooking/outbox) y outbox multi-evento en BD real.
+- [x] **Task 6 — Commits TDD (Red→Green) + BDD en rama `feature/4-3-atajo-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
 
 ## Dev Notes
 
@@ -80,10 +80,46 @@ expiración automática).
 
 ### Agent Model Used
 
+claude-opus-4-8 (Amelia, dev-story) — 2026-07-09.
+
 ### Debug Log References
+
+- Suite completa verde: 349 tests, 0 fallos (Reservas.UnitTests 147, Reservas.IntegrationTests 47, Contracts 21, Comun.Web 15, Hoteles 100+19).
+- TDD Red→Green visible en commits (`test(4.3): RED …` → `feat(4.3): GREEN …`) para el outbox multi-evento, la clasificación por entidad, el atajo y la visibilidad; BDD en dominio e integración.
 
 ### Completion Notes List
 
+- **Task 0 (party-mode, Opción A-completa) implementada:** outbox multi-evento por comando con `MessageId` POR-MENSAJE derivado (`ColaOutbox`: ordinal 0 = MessageId del comando → cero cambio para mono-evento; ordinal>0 = MD5(semilla+ordinal), estable ante retry 1205). Desacople identidad↔clasificación por ENTIDAD ofensora en `EjecutorTransaccional` (`DbUpdateException.Entries`): `NocheHabitacion`→409, otra violación de único (MessageId outbox)→500. **Cierra el diferido de 1.6b.**
+- **AC-E4.3.1 (atajo):** `CancelarEnUnPasoCommand` compone `SolicitarCancelacion` + `Resolver` sobre el mismo agregado trackeado → un `SaveChanges` → DOS eventos (`SolicitudCancelacionRegistrada` + `ReservaCancelada`/`SolicitudCancelacionRechazada`), verificado en BD real (2 filas, MessageId distinto, sin violar UNIQUE).
+- **AC-E4.3.2 (guards):** matriz del ciclo de vida cubierta; transiciones fuera de `Confirmada→CancelacionSolicitada→{Cancelada|Confirmada}` → `TransicionEstadoInvalidaException`.
+- **AC-E4.3.3 (visibilidad):** `ListarCancelacionesPendientesQuery` con "días en espera" (reloj inyectable), aislada por agente, sin expiración automática.
+- No duplica lógica de transición; reutiliza el reloj inyectable y el patrón de query/aislamiento de 3.3.
+
 ### File List
 
+**Comun:** (sin cambios de eventos; reutiliza los de 4.1/4.2)
+
+**Infraestructura (Reservas.Infrastructure):**
+- `Mensajeria/ColaOutbox.cs` (M — MessageId por-mensaje derivado; quita el guard "1 evento")
+- `Persistencia/EjecutorTransaccional.cs` (M — clasificación del 2627 por entidad)
+- `Proyeccion/LectorCancelacionesPendientesSql.cs` (A)
+- `RegistroInfraestructura.cs` (M — registra el lector)
+
+**Aplicación (Reservas.Application):**
+- `Reservas/CancelarEnUnPaso/{CancelarEnUnPasoCommand,CancelarEnUnPasoCommandValidator,CancelarEnUnPasoCommandHandler}.cs` (A)
+- `Reservas/ListarCancelacionesPendientes/{ListarCancelacionesPendientesQuery,ListarCancelacionesPendientesQueryHandler}.cs` (A)
+- `Abstracciones/ILectorCancelacionesPendientes.cs` (A)
+
+**Api:** `Reservas.Api/Program.cs` (M — endpoints atajo + visibilidad)
+
+**Tests:**
+- `Reservas.UnitTests/Outbox/ColaOutboxGuardTests.cs` (M — multi-evento)
+- `Reservas.UnitTests/Dominio/CicloDeVidaCancelacionTests.cs` (A)
+- `Reservas.UnitTests/Reservas/CancelarEnUnPaso/CancelarEnUnPasoCommandHandlerTests.cs` (A)
+- `Reservas.UnitTests/Reservas/ListarCancelacionesPendientes/ListarCancelacionesPendientesQueryHandlerTests.cs` (A)
+- `Reservas.IntegrationTests/OutboxClasificacionConflictoTests.cs` (A)
+- `Reservas.IntegrationTests/AtajoYVisibilidadCancelacionTests.cs` (A)
+
 ### Change Log
+
+- 2026-07-09 — Story 4.3 implementada (outbox multi-evento + atajo + visibilidad). Cierra la Épica 4. Estado → review.
