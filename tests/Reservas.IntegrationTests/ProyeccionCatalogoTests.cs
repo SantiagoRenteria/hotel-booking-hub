@@ -73,8 +73,10 @@ public sealed class ProyeccionCatalogoTests(SqlServerFixture fixture)
 
         var evento = Envelope(messageId, HabitacionAgregadaV1.Tipo, 1,
             new HabitacionAgregadaV1(hab, hotel, "Suite", 100m, 19m, "Piso 3", "Habilitada", "Cali", 2));
-        await ProcesarAsync(evento);
-        await ProcesarAsync(evento); // reentrega exacta
+        for (var i = 0; i < 4; i++)
+        {
+            await ProcesarAsync(evento); // misma entrega ×4 (at-least-once agresivo)
+        }
 
         await using var verify = fixture.CrearContexto();
         Assert.Equal(1, await verify.ProyeccionesHabitacion.CountAsync(p => p.HabitacionId == hab));

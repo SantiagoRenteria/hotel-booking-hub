@@ -23,21 +23,28 @@ public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventos
     public async Task ProcesarAsync(EventoIntegracion evento, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+
+        // El inbox se inserta en su PROPIO SaveChanges (dentro de la misma transacción): así una violación de
+        // único aquí es INEQUÍVOCAMENTE el dedup del MessageId (no se puede confundir con la PK de la proyección).
+        // Un evento ya procesado → no-op idempotente (rollback de la tx vacía). Cualquier OTRA violación (p. ej.
+        // la PK de ProyeccionHabitacion en una carrera de creación concurrente) NO se traga: se propaga para que
+        // el transporte at-least-once reentregue y converja — nunca se pierde en silencio.
+        db.MensajesProcesados.Add(MensajeProcesado.Crear(evento.Id, DateTimeOffset.UtcNow));
         try
         {
-            db.MensajesProcesados.Add(MensajeProcesado.Crear(evento.Id, DateTimeOffset.UtcNow));
-            await AplicarAsync(evento, ct);
-
-            await db.SaveChangesAsync(ct); // inbox + proyección: mismo SaveChanges, misma transacción
-            await tx.CommitAsync(ct);
+            await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateException ex)
             when (ex.InnerException is SqlException sql && ClasificacionSqlServer.EsViolacionDeUnico(sql.Number))
         {
-            // MessageId ya procesado: el evento es un duplicado → no-op idempotente (todo revierte).
             await tx.RollbackAsync(ct);
             db.ChangeTracker.Clear();
+            return;
         }
+
+        await AplicarAsync(evento, ct);
+        await db.SaveChangesAsync(ct); // proyección; commitea junto con el inbox
+        await tx.CommitAsync(ct);
     }
 
     private async Task AplicarAsync(EventoIntegracion evento, CancellationToken ct)
