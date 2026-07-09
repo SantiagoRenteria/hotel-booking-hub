@@ -54,7 +54,8 @@ public sealed class InboxIdempotenciaRedisTests(RedisFixture fixture)
         var id = Guid.CreateVersion7();
 
         Assert.True(await inbox.IntentarMarcarProcesadoAsync(id, 1, "huesped", CancellationToken.None));
-        await Task.Delay(TimeSpan.FromMilliseconds(1500));
+        // Margen amplio sobre el TTL de 1s para no flakear bajo carga de contenedores en paralelo (CI).
+        await Task.Delay(TimeSpan.FromMilliseconds(2500));
 
         // Expirada la clave, una re-entrega tardía puede re-reservar (el TTL debe superar la ventana del broker).
         Assert.True(await inbox.IntentarMarcarProcesadoAsync(id, 1, "huesped", CancellationToken.None));

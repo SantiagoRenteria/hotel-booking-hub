@@ -28,7 +28,9 @@ public sealed class ContratoSolicitudCancelacionRegistradaTests
             MotivoCategoria: "CambioDePlanes",
             MotivoDetalle: "El viajero ya no puede asistir.",
             PenalidadPorcentaje: 100m,
-            FechaSolicitud: new DateOnly(2026, 8, 20)));
+            FechaSolicitud: new DateOnly(2026, 8, 20),
+            HuespedEmail: "andres@example.com",
+            AgenteEmail: "carolina@agencia.com"));
 
     [Fact]
     public void Envelope_conserva_sus_claves_y_el_type_lleva_semver()
@@ -51,8 +53,11 @@ public sealed class ContratoSolicitudCancelacionRegistradaTests
         var data = JsonNode.Parse(JsonSerializer.Serialize(EventoDeEjemplo(), _opciones))!["data"]!.AsObject();
 
         Assert.Equal(
-            new[] { "aggregateId", "iniciador", "motivoCategoria", "motivoDetalle", "penalidadPorcentaje", "fechaSolicitud" }
-                .OrderBy(k => k),
+            new[]
+            {
+                "aggregateId", "iniciador", "motivoCategoria", "motivoDetalle", "penalidadPorcentaje", "fechaSolicitud",
+                "huespedEmail", "agenteEmail", // enriquecimiento aditivo Story 5.2 (destinatarios de la notificación)
+            }.OrderBy(k => k),
             data.Select(p => p.Key).OrderBy(k => k));
 
         // Order key (parte 1) = ReservaId: aggregateId presente y no vacío.
@@ -62,11 +67,39 @@ public sealed class ContratoSolicitudCancelacionRegistradaTests
         // Penalidad como número decimal, nunca string.
         Assert.Equal(JsonValueKind.Number, data["penalidadPorcentaje"]!.GetValueKind());
         Assert.Equal(100m, data["penalidadPorcentaje"]!.GetValue<decimal>());
+        // Destinatarios de la notificación (Story 5.2): presentes en el contrato.
+        Assert.Equal("andres@example.com", (string?)data["huespedEmail"]);
+        Assert.Equal("carolina@agencia.com", (string?)data["agenteEmail"]);
     }
 
     [Fact]
     public void El_tipo_lleva_el_nombre_y_semver_esperados()
     {
         Assert.Equal("SolicitudCancelacionRegistrada.v1", SolicitudCancelacionRegistradaV1.Tipo);
+    }
+
+    [Fact]
+    public void Compatibilidad_aditiva_un_payload_del_esquema_previo_deserializa_con_emails_null()
+    {
+        // Story 5.2: los emails se añadieron de forma ADITIVA. Un payload del esquema PREVIO (sin
+        // huespedEmail/agenteEmail) debe seguir deserializando; los campos aditivos caen a null.
+        const string jsonPrevio =
+            """
+            {
+              "aggregateId": "019f43ef-0000-7000-8000-0000000001aa",
+              "iniciador": "Viajero",
+              "motivoCategoria": "CambioDePlanes",
+              "motivoDetalle": "El viajero ya no puede asistir.",
+              "penalidadPorcentaje": 100,
+              "fechaSolicitud": "2026-08-20"
+            }
+            """;
+
+        var data = JsonSerializer.Deserialize<SolicitudCancelacionRegistradaV1>(jsonPrevio, _opciones)!;
+
+        Assert.Equal("Viajero", data.Iniciador);        // los campos previos siguen mapeando
+        Assert.Equal(100m, data.PenalidadPorcentaje);
+        Assert.Null(data.HuespedEmail);                 // los aditivos ausentes → null (no rompe)
+        Assert.Null(data.AgenteEmail);
     }
 }
