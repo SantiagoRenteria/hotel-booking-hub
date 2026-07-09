@@ -4,7 +4,7 @@ baseline_commit: d4cf800
 
 # Story 1.6a: Crear-confirmar reserva — validación y happy path
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -40,6 +40,15 @@ para **obtener alojamiento con confirmación inmediata**.
   - [x] Unit de Application: huésped inválido→400 (cada campo), contacto emergencia ausente→400, happy path→201 con precio correcto; pipeline (Validation corta antes del handler); mapeo Result→HTTP (201/400/409/404)
   - [x] `IPublicadorEventos` fake in-memory registrado en los tests
 - [x] **Task 5 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings (code review 2026-07-08)
+
+- [x] [Review][Patch] La clase base `Result` no implementa `IResultadoInvalidable<Result>`; un futuro `IRequest<Result>` (command sin payload) se saltaría el `ValidationBehavior` en silencio (MS DI omite el open generic cuya restricción no se cumple). **Resuelto:** `Result` ahora implementa `IResultadoInvalidable<Result>`. `[Comun/Resultados/Result.cs]`
+- [x] [Review][Patch] Sin tope de noches, una estancia de años genera cientos de miles de slots en una tx (DoS alcanzable con entrada bien formada). **Resuelto:** regla `MaxNoches = 365` en `CrearReservaCommandValidator` + test. `[CrearReservaCommandValidator.cs]`
+- [x] [Review][Patch] AC-E1.6a.2/.3 piden que el 400 enumere los campos inválidos; los tests solo comprobaban el status code. **Resuelto:** `PipelineTests` asevera que `Result.Errores` contiene la clave del campo inválido. `[tests/.../PipelineTests.cs]`
+- [x] [Review][Defer] `Sender` compone por reflexión (`MethodInfo.Invoke`): un handler/behavior NO-`async` que lance síncrono saldría envuelto en `TargetInvocationException`. Latente (todos los handlers actuales son `async`). Al añadir el `TransactionBehavior` (1.6b), desenvolver `InnerException` en el `Sender`. `[Comun/Mensajeria/Sender.cs]` — deferido a 1.6b.
+- [x] [Review][Defer] La capacidad de la habitación no se contrasta con el nº de huéspedes (una habitación de capacidad 2 acepta 10). Regla de negocio de búsqueda/catálogo. `[CrearReservaCommandHandler.cs]` — deferido a E3.
+- [x] [Review][Defer] Naming vs lista cerrada de sufijos: `Sender`/`ISender` (nombres de contrato del mediator, ADR-018) y el placeholder `PublicadorEventosLog` (sufijo `Log`). Whitelistear los términos del mediator y renombrar/eliminar el placeholder cuando se materialice el check de sufijos + `AGENTS.md`. `[Comun/Mensajeria, Reservas.Infrastructure/Mensajeria]` — deferido a E-T.
 
 ## Dev Notes
 

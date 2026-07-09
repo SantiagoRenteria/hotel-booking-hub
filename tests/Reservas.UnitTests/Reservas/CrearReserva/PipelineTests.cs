@@ -43,6 +43,7 @@ public sealed class PipelineTests
 
         Assert.Equal(EstadoResultado.Invalido, resultado.Estado);
         Assert.NotEmpty(resultado.Errores);
+        Assert.Contains("AgenteEmail", resultado.Errores.Keys); // el 400 enumera el campo inválido (AC-E1.6a.2)
         Assert.Empty(_repo.Confirmadas); // el handler nunca corrió
         Assert.Empty(_pub.Publicados);
     }
