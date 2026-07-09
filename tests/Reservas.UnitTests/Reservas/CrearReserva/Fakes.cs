@@ -25,6 +25,9 @@ public sealed class RepositorioReservasFake : IReservaRepository
 
     public Task<Reserva?> ObtenerAsync(Guid id, CancellationToken ct) =>
         Task.FromResult(Existentes.Concat(Agregadas).FirstOrDefault(r => r.Id == id));
+
+    // En memoria el agregado ya trae sus Noches (Reserva.Crear las genera), así que es equivalente a ObtenerAsync.
+    public Task<Reserva?> ObtenerConNochesAsync(Guid id, CancellationToken ct) => ObtenerAsync(id, ct);
 }
 
 /// <summary>Disponibilidad sembrada por test: devuelve la habitación configurada (o null = no encontrada).</summary>

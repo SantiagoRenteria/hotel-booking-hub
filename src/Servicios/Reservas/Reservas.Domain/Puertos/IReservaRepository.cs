@@ -23,4 +23,10 @@ public interface IReservaRepository
     /// <c>EjecutorTransaccional</c>; la concurrencia optimista (<c>RowVersion</c>) arbitra las escrituras en carrera.
     /// </summary>
     Task<Reserva?> ObtenerAsync(Guid id, CancellationToken ct);
+
+    /// <summary>
+    /// Carga la reserva por Id INCLUYENDO sus <c>Noches</c> (slots) para poder liberarlas al resolver la
+    /// cancelación (Story 4.2). Tracking, misma transacción del comando; devuelve <c>null</c> si no existe.
+    /// </summary>
+    Task<Reserva?> ObtenerConNochesAsync(Guid id, CancellationToken ct);
 }

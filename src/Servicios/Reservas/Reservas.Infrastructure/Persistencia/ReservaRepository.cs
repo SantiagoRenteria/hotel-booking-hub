@@ -18,4 +18,8 @@ public sealed class ReservaRepository(ReservasDbContext db) : IReservaRepository
     // en el mismo SaveChanges. La owned SolicitudCancelacion viaja en la misma fila (owned reference).
     public Task<Reserva?> ObtenerAsync(Guid id, CancellationToken ct) =>
         db.Reservas.FirstOrDefaultAsync(r => r.Id == id, ct);
+
+    // Incluye los slots para que Reserva.Resolver pueda liberarlos (borrado de huérfanos) en la misma tx.
+    public Task<Reserva?> ObtenerConNochesAsync(Guid id, CancellationToken ct) =>
+        db.Reservas.Include(r => r.Noches).FirstOrDefaultAsync(r => r.Id == id, ct);
 }
