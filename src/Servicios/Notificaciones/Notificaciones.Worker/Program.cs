@@ -13,6 +13,11 @@ builder.Services.AddHostedService<Worker>();
 // La suscripción al transporte real (Dapr pub/sub) sigue diferida como en el resto del sistema
 // (PublicadorEventosLog es placeholder); el consumidor se invoca con el envelope (patrón de 3.1).
 builder.Services.AddSingleton<INotificador, NotificadorConsola>();
+
+// Inbox de idempotencia del consumidor (Story 5.1b): dedup del efecto por (MessageId, version, destinatario).
+// Fallback en memoria para desarrollo local sin orquestador; la variante Redis (SETNX+TTL) se cablea cuando el
+// transporte real esté conectado (misma política "Redis-si-configurado" de la caché de 3.2).
+builder.Services.AddSingleton<IInboxIdempotencia, InboxIdempotenciaEnMemoria>();
 builder.Services.AddSingleton<ConsumidorReservaConfirmada>();
 
 var app = builder.Build();
