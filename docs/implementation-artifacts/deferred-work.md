@@ -2,6 +2,12 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: code review of story-5.1a (2026-07-09)
+
+- **Transporte real productor→worker (suscripción Dapr) sin cablear** (edge+auditor) — el `ConsumidorReservaConfirmada` está registrado en el DI del worker pero ningún transporte lo invoca (el `Worker.ExecuteAsync` sigue en latido). El AC-E5.1a.1 se verifica en test/demo; el transporte Dapr es placeholder en TODO el sistema (`PublicadorEventosLog` solo loguea; E3 `ProyectorCatalogo` también solo se invoca en tests). Cablear la suscripción real (Dapr pub/sub o alternativa) es un ítem de infra transversal — posible party-mode al abordarlo. `[Notificaciones.Worker/Program.cs, Worker.cs; *.Infrastructure/Mensajeria/PublicadorEventosLog.cs]`
+- **Exactamente-una-vez + fallo parcial de los 2 correos → 5.1b** (blind+edge, MED) — los 2 `NotificarAsync` son secuenciales sin dedup: si el 2º falla (adaptador real), el 1º ya salió y una re-entrega duplica. Es el núcleo de 5.1b (idempotencia por `MessageId`, at-least-once). `[Notificaciones.Worker/.../ConsumidorReservaConfirmada.cs]`
+- **Mensaje-veneno sin dead-letter → 5.1b Task 4** (blind, MED) — una `JsonException` de un payload corrupto propaga sin tope de intentos ni dead-letter; con un pump real bloquearía el stream. `[Notificaciones.Worker/.../ConsumidorReservaConfirmada.cs]`
+
 ## Deferred from: code review of story-4.3 (2026-07-09)
 
 - **`MD5.HashData` en la derivación de MessageId podría lanzar bajo política FIPS** (blind, BAJA) — `ColaOutbox.DerivarMessageId` usa MD5 (solo como id de dedup determinista, NO seguridad). En un host con FIPS mode habilitado, las primitivas MD5 pueden lanzar. Entorno actual estándar (no FIPS). Si se exige FIPS, cambiar a un hash no-criptográfico determinista (FNV/xxHash) o a `Guid.CreateVersion5` cuando esté disponible. `[Reservas.Infrastructure/Mensajeria/ColaOutbox.cs]`
