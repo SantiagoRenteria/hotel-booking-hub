@@ -1,6 +1,10 @@
 # Story 3.3: Listado de reservas del agente con detalle
 
-Status: ready-for-dev
+---
+baseline_commit: 7d0b39a9819a2e3a2facafca34a5ae239561d09e
+---
+
+Status: done
 
 <!-- Generado por bmad-create-story. Complejidad NORMAL → tests convencionales + TDD (Red→Green visible);
 NO BDD/Gherkin ceremonial (decisión party-mode: BDD solo en 3.1 y E4). Tiene una decisión importante de
@@ -22,6 +26,11 @@ para **conciliar comisiones**.
 
 ## Tasks / Subtasks
 
+> **✅ Task 0 RESUELTA (party-mode Winston/John/Amelia, 2026-07-09) — Opción (c): aislar por `AgenteEmail` de la reserva.**
+> Decisión de Santiago: el eje de aislamiento es **"mis reservas"** (las que el agente intermedió), no "hoteles que administro" — coherente con *conciliar comisiones*. Se aísla por `AgenteEmail` **persistido en la `Reserva`** (hoy el `CrearReservaCommand` lo recibe pero se descarta — deuda de 1.6a). NO se reabre el contrato de catálogo (se descarta (a) como gold-plating). La **identidad del agente** se resuelve **server-side** tras una costura `IContextoAgente` (impl. por header `X-Agente` hoy → claim de auth en Épica 6), **fail-closed** (sin identidad → NO devuelve todo: falla/vacío). El header es **deuda explícita de Épica 6**, NO un mecanismo de seguridad. **AC-E3.3.2 se reinterpreta como "reservas que hice".** Divergiría de "mis hoteles" solo si un agente reservara en hotel de otro (caso no soportado en el alcance actual; documentado).
+>
+> <details><summary>Contexto original de la decisión</summary>
+>
 > **Task 0 (party-mode, PRIMERO) — decisión de frontera BC: ¿cómo sabe Reservas qué hoteles son del agente?**
 > El aislamiento (AC-E3.3.2) exige mapear reserva → habitación → hotel → **agente-dueño**. Hoteles es dueño del
 > catálogo y del owner; Reservas solo tiene su read-model. Opciones:
@@ -35,21 +44,31 @@ para **conciliar comisiones**.
 > Resolver con `/bmad-party-mode` (Winston + John + Amelia) y documentar antes de implementar. Recomendación
 > previa: (c) si el `AgenteEmail`/agenteId ya viaja en el comando de reserva (más simple, sin tocar contrato de
 > catálogo), validando que satisface la conciliación de comisiones "de mis hoteles".
+>
+> </details>
 
-- [ ] **Task 1 — Cerrar la deuda de persistencia de huéspedes/contacto (habilita el DETALLE de AC-E3.3.1)** *(TDD)*
-  - [ ] `Reserva` persiste huéspedes (owned collection) + contacto de emergencia (owned) — deuda DIFERIDA de 1.6a
-    (ver `deferred-work.md`: "Persistir huéspedes/contacto en el agregado → 1.6b"). Mapeo EF owned + migración.
-  - [ ] Tests de integración (Testcontainers) del round-trip de persistencia; no romper los tests de creación de reserva de E1.
-- [ ] **Task 2 — Query de listado (AC: 1, 2)** *(TDD Red→Green)*
-  - [ ] `ListarReservasDelAgenteQuery` + handler en `Reservas.Application/Reservas/ListarReservasDelAgente/` (`IQuery`, no `ICommand`). Devuelve ítems con hotel, habitación, estancia, estado, precio; filtra server-side por el agente (según Task 0).
-  - [ ] AC negativo: reservas de otro agente NO aparecen (test explícito con dos agentes).
-- [ ] **Task 3 — Detalle de reserva (AC: 1)** *(TDD)*
-  - [ ] `ObtenerReservaDetalleQuery` (o expandir el ítem) → añade huéspedes + contacto de emergencia. Aislamiento: el detalle de una reserva de otro agente devuelve 404/403, no el contenido.
-- [ ] **Task 4 — Endpoints (AC: 1, 2)**
-  - [ ] `GET /api/v1/reservas` (listado del agente) y `GET /api/v1/reservas/{id}` (detalle) en `Reservas.Api`; Result→HTTP. OpenAPI/Scalar. La identidad del agente, según Task 0.
-- [ ] **Task 5 — Tests (unit + integración Testcontainers)**
-  - [ ] Contenido correcto del listado/detalle; aislamiento con dos agentes; bordes (agente sin reservas → lista vacía).
-- [ ] **Task 6 — Commits TDD (Red→Green visibles) en rama `feature/3-3-listado-reservas` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Cerrar la deuda de persistencia de huéspedes/contacto (habilita el DETALLE de AC-E3.3.1)** *(TDD)*
+  - [x] `Reserva` persiste huéspedes (owned collection `ReservaHuespedes` con `Documento` anidado) + contacto (owned) + `AgenteEmail` + `PrecioTotal`. Mapeo EF owned + migración `PersisteDatosReserva`. (`Huesped` gana ctor sin parámetros + setters privados: EF no bindea el owned anidado por constructor.)
+  - [x] Test de integración (Testcontainers) del round-trip; `Reserva.Crear` con parámetros opcionales → los tests de anti-overbooking/outbox de E1 no se rompen.
+- [x] **Task 2 — Query de listado (AC: 1, 2)** *(TDD Red→Green)*
+  - [x] `ListarReservasDelAgenteQuery` + handler en `Reservas.Application/Reservas/ListarReservasDelAgente/` (`IRequest`, no `ICommand`). Ítems con hotel, habitación, estancia, estado, precio (LEFT JOIN con `ProyeccionHabitacion`); filtra server-side por `AgenteEmail` (Opción c). La identidad viene de `IContextoAgente`, NO del cliente.
+  - [x] AC negativo: reservas de otro agente NO aparecen (test con dos agentes).
+- [x] **Task 3 — Detalle de reserva (AC: 1)** *(TDD)*
+  - [x] `ObtenerReservaDetalleQuery` → añade huéspedes + contacto. Aislamiento: el lector filtra por agente → reserva ajena/inexistente devuelve null → **404** (no filtra contenido).
+- [x] **Task 4 — Endpoints (AC: 1, 2)**
+  - [x] `GET /api/v1/reservas` (listado) y `GET /api/v1/reservas/{id}` (detalle) en `Reservas.Api`; Result→HTTP (`ToOkResult`). Identidad del agente vía `HttpContextoAgente` (cabecera `X-Agente`), fail-closed (sin identidad → 403).
+- [x] **Task 5 — Tests (unit + integración Testcontainers)**
+  - [x] Unit: fail-closed (403) + 404 de ajena/inexistente + filtrado por agente. Integración: round-trip, contenido del listado/detalle, aislamiento con dos agentes, agente sin reservas → vacío.
+- [x] **Task 6 — Commits en rama `feature/3-3-listado-reservas` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings
+
+_Code review 2026-07-09 (Edge Case Hunter + Acceptance Auditor; Blind Hunter falló por glitch de entorno). **AC-E3.3.1 y AC-E3.3.2 CUMPLIDOS**, deuda 1.6a cerrada. 2 patch aplicados · 2 defer._
+
+- [x] **[Review][Patch] Aislamiento dependiente del collation SQL** (MEDIA) — `AgenteEmail` se `Trim`eaba pero no se normalizaba a minúsculas; en collation case-sensitive el agente no vería sus propias reservas, en case-insensitive se conflaten identidades. Fix: normalización canónica (`Trim().ToLowerInvariant()`) en `Reserva.Crear` y en `HttpContextoAgente` → el filtro es determinista sin depender del collation. `[Reserva.cs, HttpContextoAgente.cs]`
+- [x] **[Review][Patch] Cabecera `X-Agente` repetida/ambigua** (BAJA) — varios valores se concatenaban con coma y se aceptaban como identidad (200 vacío). Fix: si `Count != 1` → null (fail-closed). Test unitario de `HttpContextoAgente` añadido. `[HttpContextoAgente.cs]`
+- [x] **[Review][Defer] Reservas con `AgenteEmail` NULL (pre-3.3) invisibles** (BAJA-MEDIA) — `NULL == @agente` es UNKNOWN → no aparecen para nadie. Fail-closed correcto; inocuo en greenfield. Diferido: backfill si se despliega sobre datos con reservas previas.
+- [x] **[Review][Defer] Listado sin paginación ni cota** (BAJA) — `ListarAsync` trae todas las reservas del agente. Fuera del AC (no pide paginación); diferido para cuando el volumen lo exija.
 
 ## Dev Notes
 
@@ -109,10 +128,45 @@ para **conciliar comisiones**.
 
 ### Agent Model Used
 
+claude-opus-4-8 (bmad-dev-story, modo autónomo).
+
 ### Debug Log References
+
+- Suite completa: 261 tests en verde — Reservas.Unit 80, Reservas.Int 34, Hoteles.Unit 100, Hoteles.Int 19, Contracts 13, Comun.Web 15. `dotnet format` limpio (migración EF reformateada).
 
 ### Completion Notes List
 
+- **Task 0 (party-mode):** aislamiento por `AgenteEmail` de la reserva (Opción c). Identidad server-side vía `IContextoAgente` (cabecera `X-Agente`, `HttpContextoAgente`), **fail-closed** (403 sin identidad). Deuda explícita de Épica 6 (no es auth).
+- **Task 1:** `Reserva` ahora persiste `Huespedes` (owned collection), `ContactoEmergencia` (owned), `AgenteEmail` y `PrecioTotal` — cierra la deuda de 1.6a. `Reserva.Crear` recibe esos datos como parámetros **opcionales** → los tests de anti-overbooking/outbox de E1 (que solo pasan habitación+estancia) siguen compilando y verdes. `Huesped` requirió ctor sin parámetros + setters privados (EF no bindea el owned `Documento` por constructor).
+- **Task 2/3:** queries CQRS (`IRequest`, sin `TransactionBehavior`). `LectorReservasAgenteSql` filtra por `AgenteEmail` DENTRO de la consulta (aislamiento server-side) y cruza con `ProyeccionHabitacion` (LEFT JOIN, la reserva aparece aunque la proyección no esté hidratada). Detalle de ajena/inexistente → null → 404 (no filtra existencia). Precio mostrado tal cual (sin recálculo).
+- **Task 4:** endpoints `GET /api/v1/reservas` y `/{id}`. La identidad NO viaja en la query (el cliente no elige a qué agente ve).
+- **Deuda conocida:** el listado no muestra `HotelNombre` (no está en `ProyeccionHabitacion` — diferido de 3.1); se expone `HotelId` + ciudad + tipo/ubicación. El eje "mis reservas" (no "mis hoteles") es la interpretación acordada de AC-E3.3.2.
+
 ### File List
 
+**Nuevos (producción):**
+- `src/Servicios/Reservas/Reservas.Application/Abstracciones/IContextoAgente.cs`
+- `src/Servicios/Reservas/Reservas.Application/Abstracciones/ILectorReservasAgente.cs`
+- `src/Servicios/Reservas/Reservas.Application/Reservas/ListarReservasDelAgente/ListarReservasDelAgenteQuery.cs`
+- `src/Servicios/Reservas/Reservas.Application/Reservas/ListarReservasDelAgente/ListarReservasDelAgenteQueryHandler.cs`
+- `src/Servicios/Reservas/Reservas.Application/Reservas/ObtenerReservaDetalle/ObtenerReservaDetalleQuery.cs`
+- `src/Servicios/Reservas/Reservas.Application/Reservas/ObtenerReservaDetalle/ObtenerReservaDetalleQueryHandler.cs`
+- `src/Servicios/Reservas/Reservas.Infrastructure/Proyeccion/LectorReservasAgenteSql.cs`
+- `src/Servicios/Reservas/Reservas.Api/HttpContextoAgente.cs`
+- Migración `Reservas.Infrastructure/Migraciones/*_PersisteDatosReserva.cs`
+
+**Modificados (producción):**
+- `Reservas.Domain/Reservas/Reserva.cs` (persistir agente/precio/huéspedes/contacto; `Crear` con opcionales)
+- `Reservas.Domain/Reservas/Huesped.cs` (ctor sin parámetros + setters privados para EF)
+- `Reservas.Application/Reservas/CrearReserva/CrearReservaCommandHandler.cs` (persiste en vez de descartar)
+- `Reservas.Infrastructure/Persistencia/ReservasDbContext.cs` (owned mappings)
+- `Reservas.Infrastructure/RegistroInfraestructura.cs` (registro del lector)
+- `Reservas.Api/Program.cs` (identidad + endpoints)
+
+**Nuevos (tests):**
+- `tests/Reservas.IntegrationTests/ListadoReservasAgenteTests.cs`
+- `tests/Reservas.UnitTests/Reservas/ListarReservas/ListadoReservasHandlersTests.cs`
+
 ### Change Log
+
+- 2026-07-09 — Story 3.3 implementada. Task 0 (party-mode): aislamiento por `AgenteEmail`, identidad server-side vía `IContextoAgente` fail-closed. Persistencia de huéspedes/contacto/agente/precio (cierra deuda 1.6a). Queries CQRS de listado + detalle con aislamiento server-side. Endpoints `GET /api/v1/reservas[/{id}]`. Suite completa 261 tests en verde.

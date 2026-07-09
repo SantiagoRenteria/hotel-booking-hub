@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Reservas.Infrastructure.Persistencia;
 
@@ -11,9 +12,11 @@ using Reservas.Infrastructure.Persistencia;
 namespace Reservas.Infrastructure.Migraciones
 {
     [DbContext(typeof(ReservasDbContext))]
-    partial class ReservasDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260709172417_PersisteDatosReserva")]
+    partial class PersisteDatosReserva
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -38,6 +38,10 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
             b.Property(r => r.HabitacionId);
             b.Property(r => r.Estado).HasConversion<string>().HasMaxLength(32);
 
+            // Story 3.3: datos de negocio persistidos (antes solo iban al evento).
+            b.Property(r => r.AgenteEmail).HasMaxLength(256); // eje de aislamiento del listado (AC-E3.3.2)
+            b.Property(r => r.PrecioTotal).HasPrecision(18, 2);
+
             // Estancia como owned type (columnas Entrada/Salida); Noches es computado → ignorar.
             b.OwnsOne(r => r.Estancia, e =>
             {
@@ -45,6 +49,31 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
                 e.Property(x => x.Salida).HasColumnName("Salida");
                 e.Ignore(x => x.Noches);
             });
+
+            // Contacto de emergencia (FR-11) como owned reference (columnas en la propia tabla Reservas).
+            b.OwnsOne(r => r.ContactoEmergencia, c =>
+            {
+                c.Property(x => x.NombreCompleto).HasColumnName("ContactoNombreCompleto").HasMaxLength(200);
+                c.Property(x => x.Telefono).HasColumnName("ContactoTelefono").HasMaxLength(40);
+            });
+
+            // Huéspedes (FR-10) como owned collection en su propia tabla; Documento es un VO anidado.
+            b.OwnsMany(r => r.Huespedes, h =>
+            {
+                h.ToTable("ReservaHuespedes");
+                h.WithOwner().HasForeignKey("ReservaId");
+                h.Property(x => x.Nombres).HasMaxLength(120);
+                h.Property(x => x.Apellidos).HasMaxLength(120);
+                h.Property(x => x.Genero).HasMaxLength(40);
+                h.Property(x => x.Email).HasMaxLength(256);
+                h.Property(x => x.Telefono).HasMaxLength(40);
+                h.OwnsOne(x => x.Documento, d =>
+                {
+                    d.Property(x => x.Tipo).HasColumnName("DocumentoTipo").HasMaxLength(40);
+                    d.Property(x => x.Numero).HasColumnName("DocumentoNumero").HasMaxLength(60);
+                });
+            });
+            b.Navigation(r => r.Huespedes).UsePropertyAccessMode(PropertyAccessMode.Field);
 
             // Slots como parte del aggregate (acceso por campo _noches).
             b.HasMany(r => r.Noches)

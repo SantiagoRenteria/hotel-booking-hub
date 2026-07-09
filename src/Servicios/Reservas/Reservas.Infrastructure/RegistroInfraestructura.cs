@@ -42,6 +42,9 @@ public static class RegistroInfraestructura
             sp.GetRequiredService<BuscadorDisponibilidadSql>(),
             sp.GetRequiredService<ICacheDisponibilidad>()));
 
+        // Lectura de reservas del agente (Story 3.3): query aislada server-side por AgenteEmail.
+        servicios.AddScoped<ILectorReservasAgente, LectorReservasAgenteSql>();
+
         // Relay del outbox (productor): procesador + BackgroundService que sondea y publica.
         servicios.AddSingleton<OpcionesRelayOutbox>();
         servicios.AddSingleton<ProcesadorOutbox>();
