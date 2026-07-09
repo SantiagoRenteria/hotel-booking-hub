@@ -16,4 +16,11 @@ public interface IReservaRepository
     /// 2627/2601 se traduce a <see cref="HabitacionNoDisponibleException"/> allí, y el deadlock 1205 se reintenta.
     /// </summary>
     void Agregar(Reserva reserva);
+
+    /// <summary>
+    /// Carga la reserva por Id para MODIFICARLA (tracking) dentro de la misma transacción del comando (Story 4.1).
+    /// Devuelve <c>null</c> si no existe. El <c>SaveChanges</c> del <see cref="Reservas.Domain"/> lo hace el
+    /// <c>EjecutorTransaccional</c>; la concurrencia optimista (<c>RowVersion</c>) arbitra las escrituras en carrera.
+    /// </summary>
+    Task<Reserva?> ObtenerAsync(Guid id, CancellationToken ct);
 }

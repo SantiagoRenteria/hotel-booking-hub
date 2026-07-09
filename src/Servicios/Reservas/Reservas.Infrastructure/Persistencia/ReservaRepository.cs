@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Reservas.Domain.Puertos;
 using Reservas.Domain.Reservas;
 
@@ -12,4 +13,9 @@ namespace Reservas.Infrastructure.Persistencia;
 public sealed class ReservaRepository(ReservasDbContext db) : IReservaRepository
 {
     public void Agregar(Reserva reserva) => db.Reservas.Add(reserva);
+
+    // Tracking por defecto: la entidad cargada se modifica en el handler y el EjecutorTransaccional la persiste
+    // en el mismo SaveChanges. La owned SolicitudCancelacion viaja en la misma fila (owned reference).
+    public Task<Reserva?> ObtenerAsync(Guid id, CancellationToken ct) =>
+        db.Reservas.FirstOrDefaultAsync(r => r.Id == id, ct);
 }
