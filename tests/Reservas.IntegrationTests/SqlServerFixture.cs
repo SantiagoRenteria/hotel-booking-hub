@@ -25,6 +25,9 @@ public sealed class SqlServerFixture : IAsyncLifetime
 
     public Task DisposeAsync() => _sql.DisposeAsync().AsTask();
 
+    /// <summary>Cadena de conexión al contenedor (para armar contenedores DI completos en los tests).</summary>
+    public string CadenaConexion => _sql.GetConnectionString();
+
     public ReservasDbContext CrearContexto(params IInterceptor[] interceptores)
     {
         var builder = new DbContextOptionsBuilder<ReservasDbContext>()
