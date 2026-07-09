@@ -2,6 +2,11 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: code review of story-5.3 (2026-07-09)
+
+- **D5 · FR-21 "(y al agente)" en la resolución no implementado** (auditor, BAJA) — FR-21 dice que al resolverse se notifica "al viajero (y al agente)", pero 5.3 solo añadió `HuespedEmail` a los eventos de resolución (los AC-E5.3.1/.2 solo exigen al viajero; decisión YAGNI). A diferencia de 5.1a (confirmación) que sí avisa a huésped+agente. Confirmar con producto (John/Winston) si la resolución debe avisar también al agente; si sí, añadir `AgenteEmail` (aditivo) a `ReservaCancelada.v1`/`SolicitudCancelacionRechazada.v1` + copy del agente en `ConsumidorResolucionCancelacion`. `[Comun.Eventos/ReservaCanceladaV1.cs, SolicitudCancelacionRechazadaV1.cs; Notificaciones.Worker/.../ConsumidorResolucionCancelacion.cs]`
+- **D2 (recurrente, ahora observable) · Doble notificación del atajo de un paso** — con 5.3 implementado, el atajo 4.3 (que emite `SolicitudCancelacionRegistrada` + la resolución) haría que el viajero reciba el acuse "estimada/por resolver" (5.2) Y el desenlace (5.3) casi simultáneos y contradictorios (peor en rechazo: el acuse insinúa que procede, el desenlace dice "rechazada, sigue Confirmada"). Ver el detalle en el review de 5.2. Resolver al cablear el transporte: suprimir el acuse de solicitud cuando el evento proviene del atajo (marca/correlación) o ajustar copy. `[Reservas.Application/.../CancelarEnUnPasoCommandHandler.cs, Notificaciones.Worker/.../ConsumidorSolicitudCancelacion.cs]`
+
 ## Deferred from: code review of story-5.2 (2026-07-09)
 
 - **D1 · Enrutamiento multi-consumidor por tipo de evento** (blind, ALTA→latente) — con dos consumidores (`ConsumidorReservaConfirmada`, `ConsumidorSolicitudCancelacion`) y un `DespachadorNotificaciones` que inyecta UN solo `IProcesadorEvento`, no hay forma de despachar por tipo. Registrar ambos como `IProcesadorEvento` rompería el despachador (resolvería el último). Al cablear el transporte real (Dapr pub/sub), añadir un router por `evento.Type` (o `IEnumerable<IProcesadorEvento>` con fan-out y filtrado por tipo). Hoy no hay pump → no es bug en runtime, pero la funcionalidad de 5.2 no se dispararía end-to-end sin esto. `[Notificaciones.Worker/Program.cs, DespachadorNotificaciones.cs]`
