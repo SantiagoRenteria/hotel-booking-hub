@@ -11,6 +11,7 @@
     <!-- Aplicación transversal (Comun): mediator propio + Result + validación -->
     <PackageVersion Include="FluentValidation" Version="11.11.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <!-- ASP.NET Core / hosting (.NET 10) -->
     <PackageVersion Include="Aspire.Hosting.RabbitMQ" Version="13.4.6" />

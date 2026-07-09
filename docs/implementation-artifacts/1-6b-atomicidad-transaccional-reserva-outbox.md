@@ -1,6 +1,10 @@
+---
+baseline_commit: bfa6e49
+---
+
 # Story 1.6b: Atomicidad transaccional reserva + outbox
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -21,23 +25,23 @@ para **no dejar eventos huérfanos ni reservas sin notificar**.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — `TransactionBehavior` + escritura atómica (AC: 2)**
-  - [ ] `TransactionBehavior` (solo comandos): abre transacción, asigna `MessageId` **una vez antes** del retry 1205, aplica el retry 1205 (snippet de 1.2)
-  - [ ] El handler de `CrearReserva` (1.6a) escribe `Reserva` + slots + fila `OutboxMessages` en el **mismo** `DbContext.SaveChangesAsync()` (ADR-018)
-  - [ ] `OutboxMessages`: `MessageId` (= `id` del envelope de 1.3), `type`, `payload`, `estado` (`Pendiente`/`Enviada`), `intentos`, `occurredAt`, `AggregateId`; `UNIQUE(MessageId)`
-- [ ] **Task 2 — Harness de fault-injection (AC: 1)**
-  - [ ] `DbCommandInterceptor` (o hook de `SaveChanges`) configurable para lanzar entre el INSERT de dominio y el de outbox
-  - [ ] Expuesto solo en tests (no en producción)
-- [ ] **Task 3 — Relay `BackgroundService` del productor (AC: 4)**
-  - [ ] Relay con polling + **lease-expiry/re-claim por antigüedad** (no solo por estado → sin mensajes huérfanos)
-  - [ ] Publica al `IPublicadorEventos` fake; marca `Enviada` **después** de publicar; incrementa `intentos`
-  - [ ] Reintentos simulados que demuestran `deliveries >= 1` (nunca asume `== 1`)
-- [ ] **Task 4 — Tests de integración (AC: 2, 3, 4)**
-  - [ ] Éxito: `Reserva == 1` y `OutboxMessages == 1` (estado `Pendiente`)
-  - [ ] Fallo inyectado → `Reserva == 0` y `OutboxMessages == 0` (collection `OutboxFaultInjection`, `DisableParallelization=true`)
-  - [ ] Relay: fila `Pendiente` → `Enviada` con `intentos >= 1`, sin mark-sent prematuro
-  - [ ] Etiquetar la deuda: `[Trait("VerificationDebt","E5:ConsumerIdempotency")]` y `[Trait("VerificationDebt","E3:ProjectionOrder")]`
-- [ ] **Task 5 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — `TransactionBehavior` + escritura atómica (AC: 2)**
+  - [x] `TransactionBehavior` (solo `ICommand`): asigna `MessageId` **una vez antes** del retry 1205 y delega en el `EjecutorTransaccional` (transacción única + retry 1205 + traducción 2627→409)
+  - [x] El handler de `CrearReserva` STAGEA `Reserva` + slots (`repo.Agregar`) + fila de outbox (`IColaOutbox.Encolar`); el `EjecutorTransaccional` los confirma en el **mismo** `SaveChangesAsync()` (ADR-018)
+  - [x] `OutboxMessages`: `MessageId` (= `id` del envelope de 1.3), `Type`, `Payload` (envelope serializado), `Estado` (`Pendiente`/`Enviada`), `Intentos`, `OccurredAt`, `AggregateId`, `ReclamadoEn` (lease); `UNIQUE(MessageId)` + índice de polling `(Estado, Seq)`
+- [x] **Task 2 — Harness de fault-injection (AC: 1)**
+  - [x] `InterceptorFallaOutbox` (`DbCommandInterceptor`): lanza al ejecutar el comando que toca `OutboxMessages`, dentro de la tx de la reserva
+  - [x] Expuesto solo en tests (proyecto `Reservas.IntegrationTests`), inyectado por `SqlServerFixture.CrearContexto(interceptores)`
+- [x] **Task 3 — Relay `BackgroundService` del productor (AC: 4)**
+  - [x] `RelayOutbox` (`BackgroundService`) + `ProcesadorOutbox` con polling + **lease-expiry/re-claim por antigüedad** (`ReclamadoEn` nulo o vencido → no huérfanos)
+  - [x] Publica al `IPublicadorEventos`; marca `Enviada` **después** de publicar; incrementa `Intentos`
+  - [x] Reintentos: el test demuestra `Intentos >= 2` tras un fallo (deliveries `>= 1`, nunca asume `== 1`)
+- [x] **Task 4 — Tests de integración (AC: 2, 3, 4)**
+  - [x] Éxito: `Reserva == 1` y `OutboxMessages == 1` (estado `Pendiente`)
+  - [x] Fallo inyectado → `Reserva == 0` y `OutboxMessages == 0` (collection `OutboxFaultInjection`, `DisableParallelization=true`)
+  - [x] Relay: fila `Pendiente` → `Enviada` con `Intentos >= 1`, sin mark-sent prematuro (fallo → sigue `Pendiente`)
+  - [x] Deuda etiquetada: `[Trait("VerificationDebt","E5:ConsumerIdempotency")]` y `[Trait("VerificationDebt","E3:ProjectionOrder")]`
+- [x] **Task 5 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
 
 ## Dev Notes
 
@@ -92,8 +96,40 @@ para **no dejar eventos huérfanos ni reservas sin notificar**.
 
 ### Agent Model Used
 
+Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
+
 ### Debug Log References
+
+- `dotnet build` 0/0; `Reservas.UnitTests` **48/48**; `Reservas.IntegrationTests` **8/8** (SQL Server real, estable en runs repetidos); `dotnet format --verify-no-changes` limpio.
+- Migración `OutboxLeaseYPolling`: `+ReclamadoEn` (datetimeoffset nullable) + índice `IX_OutboxMessages_Estado_Seq`.
+- **Decisión de diseño (aprobada por Santiago): write-path unificado.** El `TransactionBehavior`/`EjecutorTransaccional` es el único dueño de la transacción; el repo y el handler solo STAGEAN. Overbooking (2627) → `HabitacionNoDisponibleException` → `ManejadorExcepcionesNegocio` (Api) → 409. Los 4 tests de 1.5 se reescribieron para pasar por el `EjecutorTransaccional` (mismo invariante, un solo camino).
+- Fix 1: `EjecutorTransaccional` limpia el `ChangeTracker` antes de cada intento y re-ejecuta la acción → el retry 1205 no re-inserta el estado del intento fallido (cierra el hallazgo del review de 1.6a sobre reusar el `DbContext`).
+- Fix 2: flakiness de integración por BD compartida — el relay procesa filas globales del outbox y limpia; se aislaron TODOS los tests de outbox en la colección `OutboxFaultInjection` (contenedor propio, `DisableParallelization`), separada del contenedor de 1.5, + limpieza al inicio de cada test → orden-independiente y estable.
+- Fix 3: migración EF (CRLF/BOM/namespace en bloque) y campos `static readonly` sin prefijo `_` → `dotnet format` + renombrado.
 
 ### Completion Notes List
 
+- **AC-E1.6b.1 ✅** — `InterceptorFallaOutbox` (`DbCommandInterceptor`, solo tests) lanza determinísticamente al escribir el outbox dentro de la tx de la reserva.
+- **AC-E1.6b.2 ✅** — éxito: `count(Reserva Id=X)==1` **Y** `count(OutboxMessages AggregateId=X)==1` con `Estado=Pendiente`, `Intentos=0` y `MessageId` = el del envelope.
+- **AC-E1.6b.3 ✅** — fallo inyectado entre reserva y outbox → `count(Reserva)==0` **Y** `count(OutboxMessages)==0` (colección aislada, sin paralelización). Atomicidad verificada sobre SQL real.
+- **AC-E1.6b.4 ✅** — el relay pasa `Pendiente→Enviada` con `Intentos>=1`, marcando `Enviada` SOLO tras publicar; con broker caído la fila sigue `Pendiente` (`Intentos>=1`) y al vencer el lease se reenvía (`Intentos>=2`). Asserts en términos persistidos (`Estado`/`Intentos`/conteos). `[DEUDA-VERIF:E5]` colapso a un efecto (idempotencia del consumidor) y `[DEUDA-VERIF:E3]` orden/convergencia de la proyección quedan etiquetados con `Trait("VerificationDebt", ...)`.
+- **MessageId una-vez (ADR-018):** el `TransactionBehavior` lo asigna antes del retry vía `ContextoMensajeria` (scoped); la `ColaOutbox` lo estampa en la fila → estable ante 1205, el `UNIQUE(MessageId)` dedupea.
+- **`TransactionBehavior` = eslabón interno del pipeline** (Logging → Validation → Transaction → Handler); solo cierra para `ICommand`, las queries no lo atraviesan.
+
 ### File List
+
+- `Directory.Packages.props` (+ Microsoft.Extensions.Hosting.Abstractions)
+- `src/Comun/HotelBookingHub.Comun/Mensajeria/ICommand.cs` (nuevo)
+- `src/Servicios/Reservas/Reservas.Domain/Puertos/IReservaRepository.cs` (`ConfirmarAsync` → `Agregar`)
+- `src/Servicios/Reservas/Reservas.Application/Abstracciones/IColaOutbox.cs` (nuevo); `Reservas/CrearReserva/CrearReservaCommand.cs` (→ `ICommand`), `CrearReservaCommandHandler.cs` (stage + encolar outbox, sin publish/catch)
+- `src/Servicios/Reservas/Reservas.Infrastructure/Persistencia/` — `OutboxMessage.cs` (lease + factory + transiciones), `EjecutorTransaccional.cs` (nuevo), `ReservaRepository.cs` (→ `Agregar`), `ReservasDbContext.cs` (índice de polling); `Migraciones/*_OutboxLeaseYPolling*.cs` + snapshot
+- `src/Servicios/Reservas/Reservas.Infrastructure/Mensajeria/` — `TransactionBehavior.cs`, `ContextoMensajeria.cs`, `ColaOutbox.cs` (nuevos)
+- `src/Servicios/Reservas/Reservas.Infrastructure/Outbox/` — `OpcionesRelayOutbox.cs`, `ProcesadorOutbox.cs`, `RelayOutbox.cs` (nuevos)
+- `src/Servicios/Reservas/Reservas.Infrastructure/RegistroInfraestructura.cs` (registra ejecutor/contexto/cola/TransactionBehavior/relay)
+- `src/Servicios/Reservas/Reservas.Api/` — `Http/ManejadorExcepcionesNegocio.cs` (nuevo), `Program.cs` (AddProblemDetails + exception handler)
+- `tests/Reservas.UnitTests/Reservas/CrearReserva/` — `Fakes.cs` (`ColaOutboxFake`, `RepositorioReservasFake.Agregar`), `CrearReservaCommandHandlerTests.cs`, `PipelineTests.cs` (reworked)
+- `tests/Reservas.IntegrationTests/` — `SqlServerFixture.cs` (overload con interceptores), `AntiOverbookingTests.cs` (vía `EjecutorTransaccional`), `InterceptorFallaOutbox.cs`, `PublicadoresFake.cs`, `HelpersOutbox.cs`, `OutboxAtomicidadYRelayTests.cs`, `OutboxFaultInjectionTests.cs` (nuevos)
+
+### Change Log
+
+- 2026-07-08 · Story 1.6b · atomicidad reserva+outbox: `TransactionBehavior` + `EjecutorTransaccional` (write-path unificado, dueño único de la tx) + `IColaOutbox`/`ColaOutbox` (staging del outbox en el mismo `SaveChanges`) + `OutboxMessage` con lease + relay `BackgroundService` (`ProcesadorOutbox`) + fault-injection (`DbCommandInterceptor`). Overbooking → excepción → 409 (Api). Migración EF `OutboxLeaseYPolling`. Unit 48/48, integración 8/8 (Testcontainers). Estado: `ready-for-dev` → `in-progress` → `review`.

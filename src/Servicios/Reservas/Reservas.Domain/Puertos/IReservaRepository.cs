@@ -9,9 +9,11 @@ namespace Reservas.Domain.Puertos;
 public interface IReservaRepository
 {
     /// <summary>
-    /// Persiste la reserva y sus slots en una transacción (READ COMMITTED). Si algún slot ya está
-    /// ocupado, lanza <see cref="HabitacionNoDisponibleException"/> (arbitrado por el índice único).
-    /// El deadlock (1205) se propaga para que la política de reintentos lo reejecute.
+    /// STAGEA la reserva y sus slots en el <c>DbContext</c> (<c>Add</c>), sin guardar ni abrir transacción.
+    /// El <c>EjecutorTransaccional</c> (usado por el <c>TransactionBehavior</c> y por los tests de persistencia)
+    /// hace el único <c>SaveChanges</c> + commit, de modo que dominio y outbox se escriben atómicamente.
+    /// El árbitro anti-overbooking (<c>UNIQUE(HabitacionId, Noche)</c>) actúa en ese INSERT; la violación
+    /// 2627/2601 se traduce a <see cref="HabitacionNoDisponibleException"/> allí, y el deadlock 1205 se reintenta.
     /// </summary>
-    Task ConfirmarAsync(Reserva reserva, CancellationToken ct);
+    void Agregar(Reserva reserva);
 }

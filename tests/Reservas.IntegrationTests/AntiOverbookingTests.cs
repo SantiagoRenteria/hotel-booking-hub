@@ -10,8 +10,18 @@ public sealed class AntiOverbookingTests(SqlServerFixture fixture)
 {
     private async Task ConfirmarAsync(Reserva reserva)
     {
+        // Camino de escritura unificado (1.6b): stagear vía el repositorio y confirmar con el
+        // EjecutorTransaccional (transacción única + arbitraje 2627→409 + retry 1205). Es el mismo
+        // ejecutor que usa el TransactionBehavior; aquí se prueba el invariante a nivel de persistencia.
         await using var db = fixture.CrearContexto();
-        await new ReservaRepository(db).ConfirmarAsync(reserva, CancellationToken.None);
+        var ejecutor = new EjecutorTransaccional(db);
+        await ejecutor.EjecutarAsync(
+            _ =>
+            {
+                new ReservaRepository(db).Agregar(reserva);
+                return Task.CompletedTask;
+            },
+            CancellationToken.None);
     }
 
     private async Task<int> ContarNochesAsync(Guid habitacionId)

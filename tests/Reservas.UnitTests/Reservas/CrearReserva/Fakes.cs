@@ -1,37 +1,24 @@
-using HotelBookingHub.Comun.Eventos;
+using Reservas.Application.Abstracciones;
 using Reservas.Domain.Puertos;
 using Reservas.Domain.Reservas;
 
 namespace Reservas.UnitTests.CrearReserva;
 
-/// <summary>Publisher de eventos fake in-memory (AC-E1.6a.1): captura lo publicado, sin Dapr ni broker.</summary>
-public sealed class PublicadorEventosFake : IPublicadorEventos
+/// <summary>Cola de outbox fake (AC-E1.6a.1): captura lo encolado, sin BD ni Dapr.</summary>
+public sealed class ColaOutboxFake : IColaOutbox
 {
-    public List<(string Topico, EventoIntegracion Evento)> Publicados { get; } = [];
+    public List<(string Tipo, int Version, Guid AggregateId, object Data, string? TraceId)> Encolados { get; } = [];
 
-    public Task PublicarAsync(string topico, EventoIntegracion evento, CancellationToken ct)
-    {
-        Publicados.Add((topico, evento));
-        return Task.CompletedTask;
-    }
+    public void Encolar(string tipo, int version, Guid aggregateId, object data, string? traceId) =>
+        Encolados.Add((tipo, version, aggregateId, data, traceId));
 }
 
-/// <summary>Repositorio fake: captura las reservas confirmadas; puede simular la carrera perdida (409).</summary>
+/// <summary>Repositorio fake: captura las reservas STAGEADAS (Agregar no guarda ni arbitra — eso vive en el motor).</summary>
 public sealed class RepositorioReservasFake : IReservaRepository
 {
-    public List<Reserva> Confirmadas { get; } = [];
-    public bool SimularNoDisponible { get; set; }
+    public List<Reserva> Agregadas { get; } = [];
 
-    public Task ConfirmarAsync(Reserva reserva, CancellationToken ct)
-    {
-        if (SimularNoDisponible)
-        {
-            throw new HabitacionNoDisponibleException();
-        }
-
-        Confirmadas.Add(reserva);
-        return Task.CompletedTask;
-    }
+    public void Agregar(Reserva reserva) => Agregadas.Add(reserva);
 }
 
 /// <summary>Disponibilidad sembrada por test: devuelve la habitación configurada (o null = no encontrada).</summary>

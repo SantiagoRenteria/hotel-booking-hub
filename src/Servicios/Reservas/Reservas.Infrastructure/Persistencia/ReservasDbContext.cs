@@ -62,6 +62,8 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
             b.HasIndex(o => o.MessageId).IsUnique();
             b.Property(o => o.Type).HasMaxLength(200);
             b.Property(o => o.Estado).HasMaxLength(32);
+            // Índice de polling del relay: pendientes en orden de secuencia.
+            b.HasIndex(o => new { o.Estado, o.Seq });
         });
     }
 }

@@ -12,6 +12,10 @@ builder.AddServiceDefaults();
 // OpenAPI nativo de .NET 10 (sin Swashbuckle). La UI Scalar se añade cuando haya endpoints de negocio.
 builder.Services.AddOpenApi();
 
+// Excepciones de negocio → Problem Details RFC 7807 (overbooking arbitrado por el motor → 409).
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ManejadorExcepcionesNegocio>();
+
 // Pipeline del mediator (Logging → Validation → Handler) + validators, por scan del assembly de Application.
 builder.Services.AddMediatorPipeline(typeof(CrearReservaCommand).Assembly);
 
@@ -22,6 +26,8 @@ builder.Services.AddSingleton<CalculadorPrecio>();
 builder.Services.AddReservasInfrastructure(builder.Configuration.GetConnectionString("reservasdb"));
 
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {
