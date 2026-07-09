@@ -18,6 +18,7 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
 
     // Read-model de catálogo (E3) alimentado por eventos de Hoteles + inbox de idempotencia del consumidor.
     public DbSet<ProyeccionHabitacion> ProyeccionesHabitacion => Set<ProyeccionHabitacion>();
+    public DbSet<ProyeccionHotelEstado> ProyeccionesHotelEstado => Set<ProyeccionHotelEstado>();
     public DbSet<MensajeProcesado> MensajesProcesados => Set<MensajeProcesado>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -85,6 +86,14 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
             b.Ignore(p => p.Hidratada); // derivado en C# (VersionEstatico != null); 3.2 filtra por VersionEstatico.
             // Índice para la búsqueda por ciudad (3.2), acotando a filas ya hidratadas.
             b.HasIndex(p => p.Ciudad);
+        });
+
+        modelBuilder.Entity<ProyeccionHotelEstado>(b =>
+        {
+            b.ToTable("ProyeccionHotelEstado");
+            b.HasKey(p => p.HotelId);
+            // Dimensión independiente del estado de hotel (3.2): la búsqueda excluye habitaciones cuyo hotel esté
+            // inactivo. Fila ausente = hotel activo (COALESCE en la query), coherente con E2 sin eventos de hotel.
         });
 
         modelBuilder.Entity<MensajeProcesado>(b =>
