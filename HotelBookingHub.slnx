@@ -33,5 +33,6 @@
     <Project Path="tests/Hoteles.UnitTests/Hoteles.UnitTests.csproj" />
     <Project Path="tests/Hoteles.IntegrationTests/Hoteles.IntegrationTests.csproj" />
     <Project Path="tests/Comun.Web.UnitTests/Comun.Web.UnitTests.csproj" />
+    <Project Path="tests/Notificaciones.UnitTests/Notificaciones.UnitTests.csproj" />
   </Folder>
 </Solution>

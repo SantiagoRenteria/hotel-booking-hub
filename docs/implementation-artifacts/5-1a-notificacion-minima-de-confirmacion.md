@@ -1,6 +1,10 @@
+---
+baseline_commit: e2e50b2ae97f3baf0d8b4fc66aacdf1dcafa8b92
+---
+
 # Story 5.1a: Notificación mínima de confirmación (Fase 1)
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Generado por bmad-create-story (lote Épica 5). Complejidad NORMAL. Criterio OBLIGATORIO del enunciado
 (HU2-5 mínimo). TDD Red→Green. Primer consumidor real de eventos de integración: cablea el salto async
