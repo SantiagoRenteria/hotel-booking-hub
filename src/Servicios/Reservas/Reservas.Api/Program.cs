@@ -4,7 +4,9 @@ using HotelBookingHub.Comun.Web;
 using Reservas.Api;
 using Reservas.Application.Abstracciones;
 using Reservas.Application.Reservas.BuscarDisponibilidad;
+using Reservas.Application.Reservas.CancelarEnUnPaso;
 using Reservas.Application.Reservas.CrearReserva;
+using Reservas.Application.Reservas.ListarCancelacionesPendientes;
 using Reservas.Application.Reservas.ListarReservasDelAgente;
 using Reservas.Application.Reservas.ObtenerReservaDetalle;
 using Reservas.Application.Reservas.ResolverCancelacion;
@@ -106,6 +108,28 @@ app.MapPost("/api/v1/reservas/{id:guid}/cancelacion/resolucion", async (
         return resultado.ToOkResult();
     })
     .WithName("ResolverCancelacion")
+    .WithTags("Reservas");
+
+// CAP · Atajo de cancelación en un paso (Story 4.3): solicita + resuelve en una tx, con auditoría de AMBOS
+// eventos. Identidad del agente server-side; Result→HTTP.
+app.MapPost("/api/v1/reservas/{id:guid}/cancelaciones/atajo", async (
+        Guid id, CancelarEnUnPasoRequest cuerpo, ISender sender, CancellationToken ct) =>
+    {
+        var comando = new CancelarEnUnPasoCommand(
+            id, cuerpo.CategoriaMotivo, cuerpo.DetalleMotivo, cuerpo.Iniciador, cuerpo.Decision, cuerpo.MotivoRechazo);
+        var resultado = await sender.Send(comando, ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("CancelarEnUnPaso")
+    .WithTags("Reservas");
+
+// CAP · Visibilidad de cancelaciones pendientes con antigüedad (Story 4.3, AC-E4.3.3). Aislada por agente.
+app.MapGet("/api/v1/reservas/cancelaciones-pendientes", async (ISender sender, CancellationToken ct) =>
+    {
+        var resultado = await sender.Send(new ListarCancelacionesPendientesQuery(), ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("ListarCancelacionesPendientes")
     .WithTags("Reservas");
 
 // CAP-4 · Búsqueda de habitaciones disponibles (FR-8). Query CQRS servida desde la proyección + caché Redis.

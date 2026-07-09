@@ -43,8 +43,20 @@ public sealed class EjecutorTransaccional(ReservasDbContext db)
                     catch (DbUpdateException ex)
                         when (ex.InnerException is SqlException sql && ClasificacionSqlServer.EsViolacionDeUnico(sql.Number))
                     {
-                        // Perdió la carrera por esa noche. 409 sin retry (la tx revierte al hacer dispose).
-                        throw new HabitacionNoDisponibleException();
+                        // Distinguir el árbitro de dominio (overbooking) de otras violaciones de único por la
+                        // ENTIDAD ofensora (estructural; SIN parsear el mensaje — ADR-016). Solo el INSERT de una
+                        // NocheHabitacion (estado Added) viola el índice anti-overbooking = 409 de negocio. Se
+                        // exige Added, no la mera presencia: en el atajo (4.3) el batch puede llevar noches en
+                        // Deleted (liberación) JUNTO a inserts de OutboxMessages; una colisión de
+                        // UNIQUE(OutboxMessages.MessageId) ahí es un bug de derivación de id → NO de negocio → 500,
+                        // nunca un falso 409.
+                        if (ex.Entries.Any(entrada => entrada.Entity is NocheHabitacion && entrada.State == EntityState.Added))
+                        {
+                            // Perdió la carrera por esa noche. 409 sin retry (la tx revierte al hacer dispose).
+                            throw new HabitacionNoDisponibleException();
+                        }
+
+                        throw;
                     }
                 },
                 ct,
