@@ -25,9 +25,39 @@ public sealed class SolicitarCancelacionCommandHandler(
 {
     private const int VersionEvento = 1;
 
-    public Task<Result<SolicitudCancelacionResponseDto>> Handle(SolicitarCancelacionCommand request, CancellationToken ct)
+    public async Task<Result<SolicitudCancelacionResponseDto>> Handle(SolicitarCancelacionCommand request, CancellationToken ct)
     {
-        _ = (repositorio, calculadorPenalidad, outbox, reloj, request, ct, VersionEvento);
-        throw new NotImplementedException();
+        var reserva = await repositorio.ObtenerAsync(request.ReservaId, ct);
+        if (reserva is null)
+        {
+            return Result<SolicitudCancelacionResponseDto>.NoEncontrado("La reserva no existe.");
+        }
+
+        // El reloj se resuelve AQUÍ (no en el dominio) y se pasa como DateOnly: el cálculo de penalidad queda
+        // determinista y la penalidad se congela con esta fecha (patrón Task 0).
+        var fechaSolicitud = DateOnly.FromDateTime(reloj.GetUtcNow().UtcDateTime);
+        var motivo = MotivoCancelacion.Crear(request.CategoriaMotivo, request.DetalleMotivo);
+
+        // Guards de dominio por excepción (TransicionEstadoInvalidaException → 409 vía handler transversal): no
+        // se capturan. Si pasa, el estado transiciona y la penalidad queda congelada dentro del agregado.
+        var penalidad = reserva.SolicitarCancelacion(motivo, request.Iniciador, fechaSolicitud, calculadorPenalidad);
+
+        var data = new SolicitudCancelacionRegistradaV1(
+            AggregateId: reserva.Id,
+            Iniciador: request.Iniciador.ToString(),
+            MotivoCategoria: motivo.Categoria,
+            MotivoDetalle: motivo.Detalle,
+            PenalidadPorcentaje: penalidad.Porcentaje,
+            FechaSolicitud: fechaSolicitud);
+
+        outbox.Encolar(SolicitudCancelacionRegistradaV1.Tipo, VersionEvento, reserva.Id, data, Activity.Current?.TraceId.ToString());
+
+        var dto = new SolicitudCancelacionResponseDto(
+            reserva.Id,
+            reserva.Estado.ToString(),
+            penalidad.Porcentaje,
+            penalidad.MontoSobre(reserva.PrecioTotal));
+
+        return Result<SolicitudCancelacionResponseDto>.Ok(dto);
     }
 }
