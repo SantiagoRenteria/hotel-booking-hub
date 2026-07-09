@@ -15,7 +15,8 @@ public sealed class CrearHotelCommandHandler(IHotelRepository repositorio)
     public async Task<Result<HotelResponseDto>> Handle(CrearHotelCommand request, CancellationToken ct)
     {
         var hotel = Hotel.Crear(request.Nombre, request.Ciudad, request.Direccion, request.Descripcion, request.Estado);
-        await repositorio.CrearAsync(hotel, ct);
-        return Result<HotelResponseDto>.Ok(new HotelResponseDto(hotel.Id, hotel.Nombre, hotel.Ciudad, hotel.Estado.ToString()));
+        var rowVersion = await repositorio.CrearAsync(hotel, ct);
+        return Result<HotelResponseDto>.Ok(new HotelResponseDto(
+            hotel.Id, hotel.Nombre, hotel.Ciudad, hotel.Estado.ToString(), Convert.ToBase64String(rowVersion)));
     }
 }

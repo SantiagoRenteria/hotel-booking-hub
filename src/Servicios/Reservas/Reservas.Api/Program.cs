@@ -1,6 +1,5 @@
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
-using Reservas.Api.Http;
 using Reservas.Application.Reservas.CrearReserva;
 using Reservas.Domain.Servicios;
 using Reservas.Infrastructure;
@@ -13,9 +12,8 @@ builder.AddServiceDefaults();
 // OpenAPI nativo de .NET 10 (sin Swashbuckle). La UI Scalar se añade cuando haya endpoints de negocio.
 builder.Services.AddOpenApi();
 
-// Excepciones de negocio → Problem Details RFC 7807 (overbooking arbitrado por el motor → 409).
-builder.Services.AddProblemDetails();
-builder.Services.AddExceptionHandler<ManejadorExcepcionesNegocio>();
+// Excepciones de negocio → Problem Details RFC 7807 (handler transversal en Comun.Web; overbooking → 409).
+builder.Services.AddManejoExcepcionesNegocio();
 
 // Pipeline del mediator (Logging → Validation → Handler) + validators, por scan del assembly de Application.
 builder.Services.AddMediatorPipeline(typeof(CrearReservaCommand).Assembly);

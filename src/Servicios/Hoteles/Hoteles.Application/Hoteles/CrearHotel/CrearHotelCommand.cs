@@ -11,6 +11,3 @@ public sealed record CrearHotelCommand(
     string Direccion,
     string Descripcion,
     EstadoHotel Estado) : ICommand<Result<HotelResponseDto>>;
-
-/// <summary>Recurso devuelto al crear el hotel (201): identidad UUID v7, nombre, ciudad y estado. Sin `Seq`.</summary>
-public sealed record HotelResponseDto(Guid Id, string Nombre, string Ciudad, string Estado);

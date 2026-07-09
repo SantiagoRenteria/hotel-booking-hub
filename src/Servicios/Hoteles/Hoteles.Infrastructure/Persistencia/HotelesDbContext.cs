@@ -23,10 +23,15 @@ public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options)
             b.HasIndex("Seq").IsUnique().IsClustered();
             b.Property<byte[]>("RowVersion").IsRowVersion();
 
-            b.Property(h => h.Nombre).HasMaxLength(200);
-            b.Property(h => h.Ciudad).HasMaxLength(120);
-            b.Property(h => h.Direccion).HasMaxLength(300);
-            b.Property(h => h.Descripcion).HasMaxLength(2000);
+            // Soft delete (2.2): baja lógica + query filter global → un hotel eliminado deja de aparecer en
+            // consultas y de ofertar. Marcar Eliminado=true es un UPDATE, así que el rowversion cambia y una
+            // edición concurrente que pierda contra el borrado obtiene 409 (no un last-write-wins silencioso).
+            b.HasQueryFilter(h => !h.Eliminado);
+
+            b.Property(h => h.Nombre).HasMaxLength(LongitudesHotel.Nombre);
+            b.Property(h => h.Ciudad).HasMaxLength(LongitudesHotel.Ciudad);
+            b.Property(h => h.Direccion).HasMaxLength(LongitudesHotel.Direccion);
+            b.Property(h => h.Descripcion).HasMaxLength(LongitudesHotel.Descripcion);
             b.Property(h => h.Estado).HasConversion<string>().HasMaxLength(20);
         });
     }
