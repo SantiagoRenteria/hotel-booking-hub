@@ -4,7 +4,7 @@ baseline_commit: c1f278c9c68fcaeb00cff905de5890c9ffc4bab9
 
 # Story 1.3: Contrato del evento `ReservaConfirmada` (claves de dedup y orden congeladas)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
