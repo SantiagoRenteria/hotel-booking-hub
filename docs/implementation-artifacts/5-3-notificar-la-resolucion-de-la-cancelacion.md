@@ -1,6 +1,10 @@
+---
+baseline_commit: 763121ca100292ad4ac730f4305553593df64c3e
+---
+
 # Story 5.3: Notificar la resolución de la cancelación
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Generado por bmad-create-story (lote Épica 5). Complejidad NORMAL. Consume DOS eventos de resolución
 (ReservaCancelada.v1 y SolicitudCancelacionRechazada.v1, definidos/probados en 4.2/4.3). Reutiliza INotificador

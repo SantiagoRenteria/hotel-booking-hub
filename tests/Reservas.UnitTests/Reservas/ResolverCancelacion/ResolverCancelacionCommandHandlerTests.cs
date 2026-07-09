@@ -42,6 +42,46 @@ public sealed class ResolverCancelacionCommandHandlerTests
         return reserva;
     }
 
+    private Reserva SembrarSolicitadaConHuesped(string huespedEmail)
+    {
+        var huesped = Huesped.Crear(
+            "Andrés", "Pérez", new DateOnly(1990, 5, 1), "M",
+            Documento.Crear("CC", "1234567"), huespedEmail, "3001234567");
+        var reserva = Reserva.Crear(
+            Guid.NewGuid(), Estancia.Crear(_entrada, _entrada.AddDays(2)),
+            huespedes: [huesped], agenteEmail: Dueno, precioTotal: 500m);
+        reserva.SolicitarCancelacion(
+            MotivoCancelacion.Crear("CambioDePlanes", "detalle"),
+            IniciadorCancelacion.Viajero, _entrada.AddDays(-10), new CalculadorPenalidad());
+        _repo.Existentes.Add(reserva);
+        return reserva;
+    }
+
+    [Fact]
+    public async Task Aprobar_incluye_el_email_del_huesped_en_el_evento()
+    {
+        // Story 5.3 (party-mode opción a): el emisor puebla HuespedEmail en el evento de resolución (viajero).
+        var reserva = SembrarSolicitadaConHuesped("andres@example.com");
+        var cmd = new ResolverCancelacionCommand(reserva.Id, DecisionCancelacion.AprobarAplicandoPenalidad, null);
+
+        await Handler(Dueno).Handle(cmd, CancellationToken.None);
+
+        var data = Assert.IsType<ReservaCanceladaV1>(Assert.Single(_outbox.Encolados).Data);
+        Assert.Equal("andres@example.com", data.HuespedEmail);
+    }
+
+    [Fact]
+    public async Task Rechazar_incluye_el_email_del_huesped_en_el_evento()
+    {
+        var reserva = SembrarSolicitadaConHuesped("andres@example.com");
+        var cmd = new ResolverCancelacionCommand(reserva.Id, DecisionCancelacion.Rechazar, "No procede.");
+
+        await Handler(Dueno).Handle(cmd, CancellationToken.None);
+
+        var data = Assert.IsType<SolicitudCancelacionRechazadaV1>(Assert.Single(_outbox.Encolados).Data);
+        Assert.Equal("andres@example.com", data.HuespedEmail);
+    }
+
     [Fact]
     public async Task Aprobar_aplicando_cancela_libera_slots_y_encola_ReservaCancelada()
     {
