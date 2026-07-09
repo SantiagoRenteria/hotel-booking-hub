@@ -16,7 +16,8 @@ namespace Reservas.Infrastructure.Proyeccion;
 /// revierte TODO: el evento no se re-aplica (idempotencia dura, AC-E3.1.2/4). La convergencia bajo desorden la
 /// da el propio read-model (guardas por versión de bloque), no este consumidor.
 /// </summary>
-public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventosCatalogo
+public sealed class ProyectorCatalogo(ReservasDbContext db, IInvalidadorCacheDisponibilidad? invalidadorCache = null)
+    : IConsumidorEventosCatalogo
 {
     private static readonly JsonSerializerOptions _opciones = new(JsonSerializerDefaults.Web);
 
@@ -42,12 +43,20 @@ public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventos
             return;
         }
 
-        await AplicarAsync(evento, ct);
+        var afectada = await AplicarAsync(evento, ct);
         await db.SaveChangesAsync(ct); // proyección; commitea junto con el inbox
         await tx.CommitAsync(ct);
+
+        // Invalidación dirigida de la caché de lectura (AC-E3.2.3), FUERA de la transacción del read-model: si
+        // Redis fallara no debe revertir la proyección ya confirmada. Solo si la fila está hidratada (tiene
+        // ciudad): una fila parcial no aparece en la búsqueda, así que no hay caché que invalidar.
+        if (invalidadorCache is not null && afectada?.Ciudad is { } ciudad)
+        {
+            await invalidadorCache.InvalidarCiudadAsync(ciudad, ct);
+        }
     }
 
-    private async Task AplicarAsync(EventoIntegracion evento, CancellationToken ct)
+    private async Task<ProyeccionHabitacion?> AplicarAsync(EventoIntegracion evento, CancellationToken ct)
     {
         switch (evento.Type)
         {
@@ -58,7 +67,7 @@ public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventos
                     fila.AplicarAgregada(
                         d.HotelId, d.Ciudad, d.TipoHabitacion, d.Ubicacion, d.Capacidad,
                         d.CostoBase, d.Impuestos, d.Estado, evento.Version);
-                    break;
+                    return fila;
                 }
 
             case PrecioHabitacionCambiadoV1.Tipo:
@@ -66,7 +75,7 @@ public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventos
                     var d = Payload<PrecioHabitacionCambiadoV1>(evento);
                     var fila = await CargarOCrear(d.AggregateId, ct);
                     fila.AplicarPrecio(d.CostoBase, d.Impuestos, evento.Version);
-                    break;
+                    return fila;
                 }
 
             case HabitacionDeshabilitadaV1.Tipo:
@@ -74,12 +83,12 @@ public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventos
                     var d = Payload<HabitacionDeshabilitadaV1>(evento);
                     var fila = await CargarOCrear(d.AggregateId, ct);
                     fila.AplicarDeshabilitada(evento.Version);
-                    break;
+                    return fila;
                 }
 
             // Evento desconocido/no de catálogo: se ignora (el inbox igual lo marca → no se reintenta en bucle).
             default:
-                break;
+                return null;
         }
     }
 
