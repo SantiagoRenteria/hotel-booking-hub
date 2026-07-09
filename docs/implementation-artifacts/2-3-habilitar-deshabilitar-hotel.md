@@ -113,3 +113,10 @@ claude-opus-4-8 (modo autónomo).
 ### Change Log
 
 - 2026-07-09 — Implementada 2.3 (habilitar/deshabilitar hotel) como operación dedicada de ciclo de vida, unificada en `CambiarEstadoHotel` (DRY) reutilizando concurrencia + transversal de 2.2. Code review adversarial + fix del dispatch (`switch` exhaustivo). 121 tests verdes. Status → done.
+
+## Review Findings (bmad-code-review · 2026-07-09)
+
+Revisión formal 3 capas. Los 4 AC ✅. Sin bugs de corrección.
+
+- Dismiss/documentado: idempotencia bumpea el rowVersion (contrato de concurrencia deliberado; un replay con token viejo da 409, no 200 — correcto); `switch` default → 500 inalcanzable (defensa ante tercer estado futuro); carrera eliminar-vs-cambiar-estado (404 o 409 según timing, ambos defendibles).
+- Defer: tests de wiring HTTP end-to-end de los endpoints (ya en `deferred-work` como `Hoteles.FunctionalTests`).

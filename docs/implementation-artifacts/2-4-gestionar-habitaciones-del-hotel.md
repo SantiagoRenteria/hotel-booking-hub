@@ -124,3 +124,11 @@ claude-opus-4-8 (modo autónomo).
 ### Change Log
 
 - 2026-07-09 — Implementada 2.4 (gestionar habitaciones): aggregate `Habitacion` independiente + 3 slices (crear/editar/estado) reutilizando concurrencia + transversal de 2.1–2.3. Code review adversarial + fixes (wording, cobertura de habilitar, trade-off documentado). 146 tests verdes. Status → done.
+
+## Review Findings (bmad-code-review · 2026-07-09)
+
+Revisión formal 3 capas. Los 4 AC ✅. Un bug de corrección real, corregido:
+
+- [x] [Review][Patch] Montos sin cota superior → overflow `decimal(18,2)` → **500 en vez de 400**; y >2 decimales se redondeaban en silencio (respuesta ≠ persistido) [CrearHabitacionCommandValidator.cs, EditarHabitacionCommandValidator.cs] — corregido con `PrecisionScale(18,2)` (fuente única `LongitudesHabitacion.PrecisionMonto/EscalaMonto`, compartida con el mapeo EF) + 2 tests.
+- [x] [Review][Patch] Comentario "(FK)" engañoso en `HotelesDbContext` (solo hay índice, sin FK) — redacción corregida.
+- Dismiss (por diseño/documentado): crear en hotel deshabilitado permitido (coherente con AC-E2.4.3); race hotel-eliminado→huérfana (trade-off sin FK, ya en `deferred-work`); Location sin GET (E3); concurrencia probada en edición (mecanismo idéntico en transición).

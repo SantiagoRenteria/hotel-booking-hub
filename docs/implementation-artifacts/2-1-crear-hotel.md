@@ -40,7 +40,7 @@ para **incorporarlo a mi catálogo y maximizar comisiones**.
   - [x] `POST /api/v1/hoteles` con `TypedResults` + union + `Result<T>.ToCreatedResult()` (ahora en `Comun.Web`)
   - [x] `Program.cs`: `AddMediatorPipeline(CrearHotelCommand assembly)` + `AddHotelesInfrastructure(GetConnectionString("hotelesdb"))`. (Sin exception-handler de negocio: 2.1 no tiene 409; llega en 2.2. AppHost/compose/YARP: wiring diferido —el servicio ya arranca standalone—.)
 - [x] **Task 6 — Tests (AC: 1, 2)**
-  - [x] `Hoteles.UnitTests` (nuevo proyecto): validator (nombre/ciudad/estado), handler (happy + estado deshabilitado), pipeline (Validation corta antes del handler + enumera campo), mapeo `ToCreatedResult` (201/400). 10/10.
+  - [x] `Hoteles.UnitTests` (nuevo proyecto): validator (nombre/ciudad/estado), handler (happy + estado deshabilitado), pipeline (Validation corta antes del handler + enumera campo), mapeo `ToCreatedResult` (201/400). 11/11.
 - [x] **Task 7 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
 
 ### Review Findings (code review 2026-07-09)
@@ -118,7 +118,7 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 
 ### Debug Log References
 
-- `dotnet build` 0/0; `dotnet format --verify-no-changes` limpio; **Hoteles.UnitTests 10/10**; Reservas.UnitTests 52/52 (el move de `ToCreatedResult` no rompió nada).
+- `dotnet build` 0/0; `dotnet format --verify-no-changes` limpio; **Hoteles.UnitTests 11/11**; Reservas.UnitTests 52/52 (el move de `ToCreatedResult` no rompió nada).
 - Migración `InicialHoteles`: `PK_Hoteles` no-clustered (Id UUID v7) + `IX_Hoteles_Seq` único clustered + `RowVersion` rowversion + `Estado` nvarchar(20).
 - Party-mode (Winston/Amelia) → `HotelBookingHub.Comun.Web` para el mapeo Result→HTTP transversal (Application permanece web-agnóstica).
 
@@ -144,4 +144,13 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 
 ### Change Log
 
-- 2026-07-09 · Story 2.1 · crear-hotel: primer slice del BC Hoteles reutilizando el transversal de E1; `Hotel` aggregate + `HotelesDbContext` (ADR-017) + migración `InicialHoteles` + slice `CrearHotel` (FluentValidation) + endpoint `POST /api/v1/hoteles`. Party-mode → `Comun.Web` (promoción de `ToCreatedResult`). Diferidos: outbox/write-path→2.5, exception-handler base→2.2. Unit 10/10. Estado: `ready-for-dev` → `in-progress` → `review`.
+- 2026-07-09 · Story 2.1 · crear-hotel: primer slice del BC Hoteles reutilizando el transversal de E1; `Hotel` aggregate + `HotelesDbContext` (ADR-017) + migración `InicialHoteles` + slice `CrearHotel` (FluentValidation) + endpoint `POST /api/v1/hoteles`. Party-mode → `Comun.Web` (promoción de `ToCreatedResult`). Diferidos: outbox/write-path→2.5, exception-handler base→2.2. Unit 11/11. Estado: `ready-for-dev` → `in-progress` → `review`.
+
+## Review Findings (bmad-code-review · 2026-07-09)
+
+Revisión formal 3 capas (Blind Hunter / Edge Case Hunter / Acceptance Auditor). Los 4 AC ✅. Sin bugs de corrección.
+
+- [x] [Review][Patch] Conteo de tests desactualizado (10/10 → 11/11) — corregido en esta doc.
+- [x] [Review][Defer] Connection string null → fail-slow (no fail-fast) [RegistroInfraestructura.cs] — diferido, transversal a ambos BC.
+- [x] [Review][Defer] Enum `Estado` solo numérico en JSON (usabilidad de la API) — diferido (JsonStringEnumConverter, transversal).
+- Dismiss (por diseño/spec): over-rechazo por `MaximumLength` sobre input sin trim (seguro); `Estado` requerido en alta (spec); sin unicidad de nombre (ningún AC); 500 sin handler (el transversal llegó en 2.2).
