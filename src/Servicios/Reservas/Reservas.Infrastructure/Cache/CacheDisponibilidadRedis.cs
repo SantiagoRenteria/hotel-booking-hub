@@ -10,31 +10,63 @@ namespace Reservas.Infrastructure.Cache;
 /// generacionales por ciudad</b>: cada entrada se guarda bajo <c>disp:res:{ciudad}:{token}:…</c>, donde
 /// <c>token</c> es el valor actual de <c>disp:tok:{ciudad}</c>. Invalidar una ciudad = rotar su token: las
 /// entradas viejas quedan huérfanas (expiran por TTL) y la siguiente búsqueda falla en caché y refresca desde el
-/// read-model. Es O(1), sin escaneo de claves ni enumeración. El TTL corto acota el <i>staleness</i> por cambios
-/// no invalidados de forma dirigida (p. ej. una reserva nueva) — best-effort.
+/// read-model. Es O(1), sin escaneo de claves. El TTL corto acota el <i>staleness</i> por cambios no invalidados
+/// de forma dirigida (p. ej. una reserva nueva) — best-effort. Si Redis no está disponible, degrada a la fuente
+/// de verdad (nunca tumba la búsqueda).
 /// </summary>
 public sealed class CacheDisponibilidadRedis(IDistributedCache cache, OpcionesCacheDisponibilidad opciones)
     : ICacheDisponibilidad, IInvalidadorCacheDisponibilidad
 {
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
-    public async Task<IReadOnlyList<HabitacionDisponibleDto>?> ObtenerAsync(BuscarDisponibilidadQuery consulta, CancellationToken ct)
-    {
-        var clave = await ClaveEntradaAsync(consulta, ct);
-        var bytes = await cache.GetAsync(clave, ct);
-        return bytes is null ? null : JsonSerializer.Deserialize<List<HabitacionDisponibleDto>>(bytes, _json);
-    }
+    // El token de ciudad vive más que las entradas de datos (su rotación es lo que invalida); TTL amplio para
+    // no acumular claves indefinidamente, pero muy por encima del TTL de datos para no resetear la generación.
+    private static readonly TimeSpan _ttlToken = TimeSpan.FromDays(7);
 
-    public async Task GuardarAsync(BuscarDisponibilidadQuery consulta, IReadOnlyList<HabitacionDisponibleDto> resultado, CancellationToken ct)
+    public async Task<IReadOnlyList<HabitacionDisponibleDto>> ObtenerOCalcularAsync(
+        BuscarDisponibilidadQuery consulta,
+        Func<CancellationToken, Task<IReadOnlyList<HabitacionDisponibleDto>>> calcular,
+        CancellationToken ct)
     {
-        var clave = await ClaveEntradaAsync(consulta, ct);
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(resultado, _json);
-        await cache.SetAsync(clave, bytes, new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = opciones.Ttl }, ct);
+        string clave;
+        try
+        {
+            // Lee el token de la ciudad UNA sola vez y arma la clave; reusa esa MISMA clave para leer y escribir,
+            // de modo que una invalidación concurrente (que rota el token) no contamine la generación nueva.
+            clave = await ClaveEntradaAsync(consulta, ct);
+            var bytes = await cache.GetAsync(clave, ct);
+            if (bytes is not null)
+            {
+                return JsonSerializer.Deserialize<List<HabitacionDisponibleDto>>(bytes, _json)!;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Redis no disponible: degradar a la fuente de verdad (best-effort, la búsqueda no debe caerse).
+            return await calcular(ct);
+        }
+
+        var resultado = await calcular(ct);
+        try
+        {
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(resultado, _json);
+            await cache.SetAsync(
+                clave, bytes,
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = opciones.Ttl }, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // No se pudo poblar la caché: no es fatal, ya tenemos el resultado del read-model.
+        }
+
+        return resultado;
     }
 
     public Task InvalidarCiudadAsync(string ciudad, CancellationToken ct) =>
         // Rota el token de la ciudad: nueva generación → las entradas previas dejan de ser alcanzables.
-        cache.SetStringAsync(ClaveTokenCiudad(ciudad), Guid.NewGuid().ToString("N"), ct);
+        cache.SetStringAsync(
+            ClaveTokenCiudad(ciudad), Guid.NewGuid().ToString("N"),
+            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = _ttlToken }, ct);
 
     private static string Normalizar(string ciudad) => ciudad.Trim().ToLowerInvariant();
 

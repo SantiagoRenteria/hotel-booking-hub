@@ -14,18 +14,32 @@ namespace Reservas.Infrastructure.Proyeccion;
 /// </summary>
 public sealed class BuscadorDisponibilidadSql(ReservasDbContext db) : IBuscadorDisponibilidad
 {
-    // La proyección modela habilitada/deshabilitada (incl. hotel deshabilitado, ya colapsado por 2.5) como estado.
+    // Estado individual de la habitación en la proyección. El estado del HOTEL es una dimensión aparte
+    // (ProyeccionHotelEstado) que se cruza en la query: son ciclos de vida independientes (field-ownership).
     private const string Activa = "Habilitada";
 
     public async Task<IReadOnlyList<HabitacionDisponibleDto>> BuscarAsync(BuscarDisponibilidadQuery consulta, CancellationToken ct)
     {
         var (ciudad, entrada, salida, huespedes) = consulta;
 
+        // Defensa en profundidad: el ValidationBehavior ya rechaza esto en el pipeline, pero un consumidor directo
+        // del puerto con rango degenerado/huéspedes no positivos NO debe reportar todo el inventario como libre.
+        if (salida <= entrada || huespedes < 1)
+        {
+            return [];
+        }
+
+        // Normalización consistente con la clave de caché e invalidación (Trim + minúsculas): evita que variantes
+        // por espacios/mayúsculas produzcan resultados incoherentes entre SQL y caché.
+        var ciudadNorm = ciudad.Trim().ToLowerInvariant();
+
         var candidatas = db.ProyeccionesHabitacion.AsNoTracking()
-            .Where(p => p.Ciudad == ciudad
+            .Where(p => p.Ciudad!.ToLower() == ciudadNorm
                 && p.VersionEstatico != null            // hidratada: ya llegó el alta (estáticos presentes)
-                && p.Estado == Activa                   // activa (no deshabilitada ni hotel deshabilitado)
+                && p.Estado == Activa                   // habitación activa (no deshabilitada individualmente)
                 && p.Capacidad >= huespedes             // capacidad suficiente
+                && !db.ProyeccionesHotelEstado.Any(h => // hotel activo (dimensión independiente, AC-E3.2.2/FR-7)
+                        h.HotelId == p.HotelId && !h.Activo)
                 && !db.NochesHabitacion.Any(n =>        // todas las noches de [entrada, salida) libres
                         n.HabitacionId == p.HabitacionId && n.Noche >= entrada && n.Noche < salida))
             .OrderBy(p => p.CostoBase).ThenBy(p => p.HabitacionId)

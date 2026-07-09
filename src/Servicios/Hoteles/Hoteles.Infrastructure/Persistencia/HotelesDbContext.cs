@@ -36,6 +36,10 @@ public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options)
             b.Property(h => h.Direccion).HasMaxLength(LongitudesHotel.Direccion);
             b.Property(h => h.Descripcion).HasMaxLength(LongitudesHotel.Descripcion);
             b.Property(h => h.Estado).HasConversion<string>().HasMaxLength(20);
+
+            // Version de secuencia del estado (3.2): order key monotónico de HotelHabilitado/HotelDeshabilitado.
+            // Columna de negocio propia, INDEPENDIENTE del rowversion de concurrencia.
+            b.Property(h => h.Version);
         });
 
         modelBuilder.Entity<Habitacion>(b =>
