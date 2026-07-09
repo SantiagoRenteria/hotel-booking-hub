@@ -4,7 +4,7 @@ baseline_commit: b2a429d1540d9fdb20bbfa59bc33ba222e26d00d
 
 # Story 5.2: Notificar la solicitud de cancelación
 
-Status: in-progress
+Status: review
 
 <!-- Generado por bmad-create-story (lote Épica 5). Complejidad NORMAL. Consume SolicitudCancelacionRegistrada.v1
 (definido y probado por 4.1). Reutiliza INotificador (5.1a) + inbox idempotente (5.1b). TDD Red→Green. -->
@@ -24,14 +24,14 @@ para **conocer la penalidad estimada y (el agente) saber que hay algo por resolv
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Handler del evento `SolicitudCancelacionRegistrada.v1` (AC: 1)** *(TDD)*
-  - [ ] Deserializar el evento (`SolicitudCancelacionRegistradaV1`: `AggregateId`=ReservaId, `Iniciador`, `MotivoCategoria`, `MotivoDetalle`, `PenalidadPorcentaje`, `FechaSolicitud`). Emitir acuse al viajero con la penalidad **etiquetada como ESTIMACIÓN** (no cobro) y aviso "por resolver" al agente.
-  - [ ] Reutilizar `INotificador` (5.1a) y el inbox idempotente (5.1b) — dedup por `(MessageId, version)`.
-- [ ] **Task 2 — Copy inequívoco (AC: 1)**
-  - [ ] El texto del correo del viajero deja claro que la penalidad es **estimada/sugerida** (congelada en la fecha de solicitud), no el cobro final (que llega en 5.3). El del agente indica que hay una solicitud "por resolver".
-- [ ] **Task 3 — Tests (unit + integración)**
-  - [ ] Unit: el handler emite acuse al viajero (incluye % estimado + etiqueta "estimación") y aviso al agente. Idempotencia: N entregas → 1 efecto por destinatario. Integración según transporte.
-- [ ] **Task 4 — Commits TDD (Red→Green) en rama `feature/5-2-notificar-solicitud-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Handler del evento `SolicitudCancelacionRegistrada.v1` (AC: 1)** *(TDD)*
+  - [x] `ConsumidorSolicitudCancelacion` deserializa el evento (tipo/`JsonElement`, patrón de 3.1/5.1a). Acuse al viajero con la penalidad **etiquetada como ESTIMACIÓN** (no cobro) y aviso "por resolver" al agente.
+  - [x] Reutiliza `INotificador` (5.1a) y el inbox idempotente (5.1b) vía `EnvioIdempotenteCorreos` — dedup por `(MessageId, version, destinatario)`.
+- [x] **Task 2 — Copy inequívoco (AC: 1)**
+  - [x] El correo del viajero declara la penalidad **ESTIMADA** (congelada en la fecha de solicitud), aclarando que el importe definitivo se confirma al resolverse (no es el cobro final, que llega en 5.3). El del agente indica "por resolver". Aserciones en `ConsumidorSolicitudCancelacionTests`.
+- [x] **Task 3 — Tests (unit + integración)**
+  - [x] Unit (`ConsumidorSolicitudCancelacionTests`): acuse al viajero (% + etiqueta "estimación", sin "cobro final"), aviso al agente, idempotencia (N entregas → 1/destinatario), email de huésped nulo se omite, otro tipo se ignora. Enriquecimiento del evento: contract test (`ContratoSolicitudCancelacionRegistradaTests`) + test del emisor (`SolicitarCancelacionCommandHandlerTests`). La idempotencia con Redis real está cubierta por `EnvioIdempotenteCorreos` (helper compartido) vía los tests de integración de 5.1b (mismo inbox SETNX+TTL). *(Transporte productor→worker diferido en todo el sistema.)*
+- [x] **Task 4 — Commits TDD (Red→Green) en rama `feature/5-2-notificar-solicitud-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers) — 2 ciclos Red→Green; PR pendiente al cierre.
 
 ## Dev Notes
 
@@ -65,10 +65,45 @@ para **conocer la penalidad estimada y (el agente) saber que hay algo por resolv
 
 ### Agent Model Used
 
+claude-opus-4-8 (dev-story autónomo, Épica 5).
+
 ### Debug Log References
+
+- Test `Avisa_al_viajero...`: fallo inicial por el propio copy — el cuerpo decía "no es el **cobro final**" y la aserción `DoesNotContain("cobro final")` lo detectaba. Reformulado a "el importe definitivo se confirmará cuando se resuelva".
+- Fallo transitorio (1/6) de `Notificaciones.IntegrationTests` en una corrida de la suite completa; determinístico verde en aislamiento y en la reejecución → flake por contención de contenedores en paralelo. Se endureció `La_reserva_expira_por_TTL` (margen de 500ms→2.5s sobre el TTL de 1s).
 
 ### Completion Notes List
 
+- **AC-E5.2.1 cumplido:** al consumir `SolicitudCancelacionRegistrada.v1`, el viajero recibe un acuse con la penalidad **etiquetada como ESTIMACIÓN** (no cobro final) y el agente un aviso "por resolver".
+- **Decisión de party-mode (opción a) implementada:** el evento se enriqueció ADITIVAMENTE con `HuespedEmail`+`AgenteEmail`, poblados por los emisores de Reservas (4.1 `SolicitarCancelacionCommandHandler` y 4.3 `CancelarEnUnPasoCommandHandler`) desde la reserva; el consumidor es una función pura evento→correo, sin estado. Contract test + emitter test cubren las condiciones de Murat.
+- **DRY:** se extrajo `EnvioIdempotenteCorreos` (patrón reservar→enviar→liberar por destinatario con agregación de fallos + liberación con `CancellationToken.None`, hallazgos F1/F2 de 5.1b) y se refactorizó `ConsumidorReservaConfirmada` para reusarlo (5.1b sigue verde).
+- **Nullabilidad:** `HuespedEmail`/`AgenteEmail` son nullable (fidelidad al dominio: `Reserva.AgenteEmail` es nullable); el consumidor omite el destinatario sin dirección.
+- **Regresión:** 377 tests verdes; `dotnet format` limpio.
+
 ### File List
 
+**Nuevos (src):**
+- `src/Servicios/Notificaciones/Notificaciones.Worker/Notificaciones/ConsumidorSolicitudCancelacion.cs`
+- `src/Servicios/Notificaciones/Notificaciones.Worker/Notificaciones/EnvioIdempotenteCorreos.cs`
+
+**Modificados (src):**
+- `src/Comun/HotelBookingHub.Comun/Eventos/SolicitudCancelacionRegistradaV1.cs` (campos aditivos `HuespedEmail`/`AgenteEmail`)
+- `src/Servicios/Reservas/Reservas.Application/Reservas/SolicitarCancelacion/SolicitarCancelacionCommandHandler.cs` (puebla emails)
+- `src/Servicios/Reservas/Reservas.Application/Reservas/CancelarEnUnPaso/CancelarEnUnPasoCommandHandler.cs` (puebla emails)
+- `src/Servicios/Notificaciones/Notificaciones.Worker/Notificaciones/ConsumidorReservaConfirmada.cs` (usa `EnvioIdempotenteCorreos`)
+- `src/Servicios/Notificaciones/Notificaciones.Worker/Program.cs` (registra el consumidor)
+
+**Nuevos (tests):**
+- `tests/Notificaciones.UnitTests/ConsumidorSolicitudCancelacionTests.cs`
+
+**Modificados (tests):**
+- `tests/Contracts/ContratoSolicitudCancelacionRegistradaTests.cs` (emails en el contrato)
+- `tests/Reservas.UnitTests/Reservas/SolicitarCancelacion/SolicitarCancelacionCommandHandlerTests.cs` (test del emisor)
+- `tests/Notificaciones.IntegrationTests/InboxIdempotenciaRedisTests.cs` (margen TTL)
+
 ### Change Log
+
+- 2026-07-09 — Party-mode (5.2/5.3): decisión de ruteo de emails = enriquecer los eventos de cancelación (opción a, unánime).
+- 2026-07-09 — Ciclo A: enriquecimiento aditivo de `SolicitudCancelacionRegistrada.v1` + emisores 4.1/4.3 lo pueblan. Red→Green.
+- 2026-07-09 — Ciclo B: `ConsumidorSolicitudCancelacion` (acuse estimación + aviso por resolver) sobre `EnvioIdempotenteCorreos` (helper extraído); refactor de `ConsumidorReservaConfirmada`. Red→Green.
+- 2026-07-09 — Regresión completa (377 tests) verde + `dotnet format` limpio; Status → review.
