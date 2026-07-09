@@ -73,7 +73,7 @@ development_status:
   # ---- Epic 4: Ciclo de vida de la reserva — cancelación con discreción ----
   epic-4: in-progress
   4-1-solicitar-cancelacion-con-politica-sugerida: done
-  4-2-resolver-cancelacion-con-auditoria: review
+  4-2-resolver-cancelacion-con-auditoria: done
   4-3-atajo-de-un-paso-ciclo-de-vida-y-visibilidad: ready-for-dev
   epic-4-retrospective: optional
 
