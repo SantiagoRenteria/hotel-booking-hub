@@ -9,7 +9,7 @@ public sealed class CrearHotelCommandHandlerTests
     [Fact]
     public async Task Happy_path_crea_hotel_con_id_v7_y_estado()
     {
-        var repo = new HotelRepositoryFake();
+        var repo = new HotelRepositoryFake { RowVersionResultante = [1, 2, 3, 4] };
         var comando = new CrearHotelCommand("Hotel Central", "Medellín", "Calle 1 # 2-3", "Boutique", EstadoHotel.Habilitado);
 
         var resultado = await new CrearHotelCommandHandler(repo).Handle(comando, CancellationToken.None);
@@ -20,6 +20,7 @@ public sealed class CrearHotelCommandHandlerTests
         Assert.Equal("Hotel Central", resultado.Valor.Nombre);
         Assert.Equal("Medellín", resultado.Valor.Ciudad);
         Assert.Equal("Habilitado", resultado.Valor.Estado);
+        Assert.Equal(Convert.ToBase64String([1, 2, 3, 4]), resultado.Valor.RowVersion); // rowVersion inicial expuesto
 
         var hotel = Assert.Single(repo.Creados);
         Assert.Equal(resultado.Valor.Id, hotel.Id);

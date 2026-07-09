@@ -1,17 +1,22 @@
 using FluentValidation;
 using Hoteles.Domain.Hoteles;
 
-namespace Hoteles.Application.Hoteles.CrearHotel;
+namespace Hoteles.Application.Hoteles.EditarHotel;
 
 /// <summary>
-/// Reglas de validación del alta (FR-1): nombre y ciudad obligatorios; estado válido; longitudes dentro de los
-/// topes (<see cref="LongitudesHotel"/>, la misma fuente que usa el mapeo EF). Sin este tope, un valor
-/// sobredimensionado pasaría la validación y reventaría en el INSERT (truncamiento → 500). → 400 (AC-E2.1.2).
+/// Validación de la edición (→ 400): id y rowVersion presentes, nombre/ciudad obligatorios y longitudes dentro
+/// de los topes (<see cref="LongitudesHotel"/>, la misma fuente que usa el mapeo EF). No valida estado: la
+/// edición no cambia el ciclo de vida (Story 2.3).
 /// </summary>
-public sealed class CrearHotelCommandValidator : AbstractValidator<CrearHotelCommand>
+public sealed class EditarHotelCommandValidator : AbstractValidator<EditarHotelCommand>
 {
-    public CrearHotelCommandValidator()
+    public EditarHotelCommandValidator()
     {
+        RuleFor(x => x.Id).NotEmpty().WithMessage("El id del hotel es obligatorio.");
+
+        RuleFor(x => x.RowVersion)
+            .NotEmpty().WithMessage("El rowVersion es obligatorio para editar (control de concurrencia optimista).");
+
         RuleFor(x => x.Nombre)
             .NotEmpty().WithMessage("El nombre del hotel es obligatorio.")
             .MaximumLength(LongitudesHotel.Nombre).WithMessage($"El nombre no puede exceder {LongitudesHotel.Nombre} caracteres.");
@@ -25,7 +30,5 @@ public sealed class CrearHotelCommandValidator : AbstractValidator<CrearHotelCom
 
         RuleFor(x => x.Descripcion)
             .MaximumLength(LongitudesHotel.Descripcion).WithMessage($"La descripción no puede exceder {LongitudesHotel.Descripcion} caracteres.");
-
-        RuleFor(x => x.Estado).IsInEnum().WithMessage("El estado del hotel no es válido.");
     }
 }

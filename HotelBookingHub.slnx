@@ -31,5 +31,7 @@
     <Project Path="tests/Reservas.IntegrationTests/Reservas.IntegrationTests.csproj" />
     <Project Path="tests/Reservas.UnitTests/Reservas.UnitTests.csproj" />
     <Project Path="tests/Hoteles.UnitTests/Hoteles.UnitTests.csproj" />
+    <Project Path="tests/Hoteles.IntegrationTests/Hoteles.IntegrationTests.csproj" />
+    <Project Path="tests/Comun.Web.UnitTests/Comun.Web.UnitTests.csproj" />
   </Folder>
 </Solution>

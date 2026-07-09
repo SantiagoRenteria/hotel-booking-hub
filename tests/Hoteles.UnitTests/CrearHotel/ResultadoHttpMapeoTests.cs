@@ -1,5 +1,6 @@
 using HotelBookingHub.Comun.Resultados;
 using HotelBookingHub.Comun.Web;
+using Hoteles.Application.Hoteles;
 using Hoteles.Application.Hoteles.CrearHotel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,7 +24,7 @@ public sealed class ResultadoHttpMapeoTests
     [Fact]
     public async Task Ok_se_mapea_a_201_created()
     {
-        var dto = new HotelResponseDto(Guid.CreateVersion7(), "Hotel Central", "Medellín", "Habilitado");
+        var dto = new HotelResponseDto(Guid.CreateVersion7(), "Hotel Central", "Medellín", "Habilitado", "AAAAAAAAB9E=");
         var http = Result<HotelResponseDto>.Ok(dto).ToCreatedResult(d => $"/api/v1/hoteles/{d.Id}");
 
         Assert.Equal(StatusCodes.Status201Created, await EjecutarAsync(http));
