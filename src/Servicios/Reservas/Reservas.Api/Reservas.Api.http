@@ -1,6 +1,7 @@
 @Reservas.Api_HostAddress = http://localhost:5192
 
-GET {{Reservas.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+# Health del servicio (Story 1.1). Los endpoints de negocio (CAP-4/5/6) llegan en la Story 1.6a.
+GET {{Reservas.Api_HostAddress}}/health
+Accept: text/plain
 
 ###

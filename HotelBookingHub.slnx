@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/src/Comun/">
     <Project Path="src/Comun/HotelBookingHub.Comun/HotelBookingHub.Comun.csproj" />
+    <Project Path="src/Comun/HotelBookingHub.Comun.Web/HotelBookingHub.Comun.Web.csproj" />
   </Folder>
   <Folder Name="/src/Servicios/" />
   <Folder Name="/src/Servicios/Hoteles/">
@@ -26,6 +27,11 @@
     <Project Path="src/Servicios/Reservas/Reservas.Infrastructure/Reservas.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Contracts/Contracts.csproj" />
+    <Project Path="tests/Reservas.IntegrationTests/Reservas.IntegrationTests.csproj" />
     <Project Path="tests/Reservas.UnitTests/Reservas.UnitTests.csproj" />
+    <Project Path="tests/Hoteles.UnitTests/Hoteles.UnitTests.csproj" />
+    <Project Path="tests/Hoteles.IntegrationTests/Hoteles.IntegrationTests.csproj" />
+    <Project Path="tests/Comun.Web.UnitTests/Comun.Web.UnitTests.csproj" />
   </Folder>
 </Solution>

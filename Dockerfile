@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 #
 # Dockerfile multi-stage parametrizado por servicio (Story 1.1).
-# NOTA: AUTORADO — la verificación de runtime (`docker compose up`) queda pendiente
-# de una sesión dedicada (ver AC-E1.1.1). USER no root + HEALTHCHECK + tag específico.
+# Verificado en runtime: las 4 imágenes construyen y los servicios alcanzan (healthy).
+# USER no root + HEALTHCHECK + tag específico.
 #
 ARG DOTNET_TAG=10.0
 

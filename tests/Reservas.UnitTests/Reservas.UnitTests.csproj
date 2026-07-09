@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -7,8 +7,14 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!-- Los tests de Application ejercitan el mapeo Result→HTTP y el pipeline: requieren el framework web. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="FluentValidation" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="NetArchTest.Rules" />
     <PackageReference Include="xunit" />
@@ -21,6 +27,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Servicios\Reservas\Reservas.Domain\Reservas.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Servicios\Reservas\Reservas.Application\Reservas.Application.csproj" />
+    <ProjectReference Include="..\..\src\Servicios\Reservas\Reservas.Infrastructure\Reservas.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Servicios\Reservas\Reservas.Api\Reservas.Api.csproj" />
   </ItemGroup>
 
 </Project>
