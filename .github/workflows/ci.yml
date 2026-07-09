@@ -32,10 +32,14 @@ jobs:
       - name: Build (TreatWarningsAsErrors)
         run: dotnet build HotelBookingHub.slnx -c Release --no-restore
 
-      - name: Test (unit + NetArchTest)
-        run: dotnet test HotelBookingHub.slnx -c Release --no-build --verbosity normal
-        # Nota: los IntegrationTests con Testcontainers.MsSql y la collection G1 (concurrencia)
-        # llegan desde la Story 1.5/1.6c y correrán en un stage secuencial aparte.
+      - name: Test (unit + integración, EXCEPTO G1)
+        # Todo salvo la collection G1 del money test (concurrencia): corre en el pool paralelo.
+        run: dotnet test HotelBookingHub.slnx -c Release --no-build --verbosity normal --filter "Category!=G1"
+
+      - name: Money test G1 (secuencial, aislado)
+        # El money test de concurrencia (Story 1.6c) corre SOLO, en secuencia, nunca en el pool paralelo:
+        # un deadlock intermitente no debe contaminar otras suites. Bloqueante en PR a main.
+        run: dotnet test HotelBookingHub.slnx -c Release --no-build --verbosity normal --filter "Category=G1"
 
   gitleaks:
     name: Secret scan (gitleaks)

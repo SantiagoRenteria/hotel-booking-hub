@@ -16,27 +16,37 @@ public sealed class EjecutorTransaccional(ReservasDbContext db)
 {
     public async Task EjecutarAsync(Func<CancellationToken, Task> stagearCambios, CancellationToken ct)
     {
-        await PoliticaReintentos.EjecutarAsync(
-            async token =>
-            {
-                // Limpia el estado de un intento previo fallido (1205): la acción vuelve a stagear desde cero.
-                db.ChangeTracker.Clear();
+        try
+        {
+            await PoliticaReintentos.EjecutarAsync(
+                async token =>
+                {
+                    // Limpia el estado de un intento previo fallido (1205): la acción vuelve a stagear desde cero.
+                    db.ChangeTracker.Clear();
 
-                await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, token);
-                try
-                {
-                    await stagearCambios(token);
-                    await db.SaveChangesAsync(token);
-                    await tx.CommitAsync(token);
-                }
-                catch (DbUpdateException ex)
-                    when (ex.InnerException is SqlException sql && ClasificacionSqlServer.EsViolacionDeUnico(sql.Number))
-                {
-                    // Perdió la carrera por esa noche. 409 sin retry (la tx revierte al hacer dispose).
-                    throw new HabitacionNoDisponibleException();
-                }
-            },
-            ct,
-            esReintentable: PoliticaReintentos.EsDeadlock);
+                    await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, token);
+                    try
+                    {
+                        await stagearCambios(token);
+                        await db.SaveChangesAsync(token);
+                        await tx.CommitAsync(token);
+                    }
+                    catch (DbUpdateException ex)
+                        when (ex.InnerException is SqlException sql && ClasificacionSqlServer.EsViolacionDeUnico(sql.Number))
+                    {
+                        // Perdió la carrera por esa noche. 409 sin retry (la tx revierte al hacer dispose).
+                        throw new HabitacionNoDisponibleException();
+                    }
+                },
+                ct,
+                esReintentable: PoliticaReintentos.EsDeadlock);
+        }
+        catch (DbUpdateException ex)
+            when (ex.InnerException is SqlException sql && ClasificacionSqlServer.EsDeadlock(sql.Number))
+        {
+            // Deadlock persistente tras agotar los reintentos (1205): bajo contención equivale a no poder
+            // confirmar → se mapea a 409, NUNCA a 500 (determinismo del money test, AC-E1.6c.3).
+            throw new HabitacionNoDisponibleException();
+        }
     }
 }
