@@ -34,15 +34,24 @@ public sealed class ConsumidorResolucionCancelacion(INotificador notificador, II
         await _envio.EnviarLoteAsync(evento, [correo], ct);
     }
 
-    /// <summary>AC-E5.3.1: penalidad FINAL aplicada, o aviso de condonación si fue 0%; nota de ajuste si el agente
-    /// se apartó de la sugerida.</summary>
+    /// <summary>AC-E5.3.1: penalidad FINAL aplicada, o aviso de condonación. Se distingue la <b>condonación</b> (el
+    /// agente perdonó una penalidad que aplicaba → <c>PenalidadFueOverride</c>) del <b>0% natural</b> (nunca hubo
+    /// penalidad, p. ej. cancelación con suficiente antelación): en el dominio <c>override == true</c> solo ocurre
+    /// al condonar una sugerida &gt; 0, así que ambos casos se resuelven con el flag.</summary>
     private static Correo CorreoAprobacion(ReservaCanceladaV1 data)
     {
-        var pct = data.PenalidadAplicadaPorcentaje.ToString("0.##", CultureInfo.InvariantCulture);
-        var cuerpo = data.PenalidadAplicadaPorcentaje == 0m
-            ? "Tu cancelación fue aprobada y la penalidad fue CONDONADA (0%). No se te cobrará penalidad."
-            : $"Tu cancelación fue aprobada. Penalidad FINAL aplicada: {pct}%." +
-              (data.PenalidadFueOverride ? " (ajustada por el agente respecto a la estimación inicial)." : string.Empty);
+        string cuerpo;
+        if (data.PenalidadAplicadaPorcentaje == 0m)
+        {
+            cuerpo = data.PenalidadFueOverride
+                ? "Tu cancelación fue aprobada y el agente CONDONÓ la penalidad (0%). No se te cobrará penalidad."
+                : "Tu cancelación fue aprobada. No aplica penalidad (0%).";
+        }
+        else
+        {
+            var pct = data.PenalidadAplicadaPorcentaje.ToString("0.##", CultureInfo.InvariantCulture);
+            cuerpo = $"Tu cancelación fue aprobada. Penalidad FINAL aplicada: {pct}%.";
+        }
 
         return new Correo("viajero", data.HuespedEmail, "Tu cancelación fue resuelta", cuerpo);
     }
