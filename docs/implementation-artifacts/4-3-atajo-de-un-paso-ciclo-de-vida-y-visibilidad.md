@@ -26,6 +26,14 @@ expiración automática).
 
 ## Tasks / Subtasks
 
+> **✅ Task 0 RESUELTA (party-mode Winston+Murat+Amelia, 2026-07-09) — Outbox multi-evento por comando (Opción A-completa).**
+> El atajo emite DOS eventos en un comando, pero el outbox imponía "un evento por comando". Decisión:
+> - **MessageId por-MENSAJE derivado determinista** (cierra el diferido de 1.6b): en `ColaOutbox`, `ordinal = RegistrarEventoEncolado()-1`; `messageId = ordinal==0 ? contexto.MessageId : Guid.CreateVersion5(contexto.MessageId, BitConverter.GetBytes(ordinal))`. **Ordinal 0 = MessageId del comando** → CERO cambio observable para los comandos mono-evento (1.3/1.6b/2.5/4.1/4.2). Estable ante retry 1205 porque la semilla se fija una vez en `TransactionBehavior` y `ReiniciarConteo()` corre por-intento → misma secuencia de ordinales → mismos ids → la `UNIQUE(MessageId)` deduplica. Quitar el `throw` del guard "1 evento/comando".
+> - **Desacople identidad↔clasificación (por ENTIDAD, sin parsear mensaje):** en el catch 2627/2601 de `EjecutorTransaccional`, clasificar por la entidad ofensora vía `DbUpdateException.Entries`: si hay `NocheHabitacion` → `HabitacionNoDisponibleException` (409, overbooking); en cualquier otra violación de único (p. ej. `UNIQUE(OutboxMessages.MessageId)`) → **rethrow como NO-de-negocio → 500**, nunca 409. `ClasificacionSqlServer` (por `Number`) intacto.
+> - **NO tocar:** envelope `EventoIntegracion` (1.3), `TransactionBehavior` (semilla-una-vez + reset-por-intento), retry 1205, outbox de Hoteles.
+> - **Handler del atajo:** compone `SolicitarCancelacion` (4.1) + `Resolver` (4.2) sobre el MISMO agregado trackeado (`ObtenerConNochesAsync`) → un `SaveChanges` → dos `Encolar`. Encolar SolicitudCancelacionRegistrada ANTES que la resolución; ambos con `AggregateId = ReservaId`.
+> - **Tests obligatorios (Murat):** atajo-aprobado → exactamente {Registrada, ReservaCancelada} (2 filas); atajo-rechazo → {Registrada, Rechazada} y `Count(ReservaCancelada)==0`; estabilidad de MessageId ante 1205 forzado (2 filas, no 4); **colisión de MessageId → 500 (no 409) + test gemelo overbooking → 409**; regresión mono-evento (`CrearReserva` = 1 fila, id == comando); money-test G1 sigue verde; guard relajado a N pero fail-fast.
+
 - [ ] **Task 1 — Atajo de un paso (AC: 1)** *(TDD + BDD)*
   - [ ] `CancelarEnUnPasoCommand` + handler que compone solicitar + resolver en UNA transacción, emitiendo **ambos** eventos (solicitud y resolución) por outbox → auditoría completa. Reutiliza las transiciones de dominio de 4.1/4.2 (no duplicar lógica).
 - [ ] **Task 2 — Guards del ciclo de vida (AC: 2)** *(tests de tabla)*
