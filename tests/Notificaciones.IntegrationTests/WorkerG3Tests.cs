@@ -90,24 +90,26 @@ public sealed class WorkerG3Tests(RedisFixture fixture)
     [Fact]
     public async Task Broker_caido_durante_la_rafaga_no_pierde_ni_duplica_al_recuperarse()
     {
-        // Given: 15 eventos. Mientras el broker está caído, el envío falla: se interrumpe el PRIMER efecto de cada
-        // entrega (el correo del huésped), lo que aborta la entrega completa (el consumidor propaga para reentrega,
-        // sin llegar al 2º correo). Modela "todo envío falla durante la caída".
+        // Given: 15 eventos. Mientras el broker está caído, TODO envío falla: se interrumpe el 1er envío de cada
+        // destinatario (huésped y agente). El consumidor intenta ambos efectos, libera las reservas y propaga para
+        // que el transporte re-entregue al recuperarse. Modela "todo envío falla durante la caída".
         const int n = 15;
         var eventos = Enumerable.Range(0, n).Select(i => Envelope(Data(i))).ToList();
         var fallos = new Dictionary<string, int>();
         foreach (var i in Enumerable.Range(0, n))
         {
             fallos[$"huesped-{i}@example.com"] = 1;
+            fallos[$"agente-{i}@example.com"] = 1;
         }
 
         var fake = new NotificadorFake(fallos);
         var consumidor = Crear(fake);
 
-        // When (broker caído): la 1ª entrega de cada evento falla y propaga; la reserva se libera (sin pérdida).
+        // When (broker caído): la 1ª entrega de cada evento falla en ambos efectos y propaga (AggregateException);
+        // las reservas se liberan (sin pérdida).
         foreach (var e in eventos)
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => consumidor.ProcesarAsync(e, CancellationToken.None));
+            await Assert.ThrowsAnyAsync<Exception>(() => consumidor.ProcesarAsync(e, CancellationToken.None));
         }
 
         Assert.Empty(fake.Enviados); // nada salió mientras el broker estuvo caído.
