@@ -4,7 +4,7 @@ baseline_commit: 023e2bb3d96d99a0e3a4b84e0772b90959bcd731
 
 # Story 4.1: Solicitar cancelación con política sugerida
 
-Status: review
+Status: in-progress
 
 <!-- Generado por bmad-create-story. Complejidad ALTA (núcleo de dominio: máquina de estados + penalidad
 congelada + evento nuevo + concurrencia). 2ª VITRINA BDD: aplicar BDD (Given/When/Then) además de TDD Red→Green
@@ -59,6 +59,17 @@ consuma (regla de propiedad de eventos, party-mode Winston).
 - [x] **Task 6 — Tests (unit + integración Testcontainers)**
   - [x] BDD del happy path (Given confirmada → When solicita → Then CancelacionSolicitada + penalidad congelada + evento en outbox); AC negativos (duplicada 409, estancia iniciada 409); congelación persistida (round-trip).
 - [x] **Task 7 — Commits TDD (Red→Green visibles) + BDD en rama `feature/4-1-solicitar-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings
+
+<!-- Code review adversarial (Blind Hunter + Edge Case Hunter + Acceptance Auditor), 2026-07-09. -->
+
+- [ ] [Review][Patch] Motivo sin `MaximumLength` → truncamiento SQL = 500 en vez de 400 [SolicitarCancelacionCommandValidator.cs] — validar `CategoriaMotivo`<=80 y `DetalleMotivo`<=1000 (columnas `nvarchar(80)/(1000)`), con tests.
+- [ ] [Review][Patch] Enum `Iniciador` en el body solo bindea número (asimétrico con el evento que emite "Viajero"/"Agente") [Reservas.Api/Program.cs] — registrar `JsonStringEnumConverter` para aceptar los nombres.
+- [x] [Review][Defer] Concurrencia optimista: 2ª solicitud en carrera → `DbUpdateConcurrencyException` no traducida → 500 en vez de 409 [EjecutorTransaccional.cs] — deferido a **Story 4.2** (Task 0 asigna la arbitración de concurrencia/doble-liberación a 4.2; requiere cambio de infra compartida + tests).
+- [x] [Review][Defer] "Hoy" en UTC vs fecha calendario de la estancia (borde de zona horaria puede invertir 0%↔100% o la elegibilidad por un día) [SolicitarCancelacionCommandHandler.cs] — deferido; convención UTC+`DateOnly` de todo el sistema (pre-existente, ver `HuespedDtoValidator`).
+- [x] [Review][Defer] Autorización: sin aislamiento por agente (IDOR) y `Iniciador` autodeclarado por el cliente [Reservas.Api/Program.cs, handler] — deferido a **Épica 6** (auth/RBAC/aislamiento).
+- [x] [Review][Defer] Sin test a nivel HTTP del endpoint (200/400/409 + binding JSON) [SolicitudCancelacionTests.cs] — deferido; los tests usan `ISender` (patrón del repo), el 409 se infiere del tipo base `ExcepcionNegocio`.
 
 ## Dev Notes
 
