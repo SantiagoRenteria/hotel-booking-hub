@@ -25,3 +25,12 @@ public sealed record SolicitudCancelacionResponseDto(
     string Estado,
     decimal PenalidadPorcentaje,
     decimal PenalidadMonto);
+
+/// <summary>
+/// Cuerpo HTTP de la solicitud de cancelación: el <c>ReservaId</c> viaja en la ruta, aquí solo el motivo
+/// (categoría + texto libre) y el iniciador. El endpoint compone el <see cref="SolicitarCancelacionCommand"/>.
+/// </summary>
+public sealed record SolicitarCancelacionRequest(
+    string CategoriaMotivo,
+    string DetalleMotivo,
+    IniciadorCancelacion Iniciador);
