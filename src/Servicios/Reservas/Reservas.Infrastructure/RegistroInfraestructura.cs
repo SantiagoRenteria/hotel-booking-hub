@@ -8,6 +8,7 @@ using Reservas.Infrastructure.Disponibilidad;
 using Reservas.Infrastructure.Mensajeria;
 using Reservas.Infrastructure.Outbox;
 using Reservas.Infrastructure.Persistencia;
+using Reservas.Infrastructure.Proyeccion;
 
 namespace Reservas.Infrastructure;
 
@@ -25,6 +26,9 @@ public static class RegistroInfraestructura
         servicios.AddScoped<ContextoMensajeria>();
         servicios.AddScoped<IColaOutbox, ColaOutbox>();
         servicios.AddScoped(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
+
+        // Consumidor de eventos de catálogo (E3): proyecta a ProyeccionHabitacion con inbox de idempotencia.
+        servicios.AddScoped<IConsumidorEventosCatalogo, ProyectorCatalogo>();
 
         // Relay del outbox (productor): procesador + BackgroundService que sondea y publica.
         servicios.AddSingleton<OpcionesRelayOutbox>();
