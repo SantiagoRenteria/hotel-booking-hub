@@ -4,7 +4,7 @@ baseline_commit: b3e2216
 
 # Story 1.5: Anti-overbooking — slots `NochesHabitacion` + índice único + arbitraje
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -39,8 +39,14 @@ para **garantizar cero overbooking aun bajo concurrencia**.
   - [x] `Reservas.IntegrationTests` con Testcontainers.MsSql; migración aplicada al arrancar el contenedor (AC-E1.5.0)
   - [x] Concurrencia sobre la misma noche → 1 gana, resto 2627/2601 → 409
   - [x] **Falso 409:** adyacentes `[D1→D2]`/`[D2→D3]` → ambas OK, `conflicts == 0`; habitaciones distintas mismas fechas → ambas OK
-  - [x] Deadlock 1205 → retry acotado (simular/forzar si es viable)
+  - [~] Deadlock 1205 → retry acotado — **diferido a 1.6b**: `PoliticaReintentos` queda como componente unit-testeado (predicado sintético), pero el 1205 NO se forzó aquí y el cableado del retry vive en el `TransactionBehavior` del pipeline (llega con 1.6). El test con 1205 forzado se hace en 1.6b (ver `deferred-work.md`).
 - [x] **Task 4 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings (code review 2026-07-08)
+
+- [x] [Review][Patch] Honestidad del doc: el subtask de Task 3 «Deadlock 1205 → retry acotado (simular/forzar si es viable)» estaba marcado `[x]` pero **no se simuló ni forzó** un 1205, y `PoliticaReintentos` **no está cableada** a `ConfirmarAsync`. El predicado por defecto `PoliticaReintentos.EsDeadlock` (desenvuelve `SqlException`/`DbUpdateException`) tiene cobertura cero (los tests usan un predicado sintético). **Resuelto:** subtask re-marcado `[~]` (diferido a 1.6b) + nota de completitud de AC-E1.5.2 tensada a ⚠️ parcial. `[1-5-...md (Task 3), ReservaRepository.cs:34]`
+- [x] [Review][Defer] Cablear `PoliticaReintentos` en el `TransactionBehavior` + test de integración con **1205 forzado** (cierra la cobertura real de `PoliticaReintentos.EsDeadlock` y prueba el retry end-to-end). Al integrar, **crear un `DbContext`/scope nuevo por intento** (no reusar el grafo `Added` tras un fallo, como ya hacen los tests con `CrearContexto()`). `[Reservas.Infrastructure/Persistencia/ReservaRepository.cs, PoliticaReintentos.cs]` — deferido a 1.6b (por diseño: el retry vive en el pipeline del Mediator, no en el repositorio).
+- [x] [Review][Defer] Guarda de **longitud máxima de estancia**: `Estancia.Crear` solo valida `salida > entrada`; una estancia de años genera un slot por noche en una sola transacción (escalado de bloqueos / memoria del ChangeTracker / timeout). Añadir tope en la validación de `CrearReservaCommand`. `[Reservas.Domain/Reservas/Estancia.cs (1.4), CrearReservaCommand validation]` — deferido a 1.6a (validación de comando).
 
 ## Dev Notes
 
@@ -113,7 +119,7 @@ Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
 
 - **AC-E1.5.0 ✅** — migración EF crea `Reservas`, `NochesHabitacion` (PK clustered compuesta) y `OutboxMessages` (`UNIQUE(MessageId)`); aplicada por `MigrateAsync` en el fixture de Testcontainers.
 - **AC-E1.5.1 ✅** — 2 reservas concurrentes por la misma noche → 1 confirmada, 1 `HabitacionNoDisponibleException` (2627/2601), **1 sola fila** en `NochesHabitacion`. El índice único arbitra en el motor.
-- **AC-E1.5.2 ✅** — `PoliticaReintentos` reintenta solo deadlock (1205), 3× backoff+jitter (unit-testeada); slots insertados en orden ascendente por noche. La violación de único NO se reintenta.
+- **AC-E1.5.2 ⚠️ parcial** — `PoliticaReintentos` (reintenta solo deadlock 1205, 3× backoff+jitter) está construida y unit-testeada con un predicado sintético; slots insertados en orden ascendente por noche; la violación de único NO se reintenta. **Pendiente en 1.6b:** cablear la política al camino de confirmación vía `TransactionBehavior` y probar el retry con un **1205 forzado** en integración (el predicado por defecto `EsDeadlock` no es unit-testeable porque `SqlException` no tiene ctor público). Registrado en `deferred-work.md`.
 - **AC-E1.5.3 ✅** — falso 409 cubierto: adyacentes `[10,12)`/`[12,14)` ambas confirman (rango semiabierto); habitaciones distintas mismas fechas ambas confirman.
 - Claves ADR-017 (UUID v7 no-clustered + `Seq` shadow clustered) y arbitraje ADR-016 materializados. Alimenta 1.6a (comando) y 1.6b (outbox en la misma tx + retry en `TransactionBehavior`).
 - **Consideración de CI (para 1.6c):** los tests de integración ahora corren en el job `build-test` (requieren Docker; ok en `ubuntu-latest`). La segmentación en un stage secuencial aislado (`G1`, `DisableParallelization`) se formaliza en 1.6c.
