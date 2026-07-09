@@ -27,8 +27,10 @@ public sealed class ConsumidorSolicitudCancelacion(INotificador notificador, IIn
             ?? throw new InvalidOperationException(
                 $"Evento {evento.Id} ({evento.Type}) sin data deserializable a {nameof(SolicitudCancelacionRegistradaV1)}.");
 
-        // InvariantCulture: el porcentaje del correo NO debe variar con la config regional del host.
+        // InvariantCulture: ni el porcentaje ni la fecha del correo deben variar con la config regional del host
+        // (una cultura no gregoriana/dígitos no-ASCII alteraría el año o los dígitos).
         var penalidad = data.PenalidadPorcentaje.ToString("0.##", CultureInfo.InvariantCulture);
+        var fecha = data.FechaSolicitud.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         var correos = new List<Correo>
         {
@@ -38,7 +40,7 @@ public sealed class ConsumidorSolicitudCancelacion(INotificador notificador, IIn
                 Efecto: "viajero",
                 Destinatario: data.HuespedEmail,
                 Asunto: "Recibimos tu solicitud de cancelación",
-                Cuerpo: $"Registramos tu solicitud de cancelación del {data.FechaSolicitud:yyyy-MM-dd}. " +
+                Cuerpo: $"Registramos tu solicitud de cancelación del {fecha}. " +
                         $"La penalidad ESTIMADA es del {penalidad}% (estimación sujeta a resolución; el importe definitivo " +
                         "se confirmará cuando se resuelva). Te avisaremos entonces."),
 
