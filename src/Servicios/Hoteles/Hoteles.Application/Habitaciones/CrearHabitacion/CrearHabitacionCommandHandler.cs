@@ -35,11 +35,19 @@ public sealed class CrearHabitacionCommandHandler(
             request.HotelId, request.Tipo, request.CostoBase, request.Impuestos, request.Ubicacion, request.Estado,
             request.Capacidad);
 
+        // Guarda de borde de emisión (party-mode): la ciudad denormalizada NO puede ir vacía o envenenaría el
+        // read-model de E3 (búsqueda por ciudad → resultados fantasma). El invariante del Hotel ya la garantiza.
+        if (string.IsNullOrWhiteSpace(hotel.Ciudad))
+        {
+            throw new InvalidOperationException($"El hotel {hotel.Id} no tiene ciudad; no se puede emitir HabitacionAgregada.");
+        }
+
         // Encola el evento de catálogo ANTES del SaveChanges: la fila de outbox y la habitación se persisten en
         // la MISMA transacción implícita del único SaveChanges del repositorio (atomicidad AC-E2.5.2, Opción U).
+        // Ciudad (del hotel) y Capacidad se denormalizan para la proyección de E3 (party-mode A2).
         var data = new HabitacionAgregadaV1(
             habitacion.Id, habitacion.HotelId, habitacion.Tipo, habitacion.CostoBase, habitacion.Impuestos,
-            habitacion.Ubicacion, habitacion.Estado.ToString());
+            habitacion.Ubicacion, habitacion.Estado.ToString(), hotel.Ciudad, habitacion.Capacidad);
         outbox.Encolar(HabitacionAgregadaV1.Tipo, habitacion.Version, habitacion.Id, data,
             Activity.Current?.TraceId.ToString());
 

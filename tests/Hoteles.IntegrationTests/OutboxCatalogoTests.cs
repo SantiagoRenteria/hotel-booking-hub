@@ -250,7 +250,7 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
             // Orden de Seq por inserción: HAB_1 v2 (Seq1), HAB_1 v3 (Seq2), HAB_2 v5 (Seq3).
             cola.Encolar(PrecioHabitacionCambiadoV1.Tipo, 2, hab1, new PrecioHabitacionCambiadoV1(hab1, hotel, 150m, 28m), null);
             cola.Encolar(HabitacionDeshabilitadaV1.Tipo, 3, hab1, new HabitacionDeshabilitadaV1(hab1, hotel), null);
-            cola.Encolar(HabitacionAgregadaV1.Tipo, 5, hab2, new HabitacionAgregadaV1(hab2, hotel, "Suite", 100m, 19m, "Piso 1", "Habilitada"), null);
+            cola.Encolar(HabitacionAgregadaV1.Tipo, 5, hab2, new HabitacionAgregadaV1(hab2, hotel, "Suite", 100m, 19m, "Piso 1", "Habilitada", "Bogotá", 2), null);
             await db.SaveChangesAsync(CancellationToken.None);
         }
 
