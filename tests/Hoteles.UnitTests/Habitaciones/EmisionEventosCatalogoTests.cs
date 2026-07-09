@@ -19,7 +19,7 @@ public sealed class EmisionEventosCatalogoTests
     private static readonly byte[] _rowVersion = [1, 2, 3, 4];
 
     private static Habitacion Existente() =>
-        Habitacion.Crear(Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        Habitacion.Crear(Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada, capacidad: 2);
 
     // ---- CrearHabitacion → HabitacionAgregada.v1 (AC-E2.5.2) ----
 
@@ -30,7 +30,7 @@ public sealed class EmisionEventosCatalogoTests
         var hoteles = new HotelRepositoryFake { Existente = hotel };
         var habitaciones = new HabitacionRepositoryFake();
         var outbox = new ColaOutboxFake();
-        var comando = new CrearHabitacionCommand(hotel.Id, "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        var comando = new CrearHabitacionCommand(hotel.Id, "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada, Capacidad: 3);
 
         await new CrearHabitacionCommandHandler(hoteles, habitaciones, outbox).Handle(comando, CancellationToken.None);
 
@@ -51,7 +51,7 @@ public sealed class EmisionEventosCatalogoTests
     {
         var hoteles = new HotelRepositoryFake { Existente = null };
         var outbox = new ColaOutboxFake();
-        var comando = new CrearHabitacionCommand(Guid.NewGuid(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        var comando = new CrearHabitacionCommand(Guid.NewGuid(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada, Capacidad: 2);
 
         await new CrearHabitacionCommandHandler(hoteles, new HabitacionRepositoryFake(), outbox).Handle(comando, CancellationToken.None);
 
@@ -66,7 +66,7 @@ public sealed class EmisionEventosCatalogoTests
         var habitacion = Existente();
         var repo = new HabitacionRepositoryFake { Existente = habitacion };
         var outbox = new ColaOutboxFake();
-        var comando = new EditarHabitacionCommand(habitacion.Id, _rowVersion, "Suite Premium", 150m, 28.5m, "Piso 5");
+        var comando = new EditarHabitacionCommand(habitacion.Id, _rowVersion, "Suite Premium", 150m, 28.5m, "Piso 5", Capacidad: 2);
 
         await new EditarHabitacionCommandHandler(repo, outbox).Handle(comando, CancellationToken.None);
 
@@ -86,7 +86,7 @@ public sealed class EmisionEventosCatalogoTests
         var repo = new HabitacionRepositoryFake { Existente = habitacion };
         var outbox = new ColaOutboxFake();
         // Cambia tipo/ubicación pero deja costoBase/impuestos idénticos.
-        var comando = new EditarHabitacionCommand(habitacion.Id, _rowVersion, "Suite Deluxe", 100m, 19m, "Piso 9");
+        var comando = new EditarHabitacionCommand(habitacion.Id, _rowVersion, "Suite Deluxe", 100m, 19m, "Piso 9", Capacidad: 2);
 
         await new EditarHabitacionCommandHandler(repo, outbox).Handle(comando, CancellationToken.None);
 

@@ -23,7 +23,7 @@ public sealed class EditarHabitacionCommandHandler(IHabitacionRepository reposit
             return Result<HabitacionResponseDto>.NoEncontrado($"No existe una habitación con id {request.Id}.");
         }
 
-        var cambioPrecio = habitacion.Editar(request.Tipo, request.CostoBase, request.Impuestos, request.Ubicacion);
+        var cambioPrecio = habitacion.Editar(request.Tipo, request.CostoBase, request.Impuestos, request.Ubicacion, request.Capacidad);
         if (cambioPrecio)
         {
             var data = new PrecioHabitacionCambiadoV1(
