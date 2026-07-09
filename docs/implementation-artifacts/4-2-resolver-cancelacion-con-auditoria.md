@@ -4,7 +4,7 @@ baseline_commit: e258f22508287b39e19f051613d0e7229d908f8a
 
 # Story 4.2: Resolver cancelación (aprobar / condonar / rechazar) con auditoría
 
-Status: review
+Status: in-progress
 
 <!-- Generado por bmad-create-story. Complejidad ALTA (liberación de inventario + concurrencia + auditoría +
 aislamiento por agente). 2ª VITRINA BDD: BDD (Given/When/Then) + TDD Red→Green visible. El modelo de dominio y la
@@ -59,6 +59,17 @@ con un round-trip real (una nueva reserva sobre esa noche vuelve a caber). Deter
 - [x] **Task 6 — Tests (unit + integración Testcontainers)**
   - [x] **El assert que importa (AC-E4.2.1):** aprobar → nueva reserva sobre `[D]` responde 201 (round-trip real con el motor anti-overbooking de E1). Rechazar no toca slots. Doble resolución concurrente → 1×2xx/1×409 y `count(slots)` no sube a 2 (money-test style). Agente ajeno → 403.
 - [x] **Task 7 — Commits TDD (Red→Green) + BDD en rama `feature/4-2-resolver-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings
+
+<!-- Code review adversarial 2026-07-09. Capa Blind Hunter fallida (salida inservible); Edge + Auditor completas.
+Veredicto Auditor: cumplimiento completo de AC-E4.2.1/.2/.3/.4. -->
+
+- [ ] [Review][Patch] `Reserva.Resolver` (aprobar) hace `_noches.Clear()` solo si el llamador cargó las Noches; método público sin guard → fuga silenciosa de inventario si un futuro llamador usa `ObtenerAsync` (sin Include) [Reserva.cs] — añadir guard defensivo: aprobar con `_noches` vacía (imposible en una reserva válida) lanza.
+- [ ] [Review][Patch] `MotivoRechazo` reusado como nota de aprobación (naming confuso) [Reserva.cs, ResolverCancelacionCommandHandler.cs] — renombrar el parámetro de dominio a `motivo` (genérico: motivo de rechazo / nota de aprobación).
+- [x] [Review][Defer] Re-solicitar cancelación tras un rechazo sobrescribe la auditoría del episodio rechazado en la owned `SolicitudCancelacion` [Reserva.cs] — deferido: es el diseño **single-episode** de Task 0 ("un solo episodio, no dos owned"); el audit **durable** del rechazo es el evento `SolicitudCancelacionRechazada.v1` ya emitido al outbox. Si se requiere historial en BD, es una historia propia (tabla de episodios).
+- [x] [Review][Defer] Reserva con `AgenteEmail` null queda irresoluble (403 permanente) [ResolverCancelacionCommandHandler.cs] — deferido; fail-closed correcto, consistente con el deferido de 3.3 (backfill de `AgenteEmail`). En producción 3.3 siempre setea el agente.
+- [x] [Review][Defer] Sin test a nivel HTTP del endpoint de resolución (200/400/409/403 + binding) [ResolverCancelacionTests.cs] — deferido; los tests usan `ISender` (patrón del repo). Misma deuda de wiring HTTP transversal ya registrada.
 
 ## Dev Notes
 
