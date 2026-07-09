@@ -56,7 +56,7 @@ public sealed class Reserva
             HabitacionId = habitacionId,
             Estancia = estancia,
             Estado = EstadoReserva.Confirmada,
-            AgenteEmail = agenteEmail?.Trim(),
+            AgenteEmail = agenteEmail?.Trim().ToLowerInvariant(), // canónico: aislamiento independiente del collation
             PrecioTotal = precioTotal,
             ContactoEmergencia = contactoEmergencia,
         };

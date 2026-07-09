@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Primitives;
 using Reservas.Application.Abstracciones;
 
 namespace Reservas.Api;
@@ -16,8 +17,18 @@ public sealed class HttpContextoAgente(IHttpContextAccessor accessor) : IContext
     {
         get
         {
-            var valor = accessor.HttpContext?.Request.Headers[CabeceraAgente].ToString();
-            return string.IsNullOrWhiteSpace(valor) ? null : valor.Trim();
+            var valores = accessor.HttpContext?.Request.Headers[CabeceraAgente] ?? StringValues.Empty;
+
+            // Ausente o AMBIGUO (varios valores) → sin identidad (fail-closed): no adivinamos a qué agente se refiere.
+            if (valores.Count != 1)
+            {
+                return null;
+            }
+
+            var valor = valores[0];
+            // Normalización canónica (minúsculas + trim): el email es case-insensitive; así el aislamiento NO
+            // depende del collation de SQL y coincide con el AgenteEmail guardado (normalizado igual en Reserva).
+            return string.IsNullOrWhiteSpace(valor) ? null : valor.Trim().ToLowerInvariant();
         }
     }
 }
