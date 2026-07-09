@@ -75,4 +75,22 @@ public sealed class ManejadorExcepcionesNegocioTests
     {
         Assert.Equal(statusEsperado, ResultadoHttpExtensions.CodigoHttp(estado));
     }
+
+    // Convergencia (party-mode · Murat): el camino Result y el camino Excepción NO pueden divergir para un mismo
+    // EstadoResultado. El status que escribe el handler transversal debe ser exactamente el de la tabla única
+    // CodigoHttp (la misma que usan los mapeos ToOkResult/ToNoContentResult/ToCreatedResult del camino Result).
+    [Theory]
+    [InlineData(EstadoResultado.Conflicto)]
+    [InlineData(EstadoResultado.NoEncontrado)]
+    [InlineData(EstadoResultado.Prohibido)]
+    [InlineData(EstadoResultado.Invalido)]
+    public async Task Result_y_excepcion_convergen_en_el_mismo_status(EstadoResultado estado)
+    {
+        var ctx = CrearContexto();
+
+        await new ManejadorExcepcionesNegocio().TryHandleAsync(ctx, new FalloDeNegocio(estado), CancellationToken.None);
+
+        // status del camino Excepción == status del camino Result (tabla única) → una sola fuente de verdad.
+        Assert.Equal(ResultadoHttpExtensions.CodigoHttp(estado), ctx.Response.StatusCode);
+    }
 }
