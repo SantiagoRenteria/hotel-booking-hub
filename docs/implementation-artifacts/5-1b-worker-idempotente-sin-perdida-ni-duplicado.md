@@ -44,6 +44,22 @@ Salda la parte `AC-E5` que E1 dejó como deuda: el **efecto exactamente-una-vez*
   - [x] Unit (`Notificaciones.UnitTests`, 11): idempotencia + veneno→dead-letter. Integración (`Notificaciones.IntegrationTests`, 6): SETNX+TTL real + G3. Redis real vía `RedisFixture` (`IConnectionMultiplexer` + Testcontainers).
 - [x] **Task 6 — Commits TDD (Red→Green) en rama `feature/5-1b-worker-idempotente` + PR a `develop`** (autor Santiago Renteria; sin trailers) — 3 ciclos Red→Green + docs; PR pendiente al cierre.
 
+### Review Findings (bmad-code-review 2026-07-09 · Blind + Edge + Auditor)
+
+- [ ] [Review][Patch] F1 — La liberación de compensación usa el `ct` (posiblemente cancelado en shutdown) y puede enmascarar la excepción original: si el `ct` está cancelado o `LiberarAsync` falla, la reserva queda colgada → correo perdido hasta el TTL. Liberar con `CancellationToken.None`, best-effort, sin ocultar la excepción original. [Notificaciones.Worker/Notificaciones/ConsumidorReservaConfirmada.cs]
+- [ ] [Review][Patch] F2 — Un destinatario con fallo permanente aborta el bucle secuencial antes del 2º correo; el destinatario sano nunca se envía y el mensaje entero va a dead-letter. Intentar ambos efectos de forma independiente y propagar tras intentarlos. [Notificaciones.Worker/Notificaciones/ConsumidorReservaConfirmada.cs]
+- [ ] [Review][Patch] F3 — `OpcionesDespachador.MaxIntentos` sin validación (0/negativo → dead-letter al primer fallo o reintento infinito). Guard `>= 1` en el record. [Notificaciones.Worker/Notificaciones/DespachadorNotificaciones.cs]
+- [x] [Review][Defer] F4 — `InboxIdempotenciaEnMemoria` sin TTL/evicción: crecimiento de memoria no acotado y sin la autocorrección at-most-once del TTL de Redis. Fallback de dev; Redis es el camino real. [InboxIdempotenciaEnMemoria.cs] — deferred
+- [x] [Review][Defer] F5 — Redis caído en `IntentarMarcarProcesadoAsync` se cuenta como intento de procesamiento → un mensaje válido puede acabar en dead-letter (falso veneno) durante un outage. [DespachadorNotificaciones.cs] — deferred
+- [x] [Review][Defer] F6 — Race check-then-act en el tope de intentos → dead-letter duplicado bajo competing-consumers. [DespachadorNotificaciones.cs] — deferred
+- [x] [Review][Defer] F7 — No existe variante Redis (`INCR`) de `IContadorReintentos`: asimetría con el inbox multi-instancia (veneno reintentado hasta MaxIntentos×N_instancias). [IContadorReintentos.cs] — deferred
+- [x] [Review][Defer] F8 — Fallo del sink de dead-letter deja el contador sin reiniciar y re-bloquea el mensaje (sin política de fallback). [DespachadorNotificaciones.cs] — deferred
+- [x] [Review][Defer] F9 — Caída del worker entre reservar y enviar: ventana de pérdida hasta el TTL (límite inherente documentado; no ejercida por test; el checkbox "0 perdidos" es del broker caído con worker vivo). [ConsumidorReservaConfirmada.cs] — deferred
+- [x] [Review][Defer] F10 — PII (email del destinatario) puede filtrarse a los logs vía `ex.Message` en el sink de dead-letter. [ColaDeadLetterLog.cs] — deferred
+- [x] [Review][Defer] F11 — `CancellationToken` no propagado a las operaciones Redis (limitación de SE.Redis; solo check al entrar). [InboxIdempotenciaRedis.cs] — deferred
+- [x] [Review][Defer] F14 — `DespachadorNotificaciones` registrado en DI pero nunca invocado en runtime (transporte productor→worker diferido en todo el sistema). [Program.cs] — deferred
+- [x] [Review][Defer] F16 — Contador de reintentos en memoria se reinicia al reiniciar el worker (crash-loop de veneno no llega a dead-letter). [ContadorReintentosEnMemoria.cs] — deferred
+
 ## Dev Notes
 
 ### Arquitectura y archivos a tocar
