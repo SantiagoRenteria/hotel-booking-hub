@@ -77,6 +77,20 @@ public sealed class ConsumidorReservaConfirmadaTests
     }
 
     [Fact]
+    public async Task Payload_nulo_lanza_error_descriptivo_no_NRE()
+    {
+        var fake = new NotificadorFake();
+        var consumidor = new ConsumidorReservaConfirmada(fake);
+        var jsonNulo = JsonSerializer.SerializeToElement<ReservaConfirmadaV1?>(null); // data = "null" tras transporte
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            consumidor.ProcesarAsync(Envelope(jsonNulo), CancellationToken.None));
+
+        Assert.Contains("ReservaConfirmadaV1", ex.Message); // descriptivo, no NullReferenceException
+        Assert.Empty(fake.Enviados);
+    }
+
+    [Fact]
     public async Task Otro_tipo_de_evento_se_ignora()
     {
         var fake = new NotificadorFake();
