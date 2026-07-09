@@ -49,7 +49,7 @@ public sealed class ConsumidorReservaConfirmadaTests
     public async Task Confirmacion_dispara_correo_al_huesped_y_al_agente()
     {
         var fake = new NotificadorFake();
-        var consumidor = new ConsumidorReservaConfirmada(fake);
+        var consumidor = new ConsumidorReservaConfirmada(fake, new InboxIdempotenciaEnMemoria());
         var data = Data();
 
         await consumidor.ProcesarAsync(Envelope(data), CancellationToken.None);
@@ -65,7 +65,7 @@ public sealed class ConsumidorReservaConfirmadaTests
     public async Task Data_como_JsonElement_se_deserializa_igual()
     {
         var fake = new NotificadorFake();
-        var consumidor = new ConsumidorReservaConfirmada(fake);
+        var consumidor = new ConsumidorReservaConfirmada(fake, new InboxIdempotenciaEnMemoria());
         // Simula el transporte: data llega como JsonElement, no como el tipo concreto.
         var opciones = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var jsonElement = JsonSerializer.SerializeToElement(Data(), opciones);
@@ -80,7 +80,7 @@ public sealed class ConsumidorReservaConfirmadaTests
     public async Task Payload_nulo_lanza_error_descriptivo_no_NRE()
     {
         var fake = new NotificadorFake();
-        var consumidor = new ConsumidorReservaConfirmada(fake);
+        var consumidor = new ConsumidorReservaConfirmada(fake, new InboxIdempotenciaEnMemoria());
         var jsonNulo = JsonSerializer.SerializeToElement<ReservaConfirmadaV1?>(null); // data = "null" tras transporte
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -94,7 +94,7 @@ public sealed class ConsumidorReservaConfirmadaTests
     public async Task Otro_tipo_de_evento_se_ignora()
     {
         var fake = new NotificadorFake();
-        var consumidor = new ConsumidorReservaConfirmada(fake);
+        var consumidor = new ConsumidorReservaConfirmada(fake, new InboxIdempotenciaEnMemoria());
 
         await consumidor.ProcesarAsync(Envelope(Data(), tipo: "OtroEvento.v1"), CancellationToken.None);
 

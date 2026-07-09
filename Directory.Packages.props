@@ -27,6 +27,8 @@
     <!-- Caché de lectura Redis (Story 3.2): IDistributedCache + backend StackExchange.Redis -->
     <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.9" />
+    <!-- Inbox de idempotencia del consumidor (Story 5.1b): SETNX+TTL atómico vía IConnectionMultiplexer. -->
+    <PackageVersion Include="StackExchange.Redis" Version="2.7.27" />
     <!-- Aspire ServiceDefaults: resiliencia + service discovery + OpenTelemetry -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.6.0" />
