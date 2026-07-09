@@ -26,6 +26,7 @@
     <Project Path="src/Servicios/Reservas/Reservas.Infrastructure/Reservas.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Contracts/Contracts.csproj" />
     <Project Path="tests/Reservas.UnitTests/Reservas.UnitTests.csproj" />
   </Folder>
 </Solution>
