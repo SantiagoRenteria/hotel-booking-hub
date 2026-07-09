@@ -10,7 +10,7 @@ namespace Notificaciones.Worker.Notificaciones;
 /// transporte, patrón del consumidor de catálogo de 3.1) y emite DOS correos: uno al huésped y otro al agente.
 /// Sin dedup todavía (la idempotencia del consumidor es Story 5.1b).
 /// </summary>
-public sealed class ConsumidorReservaConfirmada(INotificador notificador)
+public sealed class ConsumidorReservaConfirmada(INotificador notificador, IInboxIdempotencia inbox)
 {
     private static readonly JsonSerializerOptions _opciones = new(JsonSerializerDefaults.Web);
 
@@ -27,6 +27,8 @@ public sealed class ConsumidorReservaConfirmada(INotificador notificador)
         var data = Deserializar(evento)
             ?? throw new InvalidOperationException(
                 $"Evento {evento.Id} ({evento.Type}) sin data deserializable a {nameof(ReservaConfirmadaV1)}.");
+
+        _ = inbox; // TODO 5.1b GREEN: deduplicar el efecto por (MessageId, version, destinatario) antes de enviar.
 
         var estancia = $"{data.Entrada:yyyy-MM-dd} → {data.Salida:yyyy-MM-dd}";
         // InvariantCulture: el importe del correo NO debe variar con la config regional del host.

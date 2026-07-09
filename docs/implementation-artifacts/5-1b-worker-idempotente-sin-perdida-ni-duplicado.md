@@ -1,6 +1,10 @@
+---
+baseline_commit: 42a61eab23a06beb9b1da76c138866088a10a7c7
+---
+
 # Story 5.1b: Worker idempotente sin pérdida ni duplicado (Fase 2)
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Generado por bmad-create-story (lote Épica 5). Complejidad ALTA (idempotencia del consumidor + supervivencia
 al broker G3). Salda la deuda [DEUDA-VERIF:E5] de E1 (AC-E1.6b.4). TDD Red→Green + tests G3 (fault-injection).
