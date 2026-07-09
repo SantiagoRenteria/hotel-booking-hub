@@ -6,7 +6,7 @@ namespace Reservas.UnitTests.BuscarDisponibilidad;
 
 /// <summary>
 /// Contrato de la decoradora de caché (AC-E3.2.3), aislado con fakes: en HIT sirve desde caché sin tocar el
-/// read-model; en MISS consulta el read-model y puebla la caché con el resultado.
+/// read-model; en MISS consulta el read-model (el <c>calcular</c> que la caché invoca).
 /// </summary>
 public sealed class BuscadorDisponibilidadCacheadoTests
 {
@@ -20,7 +20,7 @@ public sealed class BuscadorDisponibilidadCacheadoTests
     public async Task Hit_sirve_desde_cache_sin_consultar_el_read_model()
     {
         var cacheado = new[] { Habitacion() };
-        var interno = new BuscadorFake(); // lanza si lo llaman
+        var interno = new BuscadorFake(); // lanza si lo llaman vía el factory
         var cache = new CacheFake { Almacenado = cacheado };
 
         var decoradora = new BuscadorDisponibilidadCacheado(interno, cache);
@@ -28,22 +28,20 @@ public sealed class BuscadorDisponibilidadCacheadoTests
 
         Assert.Same(cacheado, resultado);
         Assert.False(interno.FueLlamado);
-        Assert.False(cache.Guardo); // ya estaba en caché: no se re-puebla
     }
 
     [Fact]
-    public async Task Miss_consulta_el_read_model_y_puebla_la_cache()
+    public async Task Miss_consulta_el_read_model()
     {
         var delReadModel = new[] { Habitacion() };
         var interno = new BuscadorFake { Resultado = delReadModel };
-        var cache = new CacheFake { Almacenado = null }; // miss
+        var cache = new CacheFake { Almacenado = null }; // miss → invoca el factory
 
         var decoradora = new BuscadorDisponibilidadCacheado(interno, cache);
         var resultado = await decoradora.BuscarAsync(_consulta, CancellationToken.None);
 
         Assert.Same(delReadModel, resultado);
         Assert.True(interno.FueLlamado);
-        Assert.Same(delReadModel, cache.GuardadoConValor); // se pobló la caché con lo leído
     }
 
     private sealed class BuscadorFake : IBuscadorDisponibilidad
@@ -58,20 +56,15 @@ public sealed class BuscadorDisponibilidadCacheadoTests
         }
     }
 
+    /// <summary>Caché fake: en hit devuelve lo almacenado sin invocar el factory; en miss ejecuta el factory.</summary>
     private sealed class CacheFake : ICacheDisponibilidad
     {
         public IReadOnlyList<HabitacionDisponibleDto>? Almacenado { get; init; }
-        public bool Guardo { get; private set; }
-        public IReadOnlyList<HabitacionDisponibleDto>? GuardadoConValor { get; private set; }
 
-        public Task<IReadOnlyList<HabitacionDisponibleDto>?> ObtenerAsync(BuscarDisponibilidadQuery consulta, CancellationToken ct) =>
-            Task.FromResult(Almacenado);
-
-        public Task GuardarAsync(BuscarDisponibilidadQuery consulta, IReadOnlyList<HabitacionDisponibleDto> resultado, CancellationToken ct)
-        {
-            Guardo = true;
-            GuardadoConValor = resultado;
-            return Task.CompletedTask;
-        }
+        public async Task<IReadOnlyList<HabitacionDisponibleDto>> ObtenerOCalcularAsync(
+            BuscarDisponibilidadQuery consulta,
+            Func<CancellationToken, Task<IReadOnlyList<HabitacionDisponibleDto>>> calcular,
+            CancellationToken ct) =>
+            Almacenado ?? await calcular(ct);
     }
 }
