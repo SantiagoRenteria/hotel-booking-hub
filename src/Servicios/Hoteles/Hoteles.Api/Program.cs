@@ -1,9 +1,13 @@
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
+using Hoteles.Application.Habitaciones.CambiarEstadoHabitacion;
+using Hoteles.Application.Habitaciones.CrearHabitacion;
+using Hoteles.Application.Habitaciones.EditarHabitacion;
 using Hoteles.Application.Hoteles.CambiarEstadoHotel;
 using Hoteles.Application.Hoteles.CrearHotel;
 using Hoteles.Application.Hoteles.EditarHotel;
 using Hoteles.Application.Hoteles.EliminarHotel;
+using Hoteles.Domain.Habitaciones;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Infrastructure;
 
@@ -86,5 +90,39 @@ app.MapPost("/api/v1/hoteles/{id:guid}/deshabilitar", async (Guid id, CambiarEst
     })
     .WithName("DeshabilitarHotel")
     .WithTags("Hoteles");
+
+// CAP-1 · Habitaciones (FR-5/6/7). El hotel de la ruta manda; el rowVersion (cuerpo) arbitra la concurrencia.
+app.MapPost("/api/v1/hoteles/{hotelId:guid}/habitaciones", async (Guid hotelId, CrearHabitacionCommand comando, ISender sender, CancellationToken ct) =>
+    {
+        var resultado = await sender.Send(comando with { HotelId = hotelId }, ct);
+        return resultado.ToCreatedResult(dto => $"/api/v1/habitaciones/{dto.Id}");
+    })
+    .WithName("CrearHabitacion")
+    .WithTags("Habitaciones");
+
+app.MapPut("/api/v1/habitaciones/{id:guid}", async (Guid id, EditarHabitacionCommand comando, ISender sender, CancellationToken ct) =>
+    {
+        var resultado = await sender.Send(comando with { Id = id }, ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("EditarHabitacion")
+    .WithTags("Habitaciones");
+
+// Estado objetivo fijado por la RUTA (operaciones dedicadas); 200 con el estado nuevo, 404, 409.
+app.MapPost("/api/v1/habitaciones/{id:guid}/habilitar", async (Guid id, CambiarEstadoHabitacionCommand comando, ISender sender, CancellationToken ct) =>
+    {
+        var resultado = await sender.Send(comando with { Id = id, EstadoObjetivo = EstadoHabitacion.Habilitada }, ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("HabilitarHabitacion")
+    .WithTags("Habitaciones");
+
+app.MapPost("/api/v1/habitaciones/{id:guid}/deshabilitar", async (Guid id, CambiarEstadoHabitacionCommand comando, ISender sender, CancellationToken ct) =>
+    {
+        var resultado = await sender.Send(comando with { Id = id, EstadoObjetivo = EstadoHabitacion.Deshabilitada }, ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("DeshabilitarHabitacion")
+    .WithTags("Habitaciones");
 
 app.Run();

@@ -1,6 +1,10 @@
+---
+baseline_commit: 887e0b1
+---
+
 # Story 2.4: Gestionar habitaciones del hotel
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -22,21 +26,12 @@ para **gestionar el inventario ofertable con precisión**.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Dominio: aggregate `Habitacion` (AC: 1, 2, 3)**
-  - [ ] `Habitacion` (aggregate root): `Id` (UUID v7), `HotelId`, `Tipo`, `CostoBase` (decimal), `Impuestos` (decimal), `Ubicacion`, `Estado` (`EstadoHabitacion` {Habilitada, Deshabilitada}). Factory `Crear(...)` con invariantes (hotelId no vacío, costoBase/impuestos ≥ 0, tipo/ubicación no vacíos). Métodos `Editar(...)` (NO cambia estado ni hotel), `Habilitar()`/`Deshabilitar()` (idempotentes) — mismo patrón que `Hotel`
-  - [ ] `EstadoHabitacion` enum (string en BD). `LongitudesHabitacion` (fuente única de topes de texto)
-- [ ] **Task 2 — Persistencia (AC: 1, 2, 3, 4)**
-  - [ ] `HotelesDbContext`: `DbSet<Habitacion>` + mapeo (claves ADR-017, `rowversion`, `HasMaxLength`, `Estado` `HasConversion<string>`, `CostoBase`/`Impuestos` con precisión `decimal(18,2)` o la del proyecto, FK `HotelId`); relación con `Hotel` sin romper su independencia. Migración (`AgregaHabitaciones`)
-  - [ ] `IHabitacionRepository` (`CrearAsync`→rowVersion, `ObtenerAsync`, `GuardarConcurrenciaAsync`) + adaptador. Verificación de existencia del hotel al crear (hotel activo)
-- [ ] **Task 3 — Slices (AC: 1, 2, 3, 4)**
-  - [ ] `CrearHabitacion` (201), `EditarHabitacion` (200, con `rowVersion`), `CambiarEstadoHabitacion` (200, unificado como en 2.3) + validators (`MaximumLength`, costo/impuestos ≥ 0, rowVersion presente)
-  - [ ] `HabitacionResponseDto` (incluye `rowVersion` base64), en `Hoteles.Application.Hoteles` (o subcarpeta `Habitaciones`)
-- [ ] **Task 4 — Endpoints (AC: 1, 2, 3)**
-  - [ ] `POST /api/v1/hoteles/{hotelId:guid}/habitaciones` (crear), `PUT /api/v1/habitaciones/{id:guid}` (editar), `POST /api/v1/habitaciones/{id:guid}/habilitar`|`/deshabilitar`. (El handler transversal ya está cableado.)
-- [ ] **Task 5 — Tests (AC: 1, 2, 3, 4)**
-  - [ ] Unit: crear happy (201), editar (200), habilitar/deshabilitar (200 + idempotencia), 404, mapeo Result→HTTP; validators
-  - [ ] **Integración (Testcontainers):** crear+persistir; editar no altera el hotel; concurrencia optimista real (1 / 1 `409`); crear en hotel inexistente → 404/400
-- [ ] **Task 6 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Dominio: aggregate `Habitacion`** — `Habitacion` (aggregate root independiente, claves ADR-017) con factory `Crear` (invariantes: hotelId, tipo/ubicación no vacíos, montos ≥ 0), `Editar` (no toca estado ni hotel), `Habilitar`/`Deshabilitar` (idempotentes); `EstadoHabitacion` enum; `LongitudesHabitacion` (fuente única)
+- [x] **Task 2 — Persistencia** — `DbSet<Habitacion>` + mapeo (ADR-017, `rowversion`, `decimal(18,2)`, `Estado` string, índice `HotelId` SIN FK constraint → independencia de aggregates); migración `AgregaHabitaciones`; `IHabitacionRepository` + adaptador (mismo patrón de concurrencia); verificación de hotel existente al crear
+- [x] **Task 3 — Slices** — `CrearHabitacion` (201), `EditarHabitacion` (200), `CambiarEstadoHabitacion` (200, unificado + `switch` exhaustivo) + validators; `HabitacionResponseDto` (con `rowVersion`, fábrica `De(...)` compartida) en `Hoteles.Application.Habitaciones`
+- [x] **Task 4 — Endpoints** — `POST /hoteles/{hotelId}/habitaciones`, `PUT /habitaciones/{id}`, `POST /habitaciones/{id}/habilitar`|`/deshabilitar` (estado por ruta)
+- [x] **Task 5 — Tests** — Unit: crear (201 + 404 hotel inexistente), editar (200/404/409), habilitar/deshabilitar (200 + idempotencia), validators, mapeo Result→HTTP. Integración (Testcontainers): persistir, editar no altera el hotel, deshabilitar persiste, concurrencia real (1/1 `409`)
+- [x] **Task 6 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
 
 ## Dev Notes
 
@@ -91,10 +86,41 @@ para **gestionar el inventario ofertable con precisión**.
 
 ### Agent Model Used
 
+claude-opus-4-8 (modo autónomo).
+
 ### Debug Log References
+
+- Sin incidencias de motor. Se aplicaron proactivamente las lecciones de 2.2/2.3 (concurrencia `State=Modified` excluyendo `Seq`; `switch` exhaustivo en la transición de estado).
 
 ### Completion Notes List
 
+- **`Habitacion` como aggregate independiente** (no owned type): referencia al hotel por `HotelId` + índice, SIN FK constraint, para no acoplar los aggregates (gestión/versionado separados, AC-E2.4.2). Probado por integración (`Editar_habitacion_no_altera_el_hotel`).
+- **Reutilización total** de 2.1–2.3: claves ADR-017, `GuardarConcurrenciaAsync`, transversal `ExcepcionNegocio`/handler, `ToCreatedResult`/`ToOkResult`, patrón de estado unificado (`CambiarEstadoHabitacion`, como `CambiarEstadoHotel`). `LongitudesHabitacion` fuente única (validators + EF); `HabitacionResponseDto.De(...)` fábrica única del mapeo.
+- **Code review adversarial (1 capa):** (1) wording "hotel activo"→"hotel con id" (el gate es «no eliminado»; un hotel deshabilitado SÍ admite habitaciones — coherente con AC-E2.4.3); (2) añadido happy-path de *habilitar* (unit) + persistencia de estado (integración); (3) documentado el trade-off de habitación huérfana por race hotel-eliminado (check-then-act sin FK; E3 filtra) en `deferred-work.md`. Camino feliz, AC y convenciones correctos.
+- **Alcance honesto:** AC-E2.4.3 "ofertabilidad compuesta" (no se oferta si habitación o su hotel están deshabilitados) se resuelve en la búsqueda de E3; 2.4 prueba la transición de estado local + persistencia + concurrencia. Sin eventos de catálogo (2.5).
+- **Gates finales:** build 0/0, `dotnet format` limpio. Tests: Hoteles unit 61/61, Hoteles integración 12/12, Comun.Web 11/11, Reservas unit 51/51, Reservas integración 11/11 (**146 total**; Reservas/Comun sin cambios).
+
 ### File List
 
+**Nuevos — dominio/persistencia:**
+- `src/Servicios/Hoteles/Hoteles.Domain/Habitaciones/{Habitacion,EstadoHabitacion,LongitudesHabitacion}.cs`
+- `src/Servicios/Hoteles/Hoteles.Domain/Puertos/IHabitacionRepository.cs`
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/Persistencia/HabitacionRepository.cs`
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/Migraciones/20260709113506_AgregaHabitaciones*.cs`
+
+**Nuevos — aplicación:**
+- `src/Servicios/Hoteles/Hoteles.Application/Habitaciones/HabitacionResponseDto.cs`
+- `.../Habitaciones/{CrearHabitacion,EditarHabitacion,CambiarEstadoHabitacion}/` (command + handler + validator cada uno)
+
+**Modificados:**
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/Persistencia/HotelesDbContext.cs` (`DbSet<Habitacion>` + mapeo)
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/RegistroInfraestructura.cs` (`IHabitacionRepository`)
+- `src/Servicios/Hoteles/Hoteles.Api/Program.cs` (endpoints de habitaciones)
+
+**Tests (nuevos):**
+- `tests/Hoteles.UnitTests/FakesHabitacion.cs`, `tests/Hoteles.UnitTests/Habitaciones/*`
+- `tests/Hoteles.IntegrationTests/HabitacionTests.cs`
+
 ### Change Log
+
+- 2026-07-09 — Implementada 2.4 (gestionar habitaciones): aggregate `Habitacion` independiente + 3 slices (crear/editar/estado) reutilizando concurrencia + transversal de 2.1–2.3. Code review adversarial + fixes (wording, cobertura de habilitar, trade-off documentado). 146 tests verdes. Status → done.

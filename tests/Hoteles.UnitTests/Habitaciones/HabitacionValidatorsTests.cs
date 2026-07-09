@@ -1,0 +1,70 @@
+using FluentValidation.TestHelper;
+using Hoteles.Application.Habitaciones.CambiarEstadoHabitacion;
+using Hoteles.Application.Habitaciones.CrearHabitacion;
+using Hoteles.Application.Habitaciones.EditarHabitacion;
+using Hoteles.Domain.Habitaciones;
+
+namespace Hoteles.UnitTests.Habitaciones;
+
+public sealed class HabitacionValidatorsTests
+{
+    private readonly CrearHabitacionCommandValidator _crear = new();
+    private readonly EditarHabitacionCommandValidator _editar = new();
+    private readonly CambiarEstadoHabitacionCommandValidator _estado = new();
+
+    [Fact]
+    public void Crear_valido_no_tiene_errores()
+    {
+        var c = new CrearHabitacionCommand(Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        _crear.TestValidate(c).ShouldNotHaveAnyValidationErrors();
+    }
+
+    [Fact]
+    public void Crear_sin_hotel_es_invalido()
+    {
+        var c = new CrearHabitacionCommand(Guid.Empty, "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        _crear.TestValidate(c).ShouldHaveValidationErrorFor(x => x.HotelId);
+    }
+
+    [Fact]
+    public void Crear_con_costo_negativo_es_invalido()
+    {
+        var c = new CrearHabitacionCommand(Guid.CreateVersion7(), "Suite", -1m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        _crear.TestValidate(c).ShouldHaveValidationErrorFor(x => x.CostoBase);
+    }
+
+    [Fact]
+    public void Crear_con_tipo_sobredimensionado_es_invalido()
+    {
+        var c = new CrearHabitacionCommand(Guid.CreateVersion7(), new string('a', LongitudesHabitacion.Tipo + 1), 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        _crear.TestValidate(c).ShouldHaveValidationErrorFor(x => x.Tipo);
+    }
+
+    [Fact]
+    public void Editar_sin_rowversion_es_invalido()
+    {
+        var c = new EditarHabitacionCommand(Guid.CreateVersion7(), [], "Suite", 100m, 19m, "Piso 3");
+        _editar.TestValidate(c).ShouldHaveValidationErrorFor(x => x.RowVersion);
+    }
+
+    [Fact]
+    public void Editar_con_impuestos_negativos_es_invalido()
+    {
+        var c = new EditarHabitacionCommand(Guid.CreateVersion7(), [1], "Suite", 100m, -5m, "Piso 3");
+        _editar.TestValidate(c).ShouldHaveValidationErrorFor(x => x.Impuestos);
+    }
+
+    [Fact]
+    public void CambiarEstado_sin_rowversion_es_invalido()
+    {
+        var c = new CambiarEstadoHabitacionCommand(Guid.CreateVersion7(), [], EstadoHabitacion.Habilitada);
+        _estado.TestValidate(c).ShouldHaveValidationErrorFor(x => x.RowVersion);
+    }
+
+    [Fact]
+    public void CambiarEstado_con_estado_fuera_de_rango_es_invalido()
+    {
+        var c = new CambiarEstadoHabitacionCommand(Guid.CreateVersion7(), [1], (EstadoHabitacion)99);
+        _estado.TestValidate(c).ShouldHaveValidationErrorFor(x => x.EstadoObjetivo);
+    }
+}
