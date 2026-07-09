@@ -9,6 +9,11 @@ namespace HotelBookingHub.Comun.Eventos;
 /// - <see cref="EventoIntegracion.Type"/> = <see cref="Tipo"/> (PascalCase + semver <c>.v1</c>).
 ///
 /// Formato (System.Text.Json): camelCase; dinero en <see cref="decimal"/>; enums como string. No expone <c>Seq</c>.
+///
+/// <para><see cref="Ciudad"/> y <see cref="Capacidad"/> se DENORMALIZAN aquí (Épica 3, party-mode A2): la
+/// ciudad pertenece al <c>Hotel</c> y la proyección de E3 la necesita para la búsqueda (E3.2), pero Hoteles no
+/// emite eventos de Hotel; se captura el valor vigente al momento del alta. Cambio de campos = aditivo sobre
+/// <c>.v1</c> (E3 es el primer consumidor; no hay ninguno desplegado que romper).</para>
 /// </summary>
 public sealed record HabitacionAgregadaV1(
     Guid AggregateId,        // = HabitacionId (UUID v7); componente de la order key.
@@ -17,7 +22,9 @@ public sealed record HabitacionAgregadaV1(
     decimal CostoBase,
     decimal Impuestos,
     string Ubicacion,
-    string Estado)
+    string Estado,
+    string Ciudad,           // denormalizada del hotel al momento del alta (la proyección de E3 filtra por ella).
+    int Capacidad)           // nº de huéspedes; E3.2 filtra por capacidad >= huéspedes.
 {
     /// <summary>Tipo del evento (PascalCase español + semver). Va en <see cref="EventoIntegracion.Type"/>.</summary>
     public const string Tipo = "HabitacionAgregada.v1";

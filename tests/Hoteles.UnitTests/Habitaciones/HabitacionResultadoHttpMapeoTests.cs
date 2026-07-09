@@ -21,7 +21,7 @@ public sealed class HabitacionResultadoHttpMapeoTests
     }
 
     private static HabitacionResponseDto Dto() =>
-        new(Guid.CreateVersion7(), Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", "Habilitada", "AAAAAAAAB9E=");
+        new(Guid.CreateVersion7(), Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", "Habilitada", Capacidad: 2, RowVersion: "AAAAAAAAB9E=");
 
     [Fact]
     public async Task Alta_ok_se_mapea_a_201()

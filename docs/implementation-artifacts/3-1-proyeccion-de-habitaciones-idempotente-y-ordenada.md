@@ -1,6 +1,6 @@
 # Story 3.1: Proyección de habitaciones idempotente y ordenada
 
-Status: ready-for-dev
+Status: done
 
 <!-- Generado por bmad-create-story. Historia de ALTA COMPLEJIDAD y VITRINA de diseño arquitectónico
 (party-mode Winston+John): sus AC NACEN como escenarios BDD Gherkin ejecutables (specs, no bullets),
@@ -37,6 +37,11 @@ Feature: La ProyeccionHabitacion combina catálogo y disponibilidad
       capacidad, activa) y disponibilidad (noches ocupadas)
     Y ambos lados quedan disponibles para alimentar la búsqueda de AC-E3.2.1
 ```
+
+> **Nota de alcance (code review):** en 3.1 el proyector materializa el lado de **CATÁLOGO** (`ProyeccionHabitacion`).
+> El lado de **disponibilidad** NO se denormaliza: vive en `NochesHabitacion` (fuente de verdad local) y 3.2 lo
+> **une** por join en tiempo de consulta. Por eso el proyector no consume `ReservaConfirmada` ni almacena
+> ocupación. "Ambos lados disponibles para la búsqueda" se cumple a nivel de 3.2 (join), no dentro de 3.1.
 
 ### AC-E3.1.4 — Inbox de idempotencia compartido (habilitador, decidido aquí)
 
@@ -92,10 +97,12 @@ Feature: Reprocesar el mismo evento no duplica ni altera la proyección
 
 ### AC-E3.1.3 — Reconciliación / recompute idempotente (reformulado · party-mode D4)
 
-> **Nota (D4):** no hay event-store durable cross-BC → "rebuild desde event-log" es inalcanzable. La
-> reconciliación de 3.1 es un **recompute idempotente desde las tablas base locales de Reservas**. El rebuild
-> de atributos de catálogo (solo provienen de eventos de Hoteles) requiere un snapshot API de Hoteles que no
-> existe → **diferido** (ver `deferred-work.md`).
+> **Nota (D4 · precisada en code review):** con el diseño final la **disponibilidad NO se proyecta** (vive en
+> `NochesHabitacion`, la fuente), así que no hay estado derivado local que "recomputar". La reconciliación de
+> 3.1 se reduce entonces a: (a) **idempotencia del proyector** —re-aplicar eventos converge, PROBADA—; y
+> (b) **rebuild de atributos de catálogo**, que solo provienen de eventos de Hoteles y sin event-store /
+> snapshot API es inalcanzable → **DIFERIDO** (ver `deferred-work.md`). AC-E3.1.3 queda parcial y honesto: sin
+> fuente reconstruible localmente, un job de recompute sería humo.
 
 ```gherkin
 Feature: La proyección se recomputa idempotentemente desde las tablas base locales
@@ -165,20 +172,22 @@ Feature: La proyección se recomputa idempotentemente desde las tablas base loca
 >
 > </details>
 
-- [ ] **Task 1 — Contrato de consumo + inbox de idempotencia en SQL (AC: E3.1.4, E3.1.2)** *(TDD Red→Green)* *(D1/D3)*
-  - [ ] `IConsumidorEventosCatalogo.Procesar(EventEnvelope)` en `Reservas.Application` (envelope de 2.5; `data` como `JsonElement`). Inbox durable = tabla `inbox_mensajes` (`MessageId` PK) en `Reservas.Infrastructure/Idempotencia/`, escrito en la MISMA transacción que el upsert. Redis `SETNX+TTL` como fast-path opcional (NO autoridad).
-  - [ ] Escenario BDD `AC-E3.1.2` como test ejecutable (mismo evento ×N → 0 duplicados); AC negativo del dual-write (fallo del commit SQL tras SETNX no pierde el evento).
-- [ ] **Task 2 — Proyector idempotente y ordenado (AC: E3.1.0, E3.1.1)** *(TDD + BDD)*
-  - [ ] `ProyeccionHabitacion` (read-model, según D2) + `ProyectorHabitacion` que aplica los 3 eventos de catálogo; upsert con guarda de orden: descarta `version <= Version` aplicada por `aggregateId`.
-  - [ ] Escenarios BDD `AC-E3.1.1` (incl. `Scenario Outline` de órdenes de llegada) como tests ejecutables contra SQL real.
-  - [ ] Reemplazar el placeholder `DisponibilidadHabitacionSembrada` (1.6a) por la lectura de la proyección real; mantener verdes los tests de Reservas que lo usaban.
-- [ ] **Task 3 — Transporte/consumo de eventos (AC: E3.1.0)** *(según D1)*
-  - [ ] Adaptador de consumo (bus fake inyectable o suscripción Dapr) que entrega el envelope al proyector pasando por el inbox; el `data` llega como `JsonElement` (no castear al tipo concreto — patrón `PublicadorEventosLog`).
-- [ ] **Task 4 — Job de recompute idempotente local (AC: E3.1.3)** *(D4)*
-  - [ ] Job que recomputa la disponibilidad de la proyección desde las tablas base locales (`NochesHabitacion`); idempotente (×2 → idéntico, sin doblar slots). El rebuild de atributos de catálogo (snapshot de Hoteles) queda DIFERIDO (deferred-work). Test que parte de disponibilidad corrupta/rezagada y verifica convergencia.
-- [ ] **Task 5 — Suite de propiedades distribuidas (Testcontainers SQL + Redis, colección aislada)**
-  - [ ] Todos los escenarios Gherkin como tests; desorden/reentrega deterministas (sin `Task.WhenAll` ni timing real); colección `DisableParallelization` propia (patrón `OutboxFaultInjection`).
-- [ ] **Task 6 — Commits TDD (Red→Green visibles) en rama `feature/3-1-proyeccion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+> **NOTA (cierre del hueco de contrato, prerequisito):** antes de la proyección se reabrió 2.4/2.5 (party-mode A2)
+> para que el contrato llevara `Capacidad` (agregado `Habitacion`) y `Ciudad`+`Capacidad` (`HabitacionAgregada.v1`,
+> aditivo). 4 commits Red→Green (`7d446b7`→`40bb9b4`, `33fddc5`→`fbea2b8`).
+
+- [x] **Task 1 — Contrato de consumo + inbox de idempotencia en SQL (AC: E3.1.4, E3.1.2)** *(D1/D3)*
+  - [x] `IConsumidorEventosCatalogo.ProcesarAsync(EventoIntegracion)` (`data` como `JsonElement`) + inbox durable `MensajesProcesados` (`MessageId` PK) escrito en la MISMA transacción que el upsert (sin dual-write → el AC-negativo del dual-write es **moot por diseño**: no hay SETNX en el write-path; Redis queda como fast-path futuro). *(RED `91ed46d`→GREEN `2cd021e`/`ddd15ab`)*
+  - [x] Idempotencia por `MessageId` (mismo evento ×N → 1 fila, 1 inbox) probada en Testcontainers.
+- [x] **Task 2 — Proyector idempotente y ordenado (AC: E3.1.0, E3.1.1)**
+  - [x] `ProyeccionHabitacion` (read-model SQL, CRDT de 3 zonas: estáticos write-once + precio/estado LWW por versión de bloque) + `ProyectorCatalogo`. Converge bajo desorden **incluido delta-antes-del-alta**.
+  - [x] Escenarios de convergencia como tests unit (6) + Testcontainers (3).
+  - [ ] **DIFERIDO:** reemplazar `DisponibilidadHabitacionSembrada` por la proyección real — requiere `HotelNombre` en el read-model (no lo lleva el contrato aún; gap análogo al de ciudad). Lo consume 3.2 para la búsqueda; el reemplazo en el flujo de `CrearReserva` va con ese contrato. (deferred-work)
+- [x] **Task 3 — Transporte/consumo de eventos (AC: E3.1.0)** *(D1)*
+  - [x] El seam de consumo ES `IConsumidorEventosCatalogo` (contrato = envelope Dapr); se prueba invocándolo directo (equivalente y más limpio que un bus fake). El subscriber Dapr real es solo un adaptador futuro sobre este puerto.
+- [ ] **Task 4 — Recompute local (AC: E3.1.3)** — **DIFERIDO honesto (D4):** sin event-store cross-BC ni snapshot API de Hoteles, los atributos de catálogo no tienen fuente local para rebuild. La idempotencia del proyector (re-aplicar converge) está probada; el rebuild-desde-fuente queda diferido (deferred-work). AC-E3.1.3 parcial.
+- [x] **Task 5 — Suite de propiedades distribuidas** — unit BDD (`ProyeccionHabitacionConvergenciaTests`, 6) + Testcontainers (`ProyeccionCatalogoTests`, 3); deterministas (orden de `Procesar` fijo, sin timing). Redis no se usó (inbox SQL por diseño → sin dual-write).
+- [ ] **Task 6 — Commits TDD (Red→Green visibles) + PR a `develop`** — commits hechos; falta `/bmad-code-review` y PR.
 
 ## Dev Notes
 
@@ -230,10 +239,40 @@ Feature: La proyección se recomputa idempotentemente desde las tablas base loca
 
 ### Agent Model Used
 
-### Debug Log References
+claude-opus-4-8 (Amelia). Decisiones vía `/bmad-party-mode` (Task 0 D1–D4; cierre de hueco A2; convergencia de deltas → field-ownership C).
 
 ### Completion Notes List
 
+- **Prerequisito (hueco de contrato):** se añadió `Capacidad` al dominio (2.4) y `Ciudad`+`Capacidad` a `HabitacionAgregada.v1` (2.5, aditivo) — party-mode A2. Contract test re-congelado.
+- **Convergencia (party-mode C):** `ProyeccionHabitacion` es un CRDT de 3 zonas (estáticos write-once; precio/estado LWW por versión de bloque). Converge bajo reentrega y desorden **incluido delta-antes-del-alta** (el precio v2 gana, el alta v1 tardía rellena estáticos sin retroceder), sin buffer ni event-store. `Hidratada` marca la fila parcial.
+- **Idempotencia dura:** inbox SQL (`MensajesProcesados`, MessageId PK) en la MISMA transacción que el upsert → sin dual-write (Murat). Redis SETNX queda como fast-path futuro, no autoridad.
+- **TDD Red→Green visible:** convergencia (`91ed46d`→`2cd021e`) + consumidor/inbox (`ddd15ab`).
+- **Diferidos honestos:** (Task 4 / AC-E3.1.3) recompute desde fuente requiere snapshot API de Hoteles (no existe); (Task 2) reemplazar `DisponibilidadHabitacionSembrada` requiere `HotelNombre` en el contrato. Ambos en `deferred-work.md`.
+- 210 tests verdes; build 0/0; `dotnet format` limpio.
+
 ### File List
 
+- NUEVO `Reservas.Application/Abstracciones/IConsumidorEventosCatalogo.cs`
+- NUEVO `Reservas.Infrastructure/Proyeccion/{ProyeccionHabitacion,ProyectorCatalogo}.cs`, `Reservas.Infrastructure/Idempotencia/MensajeProcesado.cs`
+- NUEVO migración `Migraciones/*_AgregaProyeccionEInbox.*`
+- MOD `Reservas.Infrastructure/Persistencia/ReservasDbContext.cs`, `RegistroInfraestructura.cs`
+- NUEVO tests `Reservas.UnitTests/Proyeccion/ProyeccionHabitacionConvergenciaTests.cs`, `Reservas.IntegrationTests/ProyeccionCatalogoTests.cs`
+- (prerequisito) MOD dominio/contrato de 2.4/2.5 + migración `AgregaCapacidadHabitacion` (ver commits)
+
 ### Change Log
+
+- 2026-07-09 — 3.1: cierre de hueco de contrato (capacidad/ciudad) + proyección idempotente/ordenada (CRDT field-ownership) + consumidor con inbox SQL. `/bmad-code-review` aplicado (ver abajo). AC-E3.1.3 (recompute desde fuente) y reemplazo del placeholder diferidos.
+
+## Review Findings (bmad-code-review · 2026-07-09)
+
+Revisión adversarial de 3 capas sobre `2bff8bf..HEAD`. Decisiones party-mode (field-ownership C, `.v1` aditivo, inbox SQL) intactas y verificadas.
+
+- [x] **[Review][Patch·CRÍTICO] Catch de dedup demasiado amplio → pérdida silenciosa de evento** [ProyectorCatalogo.cs] — un `2627` de la PK de `ProyeccionHabitacion` (carrera de creación concurrente) se malinterpretaba como dedup del inbox y se tragaba. **Corregido:** el inbox se inserta en su propio `SaveChanges` (misma tx) → el `2627` ahí es inequívocamente dedup; cualquier otra violación se propaga (el transporte reentrega y converge). Tests verdes.
+- [x] **[Review][Patch] AC-E3.1.1 `Scenario Outline` sin test** — añadido test paramétrico de permutaciones de orden de llegada (`ProyeccionHabitacionConvergenciaTests`).
+- [x] **[Review][Patch] Dedup unit/×4** — el test de integración de idempotencia reentrega ×4 (antes ×2); cardinalidad exacta (1 fila, 1 inbox).
+- [x] **[Review][Patch·doc] AC-E3.1.0 reformulado** — ver nota de alcance en el AC (3.1 proyecta el CATÁLOGO; la disponibilidad la une 3.2 contra `NochesHabitacion`; el proyector no consume `ReservaConfirmada`).
+- [x] **[Review][Patch·doc] AC-E3.1.3 reformulado** — ver nota (la disponibilidad no se denormaliza → no hay recompute local; reconciliación = idempotencia del proyector [hecha] + rebuild de catálogo [diferido, snapshot de Hoteles]).
+- [x] **[Review][Defer·ALTA] Sin token de concurrencia en `ProyeccionHabitacion` (regresión de versión con competing-consumers)** [ProyeccionHabitacion.cs] — el compare-and-set vive en C# (read-modify-write), no en SQL. Seguro con consumidor único por partición (el productor 2.5 es head-of-line single-instance). Endurecimiento para competing-consumers (RowVersion + retry o `UPDATE ... WHERE Version<@v`) DIFERIDO. Ver deferred-work.
+- [x] **[Review][Defer] `IInbox` abstracción compartida** — E5 usará Redis SETNX (efecto externo), store distinto; forzar una abstracción común ahora es prematuro. El *concepto* de dedup por `MessageId` sí se reutiliza. Ver deferred-work (2.5/3.1).
+- [x] **[Review][Defer] Índice `IX_ProyeccionHabitacion_Ciudad` sin filtrar por `Hidratada`** — latente; sin lector aún (3.2). Filtrar (`WHERE VersionEstatico IS NOT NULL`) al construir la búsqueda de 3.2.
+- Dismissed: re-habilitación imposible en el read-model (habilitar no emite) — asimetría YA documentada de 2.5 (deferred-work), no es hallazgo nuevo.

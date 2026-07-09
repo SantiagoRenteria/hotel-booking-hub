@@ -13,4 +13,5 @@ public sealed record EditarHabitacionCommand(
     string Tipo,
     decimal CostoBase,
     decimal Impuestos,
-    string Ubicacion) : ICommand<Result<HabitacionResponseDto>>;
+    string Ubicacion,
+    int Capacidad) : ICommand<Result<HabitacionResponseDto>>;

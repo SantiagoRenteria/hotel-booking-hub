@@ -11,7 +11,7 @@ public sealed class CrearHabitacionCommandHandlerTests
         Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado);
 
     private static CrearHabitacionCommand Comando(Guid hotelId) =>
-        new(hotelId, "Suite", 100.00m, 19.00m, "Piso 3", EstadoHabitacion.Habilitada);
+        new(hotelId, "Suite", 100.00m, 19.00m, "Piso 3", EstadoHabitacion.Habilitada, Capacidad: 2);
 
     // AC-E2.4.1 — alta válida sobre hotel existente: 201 con la habitación (rowVersion incluido).
     [Fact]

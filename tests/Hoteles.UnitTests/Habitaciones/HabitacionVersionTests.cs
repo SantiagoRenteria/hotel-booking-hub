@@ -12,7 +12,7 @@ namespace Hoteles.UnitTests.Habitaciones;
 public sealed class HabitacionVersionTests
 {
     private static Habitacion Nueva() =>
-        Habitacion.Crear(Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        Habitacion.Crear(Guid.CreateVersion7(), "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada, capacidad: 2);
 
     [Fact]
     public void Al_crear_la_version_es_1()
@@ -25,7 +25,7 @@ public sealed class HabitacionVersionTests
     {
         var h = Nueva();
 
-        var cambioPrecio = h.Editar("Suite Premium", 150m, 28.5m, "Piso 5");
+        var cambioPrecio = h.Editar("Suite Premium", 150m, 28.5m, "Piso 5", capacidad: 2);
 
         Assert.True(cambioPrecio);
         Assert.Equal(2, h.Version);
@@ -37,7 +37,7 @@ public sealed class HabitacionVersionTests
         var h = Nueva();
 
         // Cambia datos NO económicos (tipo, ubicación) pero deja costoBase/impuestos idénticos.
-        var cambioPrecio = h.Editar("Suite Deluxe", 100m, 19m, "Piso 9");
+        var cambioPrecio = h.Editar("Suite Deluxe", 100m, 19m, "Piso 9", capacidad: 2);
 
         Assert.False(cambioPrecio);
         Assert.Equal(1, h.Version);
@@ -73,9 +73,9 @@ public sealed class HabitacionVersionTests
     {
         var h = Nueva(); // v1 (alta)
 
-        h.Editar("Suite", 120m, 20m, "Piso 3"); // v2 (precio)
+        h.Editar("Suite", 120m, 20m, "Piso 3", capacidad: 2); // v2 (precio)
         var vTrasPrecio = h.Version;
-        h.Editar("Suite", 120m, 20m, "Piso 4"); // sin cambio de precio → no cuenta
+        h.Editar("Suite", 120m, 20m, "Piso 4", capacidad: 2); // sin cambio de precio → no cuenta
         var vTrasNoPrecio = h.Version;
         h.Deshabilitar(); // v3
         var vTrasDeshabilitar = h.Version;

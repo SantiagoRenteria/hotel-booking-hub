@@ -15,9 +15,10 @@ public sealed record HabitacionResponseDto(
     decimal Impuestos,
     string Ubicacion,
     string Estado,
+    int Capacidad,
     string RowVersion)
 {
     /// <summary>Proyecta la habitación y su rowversion post-escritura al DTO (fuente única del mapeo).</summary>
     public static HabitacionResponseDto De(Habitacion h, byte[] rowVersion) => new(
-        h.Id, h.HotelId, h.Tipo, h.CostoBase, h.Impuestos, h.Ubicacion, h.Estado.ToString(), Convert.ToBase64String(rowVersion));
+        h.Id, h.HotelId, h.Tipo, h.CostoBase, h.Impuestos, h.Ubicacion, h.Estado.ToString(), h.Capacidad, Convert.ToBase64String(rowVersion));
 }

@@ -25,7 +25,7 @@ public sealed class HabitacionTests(SqlServerFixture fixture)
     private async Task<(Guid Id, byte[] RowVersion)> CrearHabitacionAsync(Guid hotelId)
     {
         await using var db = fixture.CrearContexto();
-        var habitacion = Habitacion.Crear(hotelId, "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        var habitacion = Habitacion.Crear(hotelId, "Suite", 100m, 19m, "Piso 3", EstadoHabitacion.Habilitada, capacidad: 2);
         var rv = await new HabitacionRepository(db).CrearAsync(habitacion, CancellationToken.None);
         return (habitacion.Id, rv);
     }
@@ -63,7 +63,7 @@ public sealed class HabitacionTests(SqlServerFixture fixture)
         {
             var repo = new HabitacionRepository(db);
             var hab = await repo.ObtenerAsync(habId, CancellationToken.None);
-            hab!.Editar("Suite Premium", 150m, 28.5m, "Piso 5");
+            hab!.Editar("Suite Premium", 150m, 28.5m, "Piso 5", capacidad: 4);
             await repo.GuardarConcurrenciaAsync(hab, habRowVersion, CancellationToken.None);
         }
 
@@ -113,7 +113,7 @@ public sealed class HabitacionTests(SqlServerFixture fixture)
             await using var db = fixture.CrearContexto();
             var repo = new HabitacionRepository(db);
             var hab = await repo.ObtenerAsync(habId, CancellationToken.None);
-            hab!.Editar(tipo, hab.CostoBase, hab.Impuestos, hab.Ubicacion);
+            hab!.Editar(tipo, hab.CostoBase, hab.Impuestos, hab.Ubicacion, hab.Capacidad);
             try
             {
                 await repo.GuardarConcurrenciaAsync(hab, rowVersion, CancellationToken.None);
