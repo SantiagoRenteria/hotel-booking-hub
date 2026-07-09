@@ -1,6 +1,10 @@
+---
+baseline_commit: 506bff5
+---
+
 # Story 2.5: Emisión del contrato de eventos de catálogo
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Generado por bmad-create-story (reemplaza el borrador manual previo). Historia de ALTA COMPLEJIDAD → TDD real (ciclo Red→Green visible en commits) + party-mode para las decisiones arquitectónicas señaladas. -->
 
