@@ -46,14 +46,14 @@ public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options)
             b.HasIndex("Seq").IsUnique().IsClustered();
             b.Property<byte[]>("RowVersion").IsRowVersion();
 
-            // Aggregate independiente del hotel: se referencia por HotelId (FK), sin navegación desde Hotel para
+            // Aggregate independiente del hotel: se referencia por HotelId (solo índice, SIN FK constraint) para
             // no romper su gestión/versionado separados. Índice por HotelId para listar/filtrar por hotel (E3).
             b.HasIndex(h => h.HotelId);
 
             b.Property(h => h.Tipo).HasMaxLength(LongitudesHabitacion.Tipo);
             b.Property(h => h.Ubicacion).HasMaxLength(LongitudesHabitacion.Ubicacion);
-            b.Property(h => h.CostoBase).HasPrecision(18, 2);
-            b.Property(h => h.Impuestos).HasPrecision(18, 2);
+            b.Property(h => h.CostoBase).HasPrecision(LongitudesHabitacion.PrecisionMonto, LongitudesHabitacion.EscalaMonto);
+            b.Property(h => h.Impuestos).HasPrecision(LongitudesHabitacion.PrecisionMonto, LongitudesHabitacion.EscalaMonto);
             b.Property(h => h.Estado).HasConversion<string>().HasMaxLength(20);
         });
     }

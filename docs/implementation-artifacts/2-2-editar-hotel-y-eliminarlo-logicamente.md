@@ -145,3 +145,10 @@ claude-opus-4-8 (modo autónomo).
 ### Change Log
 
 - 2026-07-09 — Implementada 2.2 (editar + soft delete + concurrencia optimista) con transversal `ExcepcionNegocio`/handler (Alternativa C, party-mode). Code review adversarial + fix del no-op de concurrencia. Refinamientos de contrato (rowVersion en respuesta, Estado fuera del PUT) vía party-mode. 109 tests verdes. Status → done.
+
+## Review Findings (bmad-code-review · 2026-07-09)
+
+Revisión formal 3 capas. Los 4 AC ✅ + decisiones de party-mode verificadas. Sin bugs de corrección (concurrencia bien arbitrada: override del token del cliente + exclusión de `Seq` + no-op cubierto).
+
+- [x] [Review][Defer] `ExcepcionNegocio.Message` se refleja al cliente — hoy seguro (mensajes curados); riesgo latente si un subtipo futuro envuelve el `Message` de una excepción interna. Diferido (guardia de fuga).
+- Dismiss: DELETE con body y ETag/If-Match (ya en `deferred-work`); rowVersion de otra fila → 409 (aceptable); body null → NRE (minimal API responde 400 antes); `Id` redundante en el comando (ruta manda, documentado); comentario 1205 (contraste taxonómico correcto, Hoteles no configura retry).

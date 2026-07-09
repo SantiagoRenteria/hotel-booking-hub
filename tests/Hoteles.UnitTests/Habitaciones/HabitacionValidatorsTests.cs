@@ -40,6 +40,22 @@ public sealed class HabitacionValidatorsTests
         _crear.TestValidate(c).ShouldHaveValidationErrorFor(x => x.Tipo);
     }
 
+    // Un monto que no cabe en decimal(18,2) debe ser 400 (validación), no 500 por overflow en el INSERT.
+    [Fact]
+    public void Crear_con_monto_que_excede_la_precision_es_invalido()
+    {
+        var c = new CrearHabitacionCommand(Guid.CreateVersion7(), "Suite", 100000000000000000m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        _crear.TestValidate(c).ShouldHaveValidationErrorFor(x => x.CostoBase);
+    }
+
+    // Más de 2 decimales debe rechazarse (evita el redondeo silencioso respuesta≠persistido).
+    [Fact]
+    public void Crear_con_mas_de_dos_decimales_es_invalido()
+    {
+        var c = new CrearHabitacionCommand(Guid.CreateVersion7(), "Suite", 100.999m, 19m, "Piso 3", EstadoHabitacion.Habilitada);
+        _crear.TestValidate(c).ShouldHaveValidationErrorFor(x => x.CostoBase);
+    }
+
     [Fact]
     public void Editar_sin_rowversion_es_invalido()
     {
