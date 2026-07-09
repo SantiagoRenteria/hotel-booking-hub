@@ -39,12 +39,11 @@ public sealed class CrearHabitacionCommandHandler(
         var data = new HabitacionAgregadaV1(
             habitacion.Id, habitacion.HotelId, habitacion.Tipo, habitacion.CostoBase, habitacion.Impuestos,
             habitacion.Ubicacion, habitacion.Estado.ToString());
-        outbox.Encolar(HabitacionAgregadaV1.Tipo, habitacion.Version, habitacion.Id, data, TraceIdActual());
+        outbox.Encolar(HabitacionAgregadaV1.Tipo, habitacion.Version, habitacion.Id, data,
+            Activity.Current?.TraceId.ToString());
 
         var rowVersion = await habitaciones.CrearAsync(habitacion, ct);
 
         return Result<HabitacionResponseDto>.Ok(HabitacionResponseDto.De(habitacion, rowVersion));
     }
-
-    private static string? TraceIdActual() => Activity.Current?.TraceId.ToString();
 }
