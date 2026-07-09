@@ -7,6 +7,7 @@ using Reservas.Application.Reservas.BuscarDisponibilidad;
 using Reservas.Application.Reservas.CrearReserva;
 using Reservas.Application.Reservas.ListarReservasDelAgente;
 using Reservas.Application.Reservas.ObtenerReservaDetalle;
+using Reservas.Application.Reservas.ResolverCancelacion;
 using Reservas.Application.Reservas.SolicitarCancelacion;
 using Reservas.Domain.Servicios;
 using Reservas.Infrastructure;
@@ -92,6 +93,19 @@ app.MapPost("/api/v1/reservas/{id:guid}/solicitud-cancelacion", async (
         return resultado.ToOkResult();
     })
     .WithName("SolicitarCancelacion")
+    .WithTags("Reservas");
+
+// CAP · Resolver cancelación (Story 4.2): el agente aprueba (aplicando/condonando la penalidad congelada) o
+// rechaza (con motivo). Aprobar libera el inventario. Identidad del agente server-side (aislamiento → 403 ajeno);
+// guards de estado → 409; concurrencia optimista → 409. Result→HTTP centralizado.
+app.MapPost("/api/v1/reservas/{id:guid}/cancelacion/resolucion", async (
+        Guid id, ResolverCancelacionRequest cuerpo, ISender sender, CancellationToken ct) =>
+    {
+        var comando = new ResolverCancelacionCommand(id, cuerpo.Decision, cuerpo.MotivoRechazo);
+        var resultado = await sender.Send(comando, ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("ResolverCancelacion")
     .WithTags("Reservas");
 
 // CAP-4 · Búsqueda de habitaciones disponibles (FR-8). Query CQRS servida desde la proyección + caché Redis.
