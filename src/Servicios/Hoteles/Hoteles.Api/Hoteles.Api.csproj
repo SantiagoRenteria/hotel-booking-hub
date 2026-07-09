@@ -12,7 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Hoteles.Application\Hoteles.Application.csproj" />
     <ProjectReference Include="..\Hoteles.Infrastructure\Hoteles.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Comun\HotelBookingHub.Comun\HotelBookingHub.Comun.csproj" />
+    <ProjectReference Include="..\..\..\Comun\HotelBookingHub.Comun.Web\HotelBookingHub.Comun.Web.csproj" />
     <ProjectReference Include="..\..\..\AppHost\ServiceDefaults\ServiceDefaults.csproj" />
   </ItemGroup>
 

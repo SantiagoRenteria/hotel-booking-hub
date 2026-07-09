@@ -1,6 +1,10 @@
+---
+baseline_commit: 7db4ecd
+---
+
 # Story 2.1: Crear hotel
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,26 +23,30 @@ para **incorporarlo a mi catálogo y maximizar comisiones**.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Dominio `Hotel` (AC: 1)**
-  - [ ] Aggregate `Hotel` en `Hoteles.Domain/Hoteles/` con identidad UUID v7 (`Guid.CreateVersion7()`), setters privados y factory `Crear(nombre, ciudad, direccion, descripcion, estado)`; invariantes en el dominio (no vacíos como defensa en profundidad)
-  - [ ] `EstadoHotel` enum (`Habilitado = 1`, `Deshabilitado = 2`) — el estado de publicación; el soft-delete (2.2) y el toggle (2.3) llegan después
-  - [ ] `IHotelRepository` (puerto) en `Hoteles.Domain/Puertos/` con `void Agregar(Hotel hotel)` (staging; la tx la posee el `TransactionBehavior`, coherente con 1.6b)
-- [ ] **Task 2 — Slice `CrearHotel` (AC: 1)**
-  - [ ] `CrearHotelCommand` (`: ICommand<Result<HotelResponseDto>>`) + `HotelResponseDto` (Id UUID v7, Nombre, Ciudad, Estado) + `CrearHotelCommandHandler` en `Hoteles.Application/Hoteles/CrearHotel/`
-  - [ ] Handler: crea el `Hotel`, lo stagea vía `IHotelRepository.Agregar`, devuelve `Result.Ok(dto)` (sin publicar eventos aún; los eventos de catálogo son 2.5)
-- [ ] **Task 3 — Validación (AC: 2)**
-  - [ ] `CrearHotelCommandValidator` (FluentValidation): nombre y ciudad obligatorios; dirección/descripción según reglas; regex con `matchTimeout` si aplica (anti-ReDoS)
-- [ ] **Task 4 — Infraestructura `Hoteles` (AC: 1)**
-  - [ ] `HotelesDbContext` (BD por servicio) con claves **ADR-017** (PK UUID v7 no-clustered + `Seq bigint IDENTITY` shadow clustered + `rowversion`), tabla `Hoteles`, `Estado` como string; tabla `OutboxMessages` (lista para 2.5, mismo patrón que Reservas)
-  - [ ] Migración EF Core `InicialHoteles` + `DesignTimeHotelesDbContextFactory`
-  - [ ] `HotelRepository` (staging) + `AddHotelesInfrastructure(cadenaConexion)` (DbContext + repo; `EjecutorTransaccional`/`TransactionBehavior`/outbox reutilizando el patrón de 1.6b — extraer lo común o replicar por BC según decisión de diseño)
-- [ ] **Task 5 — Endpoint + wiring (AC: 1, 2)**
-  - [ ] `POST /api/v1/hoteles` en `Hoteles.Api` con `TypedResults` + union type explícito + `Result<T>.ToCreatedResult()`
-  - [ ] `Program.cs`: `AddMediatorPipeline(typeof(CrearHotelCommand).Assembly)` + `AddHotelesInfrastructure(...)` + `ManejadorExcepcionesNegocio` (o su equivalente transversal); registrar en AppHost/compose/YARP
-- [ ] **Task 6 — Tests (AC: 1, 2)**
-  - [ ] Unit (Application): happy path → `Result.Ok` con id UUID v7 + estado; validación → `Result.Invalido` por campo (pipeline corta antes del handler); mapeo `ToCreatedResult` (201/400)
-  - [ ] `Hoteles.UnitTests` (nuevo proyecto) siguiendo el patrón de `Reservas.UnitTests`
-- [ ] **Task 7 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Dominio `Hotel` (AC: 1)**
+  - [x] Aggregate `Hotel` (UUID v7, setters privados, factory `Crear` con invariantes nombre/ciudad no vacíos)
+  - [x] `EstadoHotel` enum (`Habilitado = 1`, `Deshabilitado = 2`)
+  - [x] `IHotelRepository` con `Task CrearAsync(Hotel, ct)` — escritura auto-contenida en 2.1 (sin eventos → sin outbox/tx-behavior; el write-path transaccional se adopta en 2.5)
+- [x] **Task 2 — Slice `CrearHotel` (AC: 1)**
+  - [x] `CrearHotelCommand : ICommand<Result<HotelResponseDto>>` + `HotelResponseDto` + `CrearHotelCommandHandler`
+  - [x] Handler: crea el `Hotel`, persiste vía `IHotelRepository.CrearAsync`, devuelve `Result.Ok(dto)` (sin eventos; 2.5)
+- [x] **Task 3 — Validación (AC: 2)**
+  - [x] `CrearHotelCommandValidator` (FluentValidation): nombre y ciudad obligatorios + `Estado` en rango (`IsInEnum`)
+- [x] **Task 4 — Infraestructura `Hoteles` (AC: 1)**
+  - [x] `HotelesDbContext` (BD por servicio) con claves **ADR-017** (PK UUID v7 no-clustered + `Seq` shadow clustered + `rowversion`), tabla `Hoteles`, `Estado` string. **Tabla `OutboxMessages` diferida a 2.5** (YAGNI: 2.1 no emite eventos)
+  - [x] Migración EF Core `InicialHoteles` (DDL verificado: PK no-clustered + `IX_Hoteles_Seq` único clustered + rowversion) + `DesignTimeHotelesDbContextFactory`
+  - [x] `HotelRepository` (Add + SaveChanges auto-contenido) + `AddHotelesInfrastructure(cadenaConexion)`
+- [x] **Task 5 — Endpoint + wiring (AC: 1, 2)**
+  - [x] `POST /api/v1/hoteles` con `TypedResults` + union + `Result<T>.ToCreatedResult()` (ahora en `Comun.Web`)
+  - [x] `Program.cs`: `AddMediatorPipeline(CrearHotelCommand assembly)` + `AddHotelesInfrastructure(GetConnectionString("hotelesdb"))`. (Sin exception-handler de negocio: 2.1 no tiene 409; llega en 2.2. AppHost/compose/YARP: wiring diferido —el servicio ya arranca standalone—.)
+- [x] **Task 6 — Tests (AC: 1, 2)**
+  - [x] `Hoteles.UnitTests` (nuevo proyecto): validator (nombre/ciudad/estado), handler (happy + estado deshabilitado), pipeline (Validation corta antes del handler + enumera campo), mapeo `ToCreatedResult` (201/400). 10/10.
+- [x] **Task 7 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Decisión de diseño (party-mode, regla #4)
+
+- **Promoción del mapeo Result→HTTP a componente transversal** (afectaba `Reservas.Api`): party-mode (Winston + Amelia) → **opción (a)**: nuevo `HotelBookingHub.Comun.Web` (`FrameworkReference Microsoft.AspNetCore.App`) con `ToCreatedResult`; ambos `*.Api` lo referencian; `Application` NO (queda web-agnóstica). Se movió (no duplicó) desde `Reservas.Api`. La generalización del `IExceptionHandler` con una `ExcepcionNegocio` base (para que sea BC-agnóstico) se **difiere a 2.2** (que introduce el 409 de concurrencia optimista) — 2.1 no tiene excepciones de negocio.
+- **Write-path transaccional (extraer vs replicar):** NO aplica a 2.1 (crear-hotel no emite eventos) → escritura auto-contenida; la decisión se toma en 2.5 (outbox de catálogo). No requirió party-mode (elección local de Hoteles, no toca Reservas).
 
 ## Dev Notes
 
@@ -101,8 +109,34 @@ para **incorporarlo a mi catálogo y maximizar comisiones**.
 
 ### Agent Model Used
 
+Claude Opus 4.8 (claude-opus-4-8) vía bmad-dev-story.
+
 ### Debug Log References
+
+- `dotnet build` 0/0; `dotnet format --verify-no-changes` limpio; **Hoteles.UnitTests 10/10**; Reservas.UnitTests 52/52 (el move de `ToCreatedResult` no rompió nada).
+- Migración `InicialHoteles`: `PK_Hoteles` no-clustered (Id UUID v7) + `IX_Hoteles_Seq` único clustered + `RowVersion` rowversion + `Estado` nvarchar(20).
+- Party-mode (Winston/Amelia) → `HotelBookingHub.Comun.Web` para el mapeo Result→HTTP transversal (Application permanece web-agnóstica).
 
 ### Completion Notes List
 
+- **AC-E2.1.1 ✅** — `POST /api/v1/hoteles` → `Result.Ok` con `HotelResponseDto` (Id UUID v7, estado indicado) → `ToCreatedResult` mapea a 201; `Hotel.Crear` genera `Guid.CreateVersion7()`.
+- **AC-E2.1.2 ✅** — `CrearHotelCommandValidator` (nombre/ciudad obligatorios, estado en rango) + `ValidationBehavior` corta con `Result.Invalido` (→ 400, enumera el campo) antes del handler (probado en `PipelineTests`).
+- **Transversal E1 reutilizado sin reimplementar:** mediator/`Result<T>`/behaviors de `Comun`; `ToCreatedResult` promovido a `Comun.Web` (deuda de E1 saldada).
+- **BC Hoteles:** `HotelesDbContext` (BD por servicio, claves ADR-017) + migración + repo auto-contenido. Sin outbox aún (2.5). `rowversion` ya presente → habilita la concurrencia optimista de 2.2.
+- **Diferido:** tabla `OutboxMessages` + write-path transaccional → 2.5; generalización del exception-handler + `ExcepcionNegocio` base → 2.2; wiring AppHost/compose/YARP de Hoteles.Api → cuando se integre el gateway del catálogo. Binding del `Estado` en el body usa el enum (STJ numérico por defecto); si se requiere string en la API, añadir `JsonStringEnumConverter` (menor).
+
 ### File List
+
+- `HotelBookingHub.slnx` (+ Comun.Web, + Hoteles.UnitTests)
+- `src/Comun/HotelBookingHub.Comun.Web/` — `HotelBookingHub.Comun.Web.csproj`, `ResultadoHttpExtensions.cs` (nuevo; movido desde Reservas.Api)
+- `src/Servicios/Reservas/Reservas.Api/` — `Reservas.Api.csproj` (+ ref Comun.Web), `Program.cs` (using), `Http/ResultadoHttpExtensions.cs` (eliminado)
+- `src/Servicios/Hoteles/Hoteles.Domain/` — `Hoteles/Hotel.cs`, `Hoteles/EstadoHotel.cs`, `Puertos/IHotelRepository.cs` (nuevos)
+- `src/Servicios/Hoteles/Hoteles.Application/` — `Hoteles.Application.csproj` (+ Comun, FluentValidation), `Hoteles/CrearHotel/{CrearHotelCommand,CrearHotelCommandHandler,CrearHotelCommandValidator}.cs` (nuevos)
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/` — `Hoteles.Infrastructure.csproj` (+ EF), `Persistencia/{HotelesDbContext,HotelRepository,DesignTimeHotelesDbContextFactory}.cs`, `RegistroInfraestructura.cs`, `Migraciones/*_InicialHoteles*.cs` + snapshot (nuevos)
+- `src/Servicios/Hoteles/Hoteles.Api/` — `Hoteles.Api.csproj` (+ refs), `Program.cs` (endpoint + wiring)
+- `tests/Reservas.UnitTests/Reservas/CrearReserva/ResultadoHttpExtensionsTests.cs` (using → Comun.Web)
+- `tests/Hoteles.UnitTests/` — csproj + `CrearHotel/{Fakes,CrearHotelCommandValidatorTests,CrearHotelCommandHandlerTests,PipelineTests,ResultadoHttpMapeoTests}.cs` (nuevos)
+
+### Change Log
+
+- 2026-07-09 · Story 2.1 · crear-hotel: primer slice del BC Hoteles reutilizando el transversal de E1; `Hotel` aggregate + `HotelesDbContext` (ADR-017) + migración `InicialHoteles` + slice `CrearHotel` (FluentValidation) + endpoint `POST /api/v1/hoteles`. Party-mode → `Comun.Web` (promoción de `ToCreatedResult`). Diferidos: outbox/write-path→2.5, exception-handler base→2.2. Unit 10/10. Estado: `ready-for-dev` → `in-progress` → `review`.

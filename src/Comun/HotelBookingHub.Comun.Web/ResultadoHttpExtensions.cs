@@ -1,12 +1,13 @@
 using HotelBookingHub.Comun.Resultados;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 
-namespace Reservas.Api.Http;
+namespace HotelBookingHub.Comun.Web;
 
 /// <summary>
-/// Traducción ÚNICA de <see cref="Result{T}"/> a HTTP (sin envoltura; Problem Details RFC 7807 en error).
-/// Los endpoints exponen un union type explícito (<c>TypedResults</c>) para mantener el OpenAPI uniforme.
-/// Nota: cuando aparezca un segundo BC con Api, promover esta extensión a un proyecto web transversal.
+/// Traducción ÚNICA y transversal de <see cref="Result{T}"/> a HTTP (sin envoltura; Problem Details RFC 7807
+/// en error). Compartida por los <c>*.Api</c> de todos los BC. Los endpoints exponen un union type explícito
+/// (<c>TypedResults</c>) para mantener el OpenAPI uniforme.
 /// </summary>
 public static class ResultadoHttpExtensions
 {

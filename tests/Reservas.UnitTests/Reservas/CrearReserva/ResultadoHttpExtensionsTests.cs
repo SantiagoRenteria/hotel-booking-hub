@@ -1,7 +1,7 @@
 using HotelBookingHub.Comun.Resultados;
+using HotelBookingHub.Comun.Web;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Reservas.Api.Http;
 using Reservas.Application.Reservas.CrearReserva;
 
 namespace Reservas.UnitTests.CrearReserva;
