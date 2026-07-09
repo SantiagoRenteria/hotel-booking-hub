@@ -37,4 +37,12 @@ public sealed class CrearHotelCommandValidatorTests
         _validator.TestValidate(Valido() with { Estado = (EstadoHotel)99 })
             .ShouldHaveValidationErrorFor(c => c.Estado);
     }
+
+    // Un nombre sobredimensionado debe rechazarse como 400 (validación), no reventar en el INSERT (500).
+    [Fact]
+    public void Nombre_que_excede_la_longitud_maxima_es_invalido()
+    {
+        _validator.TestValidate(Valido() with { Nombre = new string('a', 201) })
+            .ShouldHaveValidationErrorFor(c => c.Nombre);
+    }
 }

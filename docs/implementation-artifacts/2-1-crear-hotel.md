@@ -4,7 +4,7 @@ baseline_commit: 7db4ecd
 
 # Story 2.1: Crear hotel
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -42,6 +42,11 @@ para **incorporarlo a mi catálogo y maximizar comisiones**.
 - [x] **Task 6 — Tests (AC: 1, 2)**
   - [x] `Hoteles.UnitTests` (nuevo proyecto): validator (nombre/ciudad/estado), handler (happy + estado deshabilitado), pipeline (Validation corta antes del handler + enumera campo), mapeo `ToCreatedResult` (201/400). 10/10.
 - [x] **Task 7 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings (code review 2026-07-09)
+
+- [x] [Review][Patch] Los strings del validator no tenían `MaximumLength`; un valor sobredimensionado (p. ej. nombre de 5000 chars) pasaba la validación y reventaba en el INSERT (truncamiento SQL → `DbUpdateException` → 500, ya que Hoteles.Api aún no tiene exception-handler), incumpliendo AC-E2.1.2 (debe ser 400). **Resuelto:** `MaximumLength` en `Nombre/Ciudad/Direccion/Descripcion` acorde a las columnas + test. `[CrearHotelCommandValidator.cs]`
+- Dismiss: `using Reservas.Api.Http` "huérfano" (falso positivo — `ManejadorExcepcionesNegocio` sigue ahí y `Program.cs` lo usa; build 0/0 + format limpio); `HotelResponseDto` sin Direccion/Descripcion (forma intencional por Task 2); binding del enum numérico (documentado, fuera del AC).
 
 ### Decisión de diseño (party-mode, regla #4)
 
