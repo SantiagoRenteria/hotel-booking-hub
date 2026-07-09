@@ -1,7 +1,11 @@
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
+using Reservas.Api;
+using Reservas.Application.Abstracciones;
 using Reservas.Application.Reservas.BuscarDisponibilidad;
 using Reservas.Application.Reservas.CrearReserva;
+using Reservas.Application.Reservas.ListarReservasDelAgente;
+using Reservas.Application.Reservas.ObtenerReservaDetalle;
 using Reservas.Domain.Servicios;
 using Reservas.Infrastructure;
 
@@ -37,6 +41,11 @@ else
     builder.Services.AddDistributedMemoryCache();
 }
 
+// Identidad del agente (Story 3.3, Task 0): resuelta server-side desde la cabecera X-Agente (puente hasta la
+// Épica 6, donde pasa a ser un claim de auth). NO es autenticación; el filtro de aislamiento vive en los handlers.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IContextoAgente, HttpContextoAgente>();
+
 var app = builder.Build();
 
 app.UseExceptionHandler();
@@ -69,5 +78,23 @@ app.MapGet("/api/v1/habitaciones/disponibles", async (
     })
     .WithName("BuscarDisponibilidad")
     .WithTags("Habitaciones");
+
+// CAP-4 · Listado de reservas del agente (FR-12) y su detalle. Aislamiento server-side por identidad del agente
+// (IContextoAgente); el cliente NO elige a qué agente ve. Result→HTTP centralizado.
+app.MapGet("/api/v1/reservas", async (ISender sender, CancellationToken ct) =>
+    {
+        var resultado = await sender.Send(new ListarReservasDelAgenteQuery(), ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("ListarReservasDelAgente")
+    .WithTags("Reservas");
+
+app.MapGet("/api/v1/reservas/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
+    {
+        var resultado = await sender.Send(new ObtenerReservaDetalleQuery(id), ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("ObtenerReservaDetalle")
+    .WithTags("Reservas");
 
 app.Run();

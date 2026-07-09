@@ -5,23 +5,50 @@ namespace Reservas.Domain.Reservas;
 /// clustering key <c>Seq</c> es shadow property configurada en infraestructura — ADR-017).
 /// Genera sus <see cref="NocheHabitacion"/> (slots de inventario) para toda la estancia; la
 /// unicidad de esos slots garantiza el invariante anti-overbooking en el motor.
+/// <para>Story 3.3: persiste los datos de negocio que 1.6a solo validaba y llevaba al evento —
+/// <see cref="Huespedes"/> (owned collection, FR-10), <see cref="ContactoEmergencia"/> (owned, FR-11),
+/// <see cref="AgenteEmail"/> (aislamiento del listado, AC-E3.3.2) y <see cref="PrecioTotal"/> (mostrado tal
+/// como se calculó en E1, sin recálculo).</para>
 /// </summary>
 public sealed class Reserva
 {
     private readonly List<NocheHabitacion> _noches = [];
+    private readonly List<Huesped> _huespedes = [];
 
     public Guid Id { get; private set; }
     public Guid HabitacionId { get; private set; }
     public Estancia Estancia { get; private set; } = null!;
     public EstadoReserva Estado { get; private set; }
 
+    /// <summary>Correo del agente que intermedió la reserva; eje de aislamiento del listado (AC-E3.3.2).</summary>
+    public string? AgenteEmail { get; private set; }
+
+    /// <summary>Precio total calculado al confirmar (E1). Se muestra tal cual; NO se recalcula en la lectura.</summary>
+    public decimal PrecioTotal { get; private set; }
+
+    /// <summary>Contacto de emergencia (FR-11); presente en el detalle (AC-E3.3.1).</summary>
+    public ContactoEmergencia? ContactoEmergencia { get; private set; }
+
     /// <summary>Slots de inventario que ocupa la reserva (una fila por noche del rango).</summary>
     public IReadOnlyCollection<NocheHabitacion> Noches => _noches.AsReadOnly();
 
+    /// <summary>Huéspedes de la reserva (FR-10); presentes en el detalle (AC-E3.3.1).</summary>
+    public IReadOnlyCollection<Huesped> Huespedes => _huespedes.AsReadOnly();
+
     private Reserva() { } // EF Core
 
-    /// <summary>Crea una reserva confirmada y sus slots para el rango <c>[entrada, salida)</c>.</summary>
-    public static Reserva Crear(Guid habitacionId, Estancia estancia)
+    /// <summary>
+    /// Crea una reserva confirmada y sus slots para el rango <c>[entrada, salida)</c>. Los datos de negocio
+    /// (huéspedes, contacto, agente, precio) son opcionales para no forzar a los tests del invariante
+    /// anti-overbooking (que solo necesitan habitación + estancia) a construirlos.
+    /// </summary>
+    public static Reserva Crear(
+        Guid habitacionId,
+        Estancia estancia,
+        IReadOnlyList<Huesped>? huespedes = null,
+        ContactoEmergencia? contactoEmergencia = null,
+        string? agenteEmail = null,
+        decimal precioTotal = 0m)
     {
         var reserva = new Reserva
         {
@@ -29,7 +56,15 @@ public sealed class Reserva
             HabitacionId = habitacionId,
             Estancia = estancia,
             Estado = EstadoReserva.Confirmada,
+            AgenteEmail = agenteEmail?.Trim(),
+            PrecioTotal = precioTotal,
+            ContactoEmergencia = contactoEmergencia,
         };
+
+        if (huespedes is not null)
+        {
+            reserva._huespedes.AddRange(huespedes);
+        }
 
         // Slots en orden determinístico ascendente por noche (minimiza deadlocks bajo concurrencia).
         for (var noche = estancia.Entrada; noche < estancia.Salida; noche = noche.AddDays(1))
