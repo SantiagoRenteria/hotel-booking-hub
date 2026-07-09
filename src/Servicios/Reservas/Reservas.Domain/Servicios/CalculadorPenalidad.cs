@@ -15,6 +15,10 @@ public sealed class CalculadorPenalidad
 
     public PenalidadSugerida Calcular(Estancia estancia, DateOnly fechaSolicitud)
     {
-        throw new NotImplementedException();
+        var diasDeAntelacion = estancia.Entrada.DayNumber - fechaSolicitud.DayNumber;
+
+        return diasDeAntelacion >= DiasUmbralSinPenalidad
+            ? PenalidadSugerida.Crear(0m)
+            : PenalidadSugerida.Crear(100m);
     }
 }
