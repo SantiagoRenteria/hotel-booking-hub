@@ -4,7 +4,7 @@ baseline_commit: bfa6e49
 
 # Story 1.6b: Atomicidad transaccional reserva + outbox
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -42,6 +42,13 @@ para **no dejar eventos huérfanos ni reservas sin notificar**.
   - [x] Relay: fila `Pendiente` → `Enviada` con `Intentos >= 1`, sin mark-sent prematuro (fallo → sigue `Pendiente`)
   - [x] Deuda etiquetada: `[Trait("VerificationDebt","E5:ConsumerIdempotency")]` y `[Trait("VerificationDebt","E3:ProjectionOrder")]`
 - [x] **Task 5 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings (code review 2026-07-08)
+
+- [x] [Review][Decision→Resuelto] `MessageId` por-comando + `catch` de 2627 amplio (falso 409 con ≥2 eventos/comando). **Party-mode (Winston/Amelia/Murat) → opción (b):** guard en `ColaOutbox.Encolar` que lanza `InvalidOperationException` (NO de negocio → no se traduce a 409) + contrato "1 evento/comando" documentado + contador reseteado por-intento en `TransactionBehavior` (retry 1205) + test del guard. Fix estructural (id por-mensaje + desacople id/clasificación) diferido a `deferred-work`. `[ColaOutbox.cs, ContextoMensajeria.cs, TransactionBehavior.cs]`
+- [x] [Review][Patch] El relay deserializa `EventoIntegracion.Data` como `JsonElement`; `PublicadorEventosLog` casteaba `Data` → null. **Resuelto:** loguea solo campos estables del envelope (Type/MessageId/Version), sin castear `Data`. `[PublicadorEventosLog.cs]`
+- [x] [Review][Patch] Mapeo `HabitacionNoDisponibleException → 409` sin test. **Resuelto:** `ManejadorExcepcionesNegocioTests` (409 + no-manejo de otras excepciones). `[tests/.../ApiHttp/ManejadorExcepcionesNegocioTests.cs]`
+- [x] [Review][Defer] Naming `ManejadorExcepcionesNegocio` vs lista cerrada de sufijos (junto con `Sender`/`ISender`, etc.). Resolver al materializar el check de sufijos + `AGENTS.md`. `[Reservas.Api/Http]` — deferido a E-T.
 
 ## Dev Notes
 
