@@ -22,7 +22,7 @@ public sealed class EditarHabitacionCommandHandlerTests
         var habitacion = UnaHabitacion();
         var repo = new HabitacionRepositoryFake { Existente = habitacion, RowVersionResultante = [7, 7, 7, 7] };
 
-        var resultado = await new EditarHabitacionCommandHandler(repo).Handle(Comando(habitacion.Id), CancellationToken.None);
+        var resultado = await new EditarHabitacionCommandHandler(repo, new ColaOutboxFake()).Handle(Comando(habitacion.Id), CancellationToken.None);
 
         Assert.True(resultado.EsExitoso);
         Assert.Equal("Suite Premium", resultado.Valor!.Tipo);
@@ -37,7 +37,7 @@ public sealed class EditarHabitacionCommandHandlerTests
     {
         var repo = new HabitacionRepositoryFake { Existente = null };
 
-        var resultado = await new EditarHabitacionCommandHandler(repo).Handle(Comando(Guid.NewGuid()), CancellationToken.None);
+        var resultado = await new EditarHabitacionCommandHandler(repo, new ColaOutboxFake()).Handle(Comando(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(EstadoResultado.NoEncontrado, resultado.Estado);
         Assert.False(repo.GuardoConcurrencia);
@@ -54,6 +54,6 @@ public sealed class EditarHabitacionCommandHandlerTests
         };
 
         await Assert.ThrowsAsync<ConflictoConcurrenciaException>(
-            () => new EditarHabitacionCommandHandler(repo).Handle(Comando(habitacion.Id), CancellationToken.None));
+            () => new EditarHabitacionCommandHandler(repo, new ColaOutboxFake()).Handle(Comando(habitacion.Id), CancellationToken.None));
     }
 }

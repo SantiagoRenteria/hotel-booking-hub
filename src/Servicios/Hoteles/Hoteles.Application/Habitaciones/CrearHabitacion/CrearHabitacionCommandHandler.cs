@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using HotelBookingHub.Comun.Eventos;
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Resultados;
+using Hoteles.Application.Abstracciones;
 using Hoteles.Domain.Habitaciones;
 using Hoteles.Domain.Puertos;
 
@@ -16,7 +19,8 @@ namespace Hoteles.Application.Habitaciones.CrearHabitacion;
 /// proyección/consumo de E3 la filtra aguas abajo. No se fuerza FK para no acoplar los aggregates.
 /// </para>
 /// </summary>
-public sealed class CrearHabitacionCommandHandler(IHotelRepository hoteles, IHabitacionRepository habitaciones)
+public sealed class CrearHabitacionCommandHandler(
+    IHotelRepository hoteles, IHabitacionRepository habitaciones, IColaOutbox outbox)
     : IRequestHandler<CrearHabitacionCommand, Result<HabitacionResponseDto>>
 {
     public async Task<Result<HabitacionResponseDto>> Handle(CrearHabitacionCommand request, CancellationToken ct)
@@ -29,8 +33,18 @@ public sealed class CrearHabitacionCommandHandler(IHotelRepository hoteles, IHab
 
         var habitacion = Habitacion.Crear(
             request.HotelId, request.Tipo, request.CostoBase, request.Impuestos, request.Ubicacion, request.Estado);
+
+        // Encola el evento de catálogo ANTES del SaveChanges: la fila de outbox y la habitación se persisten en
+        // la MISMA transacción implícita del único SaveChanges del repositorio (atomicidad AC-E2.5.2, Opción U).
+        var data = new HabitacionAgregadaV1(
+            habitacion.Id, habitacion.HotelId, habitacion.Tipo, habitacion.CostoBase, habitacion.Impuestos,
+            habitacion.Ubicacion, habitacion.Estado.ToString());
+        outbox.Encolar(HabitacionAgregadaV1.Tipo, habitacion.Version, habitacion.Id, data, TraceIdActual());
+
         var rowVersion = await habitaciones.CrearAsync(habitacion, ct);
 
         return Result<HabitacionResponseDto>.Ok(HabitacionResponseDto.De(habitacion, rowVersion));
     }
+
+    private static string? TraceIdActual() => Activity.Current?.TraceId.ToString();
 }

@@ -17,6 +17,15 @@ public sealed class Habitacion
     public string Ubicacion { get; private set; } = string.Empty;
     public EstadoHabitacion Estado { get; private set; }
 
+    /// <summary>
+    /// Versión de secuencia del agregado (Story 2.5, AC-E2.5.4): parte monotónica del order key
+    /// <c>(HabitacionId, Version)</c> de los eventos de catálogo. Cuenta SOLO las mutaciones que EMITEN evento
+    /// (alta, cambio real de precio, deshabilitación); las que no emiten (editar sin tocar el precio, habilitar,
+    /// idempotentes) no la incrementan, de modo que la secuencia emitida es estrictamente creciente y contigua.
+    /// Es independiente del <c>rowversion</c> (concurrencia optimista): miden cosas distintas y coexisten.
+    /// </summary>
+    public int Version { get; private set; }
+
     private Habitacion() { } // EF Core
 
     public static Habitacion Crear(
@@ -41,29 +50,69 @@ public sealed class Habitacion
             Impuestos = impuestos,
             Ubicacion = ubicacion.Trim(),
             Estado = estado,
+            Version = 1, // el alta es el primer evento del agregado (HabitacionAgregada.v1)
         };
     }
 
     /// <summary>
     /// Actualiza los datos de la habitación (AC-E2.4.2). NO cambia el <see cref="Estado"/> (transición dedicada,
     /// como en el hotel) ni el <see cref="HotelId"/> (una habitación no se «mueve» de hotel).
+    /// <para>
+    /// Devuelve <c>true</c> si cambió el PRECIO (<see cref="CostoBase"/> o <see cref="Impuestos"/>), único
+    /// disparador de <c>PrecioHabitacionCambiado</c> (AC-E2.5.3); en ese caso incrementa la <see cref="Version"/>.
+    /// Editar solo datos no económicos NO emite ni versiona.
+    /// </para>
     /// </summary>
-    public void Editar(string tipo, decimal costoBase, decimal impuestos, string ubicacion)
+    public bool Editar(string tipo, decimal costoBase, decimal impuestos, string ubicacion)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tipo);
         ArgumentException.ThrowIfNullOrWhiteSpace(ubicacion);
         ArgumentOutOfRangeException.ThrowIfNegative(costoBase);
         ArgumentOutOfRangeException.ThrowIfNegative(impuestos);
 
+        var cambioPrecio = CostoBase != costoBase || Impuestos != impuestos;
+
         Tipo = tipo.Trim();
         CostoBase = costoBase;
         Impuestos = impuestos;
         Ubicacion = ubicacion.Trim();
+
+        if (cambioPrecio)
+        {
+            Version++;
+        }
+
+        return cambioPrecio;
     }
 
-    /// <summary>Habilita la habitación (idempotente). Única vía de transición junto con <see cref="Deshabilitar"/>.</summary>
-    public void Habilitar() => Estado = EstadoHabitacion.Habilitada;
+    /// <summary>
+    /// Habilita la habitación (idempotente). Devuelve <c>true</c> si cambió el estado. NO emite evento
+    /// (el contrato de catálogo no tiene «HabitacionHabilitada»; AC-E2.5.3) → NO incrementa la <see cref="Version"/>.
+    /// </summary>
+    public bool Habilitar()
+    {
+        if (Estado == EstadoHabitacion.Habilitada)
+        {
+            return false;
+        }
 
-    /// <summary>Deshabilita la habitación (idempotente): deja de ofertarse.</summary>
-    public void Deshabilitar() => Estado = EstadoHabitacion.Deshabilitada;
+        Estado = EstadoHabitacion.Habilitada;
+        return true;
+    }
+
+    /// <summary>
+    /// Deshabilita la habitación (idempotente): deja de ofertarse. Devuelve <c>true</c> si cambió el estado;
+    /// en ese caso emite <c>HabitacionDeshabilitada</c> e incrementa la <see cref="Version"/> (AC-E2.5.3/4).
+    /// </summary>
+    public bool Deshabilitar()
+    {
+        if (Estado == EstadoHabitacion.Deshabilitada)
+        {
+            return false;
+        }
+
+        Estado = EstadoHabitacion.Deshabilitada;
+        Version++;
+        return true;
+    }
 }
