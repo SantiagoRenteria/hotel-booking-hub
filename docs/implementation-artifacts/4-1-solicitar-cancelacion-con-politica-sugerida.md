@@ -1,6 +1,10 @@
+---
+baseline_commit: 023e2bb3d96d99a0e3a4b84e0772b90959bcd731
+---
+
 # Story 4.1: Solicitar cancelación con política sugerida
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Generado por bmad-create-story. Complejidad ALTA (núcleo de dominio: máquina de estados + penalidad
 congelada + evento nuevo + concurrencia). 2ª VITRINA BDD: aplicar BDD (Given/When/Then) además de TDD Red→Green
