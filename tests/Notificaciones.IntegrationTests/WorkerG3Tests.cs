@@ -90,14 +90,15 @@ public sealed class WorkerG3Tests(RedisFixture fixture)
     [Fact]
     public async Task Broker_caido_durante_la_rafaga_no_pierde_ni_duplica_al_recuperarse()
     {
-        // Given: 15 eventos; al caer el broker se interrumpe el 1er envío de CADA destinatario (huésped y agente).
+        // Given: 15 eventos. Mientras el broker está caído, el envío falla: se interrumpe el PRIMER efecto de cada
+        // entrega (el correo del huésped), lo que aborta la entrega completa (el consumidor propaga para reentrega,
+        // sin llegar al 2º correo). Modela "todo envío falla durante la caída".
         const int n = 15;
         var eventos = Enumerable.Range(0, n).Select(i => Envelope(Data(i))).ToList();
         var fallos = new Dictionary<string, int>();
         foreach (var i in Enumerable.Range(0, n))
         {
             fallos[$"huesped-{i}@example.com"] = 1;
-            fallos[$"agente-{i}@example.com"] = 1;
         }
 
         var fake = new NotificadorFake(fallos);
