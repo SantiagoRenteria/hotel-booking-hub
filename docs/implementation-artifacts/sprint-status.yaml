@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-07-08
-last_updated: 2026-07-09T23:00
+last_updated: 2026-07-09T23:30
 project: hotel-booking-hub
 project_key: NOKEY
 tracking_system: file-system
@@ -81,7 +81,7 @@ development_status:
   epic-5: in-progress
   5-1a-notificacion-minima-de-confirmacion: done
   5-1b-worker-idempotente-sin-perdida-ni-duplicado: done
-  5-2-notificar-la-solicitud-de-cancelacion: ready-for-dev
+  5-2-notificar-la-solicitud-de-cancelacion: in-progress
   5-3-notificar-la-resolucion-de-la-cancelacion: ready-for-dev
   epic-5-retrospective: optional
 

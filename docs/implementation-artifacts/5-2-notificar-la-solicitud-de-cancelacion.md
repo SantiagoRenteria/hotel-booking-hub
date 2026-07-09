@@ -1,6 +1,10 @@
+---
+baseline_commit: b2a429d1540d9fdb20bbfa59bc33ba222e26d00d
+---
+
 # Story 5.2: Notificar la solicitud de cancelación
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Generado por bmad-create-story (lote Épica 5). Complejidad NORMAL. Consume SolicitudCancelacionRegistrada.v1
 (definido y probado por 4.1). Reutiliza INotificador (5.1a) + inbox idempotente (5.1b). TDD Red→Green. -->
@@ -34,7 +38,9 @@ para **conocer la penalidad estimada y (el agente) saber que hay algo por resolv
 ### Arquitectura y archivos a tocar
 
 - **Worker:** nuevo handler para `SolicitudCancelacionRegistradaV1` (`Comun.Eventos`, definido/probado en 4.1). Reutiliza `INotificador` + `IInboxIdempotencia` de 5.1a/5.1b.
-- **Datos del correo:** el evento NO trae el email del viajero ni del agente directamente (lleva `Iniciador`, motivo, penalidad, fecha). ⚠️ **Gap a resolver:** el destinatario (email del huésped/agente) no viaja en `SolicitudCancelacionRegistrada.v1`. Opciones (documentar en dev-story): (a) enriquecer el evento de 4.1 de forma **aditiva/versionada** con los emails (cambio aditivo, no rompe contrato); (b) que el worker mantenga una proyección/lookup de ReservaId→emails alimentada por `ReservaConfirmada.v1`. Decidir sin romper el contrato congelado.
+- **Datos del correo:** el evento NO trae el email del viajero ni del agente directamente (lleva `Iniciador`, motivo, penalidad, fecha).
+- ✅ **DECISIÓN (party-mode 5.2, unánime Winston/Amelia/John/Murat, aprobada por delegación de Santiago 2026-07-09): Opción (a)** — enriquecer `SolicitudCancelacionRegistrada.v1` (y en 5-3, `ReservaCancelada.v1`/`SolicitudCancelacionRechazada.v1`) de forma **ADITIVA** con `HuespedEmail` + `AgenteEmail`, poblados por el emisor de Reservas (4.1/4.2). Razones: (1) menor riesgo runtime (evento autocontenido, worker stateless, verificable en CI) vs la proyección local (b) que sufriría **expiración de TTL en cancelaciones tardías** —el caso común— y un **invariante inter-evento que ningún contract test cubre**; (2) E5 es el **primer y único consumidor** de estos eventos → el cambio aditivo no rompe a nadie; (3) consistencia con el precedente de `ReservaConfirmada.v1` (que ya lleva ambos emails); (4) consumer-driven contract testing: el pacto lo declara el consumidor, no es acoplamiento invertido.
+- **Condiciones de test exigidas (Murat):** (1) contract test de `SolicitudCancelacionRegistrada.v1` con `HuespedEmail`+`AgenteEmail` presentes; (2) test del emisor (Reservas 4.1) que verifica que ambos campos se pueblan desde la reserva; (3) compatibilidad aditiva (un consumidor del esquema previo sigue deserializando).
 - **Penalidad como estimación:** `PenalidadPorcentaje` es la SUGERIDA congelada (4.1); etiquetarla como estimación.
 
 ### Previous story intelligence

@@ -28,7 +28,9 @@ public sealed class ContratoSolicitudCancelacionRegistradaTests
             MotivoCategoria: "CambioDePlanes",
             MotivoDetalle: "El viajero ya no puede asistir.",
             PenalidadPorcentaje: 100m,
-            FechaSolicitud: new DateOnly(2026, 8, 20)));
+            FechaSolicitud: new DateOnly(2026, 8, 20),
+            HuespedEmail: "andres@example.com",
+            AgenteEmail: "carolina@agencia.com"));
 
     [Fact]
     public void Envelope_conserva_sus_claves_y_el_type_lleva_semver()
@@ -51,8 +53,11 @@ public sealed class ContratoSolicitudCancelacionRegistradaTests
         var data = JsonNode.Parse(JsonSerializer.Serialize(EventoDeEjemplo(), _opciones))!["data"]!.AsObject();
 
         Assert.Equal(
-            new[] { "aggregateId", "iniciador", "motivoCategoria", "motivoDetalle", "penalidadPorcentaje", "fechaSolicitud" }
-                .OrderBy(k => k),
+            new[]
+            {
+                "aggregateId", "iniciador", "motivoCategoria", "motivoDetalle", "penalidadPorcentaje", "fechaSolicitud",
+                "huespedEmail", "agenteEmail", // enriquecimiento aditivo Story 5.2 (destinatarios de la notificación)
+            }.OrderBy(k => k),
             data.Select(p => p.Key).OrderBy(k => k));
 
         // Order key (parte 1) = ReservaId: aggregateId presente y no vacío.
@@ -62,6 +67,9 @@ public sealed class ContratoSolicitudCancelacionRegistradaTests
         // Penalidad como número decimal, nunca string.
         Assert.Equal(JsonValueKind.Number, data["penalidadPorcentaje"]!.GetValueKind());
         Assert.Equal(100m, data["penalidadPorcentaje"]!.GetValue<decimal>());
+        // Destinatarios de la notificación (Story 5.2): presentes en el contrato.
+        Assert.Equal("andres@example.com", (string?)data["huespedEmail"]);
+        Assert.Equal("carolina@agencia.com", (string?)data["agenteEmail"]);
     }
 
     [Fact]
