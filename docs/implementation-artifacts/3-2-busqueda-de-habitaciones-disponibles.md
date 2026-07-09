@@ -4,7 +4,7 @@ baseline_commit: 94c29d09c929b42178764518bf8756bf2f2bceff
 
 # Story 3.2: Búsqueda de habitaciones disponibles
 
-Status: in-progress
+Status: review
 
 <!-- Generado por bmad-create-story. Complejidad NORMAL (query de lectura CQRS sobre la ProyeccionHabitacion
 de 3.1). Tests convencionales + TDD (Red→Green visible); NO BDD/Gherkin ceremonial (decisión party-mode:
@@ -33,19 +33,19 @@ produce 409 evitables, nunca overbooking.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Query de disponibilidad (AC: 1, 2)** *(TDD Red→Green)*
-  - [ ] `BuscarDisponibilidadQuery` + handler en `Reservas.Application/Reservas/BuscarDisponibilidad/` (patrón `IQuery`/`IRequestHandler`, NO `ICommand` → sin `TransactionBehavior`).
-  - [ ] Lee la `ProyeccionHabitacion` (3.1): filtra por ciudad, `activa == true`, `capacidad >= huéspedes`, y todas las noches de `[entrada, salida)` libres (sin solapamiento con noches ocupadas del read-model).
-  - [ ] Semiabierto `[entrada, salida)`: la noche de salida NO se cuenta (consistente con `Estancia`/`NochesHabitacion` de E1). Validación de entrada (fechas, huéspedes >= 1) en el validator.
-- [ ] **Task 2 — AC negativo explícito (AC: 2)** *(tests de tabla)*
-  - [ ] Casos: reservada-en-rango, deshabilitada, hotel-deshabilitado, capacidad-insuficiente, solapamiento-parcial de fechas → NO aparece. Bordes de rango (salida == entrada de otra reserva → SÍ disponible por semiabierto).
-- [ ] **Task 3 — Caché de lectura Redis (AC: 3)** *(según decisión de invalidación)*
-  - [ ] Cachear el resultado por clave normalizada `(ciudad, entrada, salida, huéspedes)` con TTL; invalidar/expirar ante evento de catálogo o cambio de disponibilidad que afecte la ciudad. Confirmar estrategia de invalidación (TTL corto vs invalidación dirigida) — si es decisión no trivial, `/bmad-party-mode`.
-- [ ] **Task 4 — Endpoint (AC: 1, 2, 3)**
-  - [ ] `GET /api/v1/habitaciones/disponibles?ciudad=&entrada=&salida=&huespedes=` en `Reservas.Api` (CAP-4/FR-8); Result→HTTP (`ToOkResult`). OpenAPI/Scalar.
-- [ ] **Task 5 — Tests de integración (Testcontainers SQL + Redis)**
-  - [ ] Sembrar proyección + slots; verificar filtro real, AC negativos y caché (hit/refresh tras invalidación).
-- [ ] **Task 6 — Commits TDD (Red→Green visibles) en rama `feature/3-2-busqueda` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Query de disponibilidad (AC: 1, 2)** *(TDD Red→Green)*
+  - [x] `BuscarDisponibilidadQuery` + handler en `Reservas.Application/Reservas/BuscarDisponibilidad/` (patrón `IQuery`/`IRequestHandler`, NO `ICommand` → sin `TransactionBehavior`).
+  - [x] Lee la `ProyeccionHabitacion` (3.1): filtra por ciudad, `activa == true`, `capacidad >= huéspedes`, y todas las noches de `[entrada, salida)` libres (sin solapamiento con noches ocupadas del read-model).
+  - [x] Semiabierto `[entrada, salida)`: la noche de salida NO se cuenta (consistente con `Estancia`/`NochesHabitacion` de E1). Validación de entrada (fechas, huéspedes >= 1) en el validator.
+- [x] **Task 2 — AC negativo explícito (AC: 2)** *(tests de tabla)*
+  - [x] Casos: reservada-en-rango, deshabilitada, hotel-deshabilitado (colapsado a estado "Deshabilitada"), capacidad-insuficiente, solapamiento-parcial de fechas → NO aparece. Bordes de rango (salida == entrada de otra reserva → SÍ disponible por semiabierto). También fila no hidratada → NO aparece.
+- [x] **Task 3 — Caché de lectura Redis (AC: 3)** *(según decisión de invalidación)*
+  - [x] Cachear el resultado por clave normalizada `(ciudad, entrada, salida, huéspedes)` con TTL; invalidar ante evento de catálogo que afecte la ciudad. **Decisión (sin party-mode, resoluble):** claves generacionales por ciudad (token en `disp:tok:{ciudad}`) → invalidación O(1) sin escaneo; TTL corto (30 s) cubre best-effort los cambios de disponibilidad no invalidados de forma dirigida.
+- [x] **Task 4 — Endpoint (AC: 1, 2, 3)**
+  - [x] `GET /api/v1/habitaciones/disponibles?ciudad=&entrada=&salida=&huespedes=` en `Reservas.Api` (CAP-4/FR-8); Result→HTTP (`ToOkResult`). OpenAPI.
+- [x] **Task 5 — Tests de integración (Testcontainers SQL + Redis)**
+  - [x] Sembrar proyección + slots; verificar filtro real, AC negativos y caché (hit/refresh tras invalidación).
+- [x] **Task 6 — Commits TDD (Red→Green visibles) en rama `feature/3-2-busqueda-disponibilidad` + PR a `develop`** (autor Santiago Renteria; sin trailers)
 
 ## Dev Notes
 
@@ -99,10 +99,51 @@ produce 409 evitables, nunca overbooking.
 
 ### Agent Model Used
 
+claude-opus-4-8 (bmad-dev-story, modo autónomo).
+
 ### Debug Log References
+
+- RED: `dotnet test Reservas.UnitTests --filter BuscarDisponibilidad` → 2 fallos del decorador (`NotImplementedException`), 7 del validador en verde.
+- GREEN: `dotnet test Reservas.UnitTests --filter BuscarDisponibilidad` → 9/9. Integración (`BusquedaDisponibilidadTests` + `CacheDisponibilidadTests`) → 9/9 (SQL + Redis reales).
+- Regresión (suite completa): 23 (Reservas.Int) · 71 (Reservas.Unit) · 19 (Hoteles.Int) · 96 (Hoteles.Unit) · 15 (Comun.Web) · 9 (Contracts). 0 fallos.
 
 ### Completion Notes List
 
+- **Query CQRS (Task 1/2):** `BuscarDisponibilidadQuery` es `IRequest<Result<IReadOnlyList<HabitacionDisponibleDto>>>` (NO `ICommand` → no pasa por `TransactionBehavior`). El filtro SQL cruza `ProyeccionHabitacion` (catálogo, filtrando por hidratada + estado "Habilitada" + capacidad) con `NochesHabitacion` (slots ocupados) exigiendo cero solapamiento en `[entrada, salida)` (semiabierto). Búsqueda sin resultados = 200 con lista vacía, no 404.
+- **AC negativo (Task 2):** cubierto por tabla + facts: capacidad insuficiente, deshabilitada (incluye hotel deshabilitado, ya colapsado por 2.5 al estado "Deshabilitada"), otra ciudad, fila no hidratada, reservada-en-rango, solapamiento parcial; y el borde semiabierto adyacente que SÍ debe aparecer.
+- **Caché (Task 3):** decoradora `BuscadorDisponibilidadCacheado` sobre `IDistributedCache` (Redis) con **claves generacionales por ciudad** — invalidar = rotar el token `disp:tok:{ciudad}` (O(1), sin escaneo). El `ProyectorCatalogo` invalida la ciudad afectada FUERA de la transacción del read-model (un fallo de Redis no revierte la proyección ya confirmada). TTL 30 s como red de seguridad best-effort para cambios de disponibilidad no invalidados de forma dirigida.
+- **Endpoint (Task 4):** `GET /api/v1/habitaciones/disponibles` mapea `Result→ToOkResult`. Redis se registra si hay cadena "redis"; si no, `AddDistributedMemoryCache` para desarrollo local sin Aspire.
+- **Deuda conocida heredada de 3.1:** una habitación rehabilitada podría seguir "Deshabilitada" si el re-alta no llega por eventos (asimetría 2.5, ya registrada en `deferred-work.md`) — fuera de alcance de 3.2.
+
 ### File List
 
+**Nuevos (producción):**
+- `src/Servicios/Reservas/Reservas.Application/Reservas/BuscarDisponibilidad/BuscarDisponibilidadQuery.cs`
+- `src/Servicios/Reservas/Reservas.Application/Reservas/BuscarDisponibilidad/BuscarDisponibilidadQueryValidator.cs`
+- `src/Servicios/Reservas/Reservas.Application/Reservas/BuscarDisponibilidad/BuscarDisponibilidadQueryHandler.cs`
+- `src/Servicios/Reservas/Reservas.Application/Abstracciones/IBuscadorDisponibilidad.cs`
+- `src/Servicios/Reservas/Reservas.Application/Abstracciones/ICacheDisponibilidad.cs`
+- `src/Servicios/Reservas/Reservas.Infrastructure/Proyeccion/BuscadorDisponibilidadSql.cs`
+- `src/Servicios/Reservas/Reservas.Infrastructure/Proyeccion/BuscadorDisponibilidadCacheado.cs`
+- `src/Servicios/Reservas/Reservas.Infrastructure/Cache/CacheDisponibilidadRedis.cs`
+- `src/Servicios/Reservas/Reservas.Infrastructure/Cache/OpcionesCacheDisponibilidad.cs`
+
+**Modificados (producción):**
+- `src/Servicios/Reservas/Reservas.Infrastructure/Proyeccion/ProyectorCatalogo.cs` (invalidación de caché por ciudad tras aplicar evento)
+- `src/Servicios/Reservas/Reservas.Infrastructure/RegistroInfraestructura.cs` (DI del buscador + caché)
+- `src/Servicios/Reservas/Reservas.Api/Program.cs` (registro de caché distribuida + endpoint)
+- `src/Servicios/Reservas/Reservas.Infrastructure/Reservas.Infrastructure.csproj`, `.../Reservas.Api/Reservas.Api.csproj`, `Directory.Packages.props`, `tests/Reservas.IntegrationTests/Reservas.IntegrationTests.csproj`
+
+**Nuevos (tests):**
+- `tests/Reservas.UnitTests/Reservas/BuscarDisponibilidad/BuscarDisponibilidadQueryValidatorTests.cs`
+- `tests/Reservas.UnitTests/Reservas/BuscarDisponibilidad/BuscadorDisponibilidadCacheadoTests.cs`
+- `tests/Reservas.IntegrationTests/BusquedaDisponibilidadTests.cs`
+- `tests/Reservas.IntegrationTests/CacheDisponibilidadTests.cs`
+- `tests/Reservas.IntegrationTests/RedisFixture.cs`
+
+**Modificados (tests):**
+- `tests/Reservas.IntegrationTests/SqlServerFixture.cs` (colección "sqlserver" añade `RedisFixture`)
+
 ### Change Log
+
+- 2026-07-09 — Story 3.2 implementada (TDD Red→Green). Query CQRS de disponibilidad sobre la proyección de 3.1 + caché de lectura Redis con invalidación generacional por ciudad. Endpoint `GET /api/v1/habitaciones/disponibles`. Suite completa en verde.
