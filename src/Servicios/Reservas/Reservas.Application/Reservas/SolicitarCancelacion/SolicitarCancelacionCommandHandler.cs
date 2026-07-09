@@ -48,7 +48,11 @@ public sealed class SolicitarCancelacionCommandHandler(
             MotivoCategoria: motivo.Categoria,
             MotivoDetalle: motivo.Detalle,
             PenalidadPorcentaje: penalidad.Porcentaje,
-            FechaSolicitud: fechaSolicitud);
+            FechaSolicitud: fechaSolicitud,
+            // Destinatarios de la notificación (Story 5.2): el emisor los toma de la reserva para que el
+            // consumidor no necesite estado (party-mode opción a). Huésped principal = primero de la colección.
+            HuespedEmail: reserva.Huespedes.FirstOrDefault()?.Email,
+            AgenteEmail: reserva.AgenteEmail);
 
         outbox.Encolar(SolicitudCancelacionRegistradaV1.Tipo, VersionEvento, reserva.Id, data, Activity.Current?.TraceId.ToString());
 
