@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-07-08
-last_updated: 2026-07-09T20:30
+last_updated: 2026-07-09T21:00
 project: hotel-booking-hub
 project_key: NOKEY
 tracking_system: file-system
@@ -72,7 +72,7 @@ development_status:
 
   # ---- Epic 4: Ciclo de vida de la reserva — cancelación con discreción ----
   epic-4: in-progress
-  4-1-solicitar-cancelacion-con-politica-sugerida: ready-for-dev
+  4-1-solicitar-cancelacion-con-politica-sugerida: in-progress
   4-2-resolver-cancelacion-con-auditoria: ready-for-dev
   4-3-atajo-de-un-paso-ciclo-de-vida-y-visibilidad: ready-for-dev
   epic-4-retrospective: optional
