@@ -10,7 +10,7 @@ namespace Notificaciones.Worker.Notificaciones;
 /// transporte, patrón del consumidor de catálogo de 3.1) y emite DOS correos: uno al huésped y otro al agente.
 /// Sin dedup todavía (la idempotencia del consumidor es Story 5.1b).
 /// </summary>
-public sealed class ConsumidorReservaConfirmada(INotificador notificador, IInboxIdempotencia inbox)
+public sealed class ConsumidorReservaConfirmada(INotificador notificador, IInboxIdempotencia inbox) : IProcesadorEvento
 {
     private static readonly JsonSerializerOptions _opciones = new(JsonSerializerDefaults.Web);
 
