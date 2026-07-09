@@ -2,6 +2,12 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: code review of story-4.3 (2026-07-09)
+
+- **`MD5.HashData` en la derivación de MessageId podría lanzar bajo política FIPS** (blind, BAJA) — `ColaOutbox.DerivarMessageId` usa MD5 (solo como id de dedup determinista, NO seguridad). En un host con FIPS mode habilitado, las primitivas MD5 pueden lanzar. Entorno actual estándar (no FIPS). Si se exige FIPS, cambiar a un hash no-criptográfico determinista (FNV/xxHash) o a `Guid.CreateVersion5` cuando esté disponible. `[Reservas.Infrastructure/Mensajeria/ColaOutbox.cs]`
+- **Estabilidad de MessageId ante 1205 forzado sin test E2E** (auditor, BAJA) — la estabilidad (semilla fija + `ReiniciarConteo` por intento + dedup por `UNIQUE(MessageId)`) está probada a nivel unitario (`Los_MessageId_derivados_son_estables_entre_reintentos`), pero no con un `SqlException` 1205 real que reintente un comando multi-evento y asevere exactamente 2 filas (no 4). Construir un 1205 real es el harness pendiente desde 1.5/1.6 (`SqlException` sin ctor público). `[tests/Reservas.IntegrationTests]`
+- **Reserva con `AgenteEmail` null irresoluble por el atajo (403)** (edge, BAJA) — mismo fail-closed ya registrado para 4.2/3.3; backfill de `AgenteEmail` al desplegar sobre datos legacy. `[Reservas.Application/.../CancelarEnUnPasoCommandHandler.cs]`
+
 ## Deferred from: code review of story-4.2 (2026-07-09)
 
 - **Re-solicitar cancelación tras un rechazo sobrescribe la auditoría del episodio en la owned** (edge, MED) — al rechazar, la reserva vuelve a `Confirmada`; una nueva `SolicitarCancelacion` reemplaza la owned `SolicitudCancelacion` por una instancia nueva (campos de resolución en null), perdiendo en BD quién/cuándo/por qué del rechazo previo. Es el diseño **single-episode** de la Task 0 de 4.1 ("un solo episodio, no dos owned"). El audit **durable** del rechazo es el evento `SolicitudCancelacionRechazada.v1` ya emitido al outbox (fuente de verdad del historial). Si el negocio exige historial de episodios en BD, es una historia propia (tabla `EpisodiosCancelacion`). `[Reservas.Domain/Reservas/Reserva.cs, SolicitudCancelacion.cs]`
