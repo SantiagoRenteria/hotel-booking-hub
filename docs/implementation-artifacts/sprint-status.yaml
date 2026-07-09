@@ -78,11 +78,11 @@ development_status:
   epic-4-retrospective: done
 
   # ---- Epic 5: Notificaciones por correo sin pérdida ni duplicado ----
-  epic-5: backlog
-  5-1a-notificacion-minima-de-confirmacion: backlog
-  5-1b-worker-idempotente-sin-perdida-ni-duplicado: backlog
-  5-2-notificar-la-solicitud-de-cancelacion: backlog
-  5-3-notificar-la-resolucion-de-la-cancelacion: backlog
+  epic-5: in-progress
+  5-1a-notificacion-minima-de-confirmacion: ready-for-dev
+  5-1b-worker-idempotente-sin-perdida-ni-duplicado: ready-for-dev
+  5-2-notificar-la-solicitud-de-cancelacion: ready-for-dev
+  5-3-notificar-la-resolucion-de-la-cancelacion: ready-for-dev
   epic-5-retrospective: optional
 
   # ---- Epic 6: Seguridad y acceso ----
