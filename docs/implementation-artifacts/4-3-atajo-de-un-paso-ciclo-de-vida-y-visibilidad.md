@@ -50,6 +50,17 @@ expiración automática).
   - [x] BDD del atajo (ambos eventos + estado final + slot). Matriz de guards. Antigüedad correcta (reloj fijo). Aislamiento por agente. + gemelos de clasificación 2627 (overbooking/outbox) y outbox multi-evento en BD real.
 - [x] **Task 6 — Commits TDD (Red→Green) + BDD en rama `feature/4-3-atajo-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
 
+### Review Findings
+
+<!-- Code review adversarial (Blind + Edge + Acceptance), 2026-07-09. Veredicto Auditor: cumplimiento completo
+de AC-E4.3.1/.2/.3 + Task 0. -->
+
+- [x] [Review][Patch] La clasificación `ex.Entries.Any(is NocheHabitacion)` podía tomar una colisión REAL de `UNIQUE(OutboxMessages.MessageId)` en el batch mixto del atajo como 409 [EjecutorTransaccional.cs] — ✅ refinado a `is NocheHabitacion && State == Added` (solo el INSERT de noche es overbooking) + test de batch mixto (noche Deleted + outbox Added → 500).
+- [x] [Review][Patch] `DiasEnEspera` podía ser negativo con `FechaSolicitud` futura [ListarCancelacionesPendientesQueryHandler.cs] — ✅ `Math.Max(0, …)`.
+- [x] [Review][Defer] `MD5.HashData` podría lanzar bajo política FIPS [ColaOutbox.cs] — deferido; entorno estándar (no FIPS); es un id de dedup interno. Si se exige FIPS, cambiar a un hash no-criptográfico determinista.
+- [x] [Review][Defer] Reserva con `AgenteEmail` null irresoluble por el atajo (403 permanente) [CancelarEnUnPasoCommandHandler.cs] — deferido; mismo fail-closed ya registrado en 4.2/3.3 (backfill de `AgenteEmail`).
+- [x] [Review][Defer] Estabilidad de MessageId ante 1205 solo probada a nivel unitario (falta E2E con 1205 forzado) [tests] — deferido; construir un `SqlException` 1205 real es el harness pendiente de 1.5/1.6; el diseño (semilla fija + reset por intento + dedup por UNIQUE) está cubierto por el unit de determinismo.
+
 ## Dev Notes
 
 ### Arquitectura y archivos a tocar

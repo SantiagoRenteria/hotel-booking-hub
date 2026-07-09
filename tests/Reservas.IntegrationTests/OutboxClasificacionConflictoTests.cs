@@ -65,4 +65,42 @@ public sealed class OutboxClasificacionConflictoTests(SqlServerFixture fixture)
         Assert.IsNotType<HabitacionNoDisponibleException>(ex);
         Assert.IsNotAssignableFrom<ExcepcionNegocio>(ex);
     }
+
+    // GEMELO 2b — batch MIXTO como el del atajo: una noche en Deleted + colisión de MessageId del outbox. La
+    // clasificación NO debe confundir el 2601 del outbox con overbooking solo porque hay una NocheHabitacion en
+    // el batch (debe mirar el estado Added, no la mera presencia).
+    [Fact]
+    public async Task Colision_de_outbox_con_una_noche_borrada_en_el_batch_no_es_conflicto_de_negocio()
+    {
+        // Semilla: una reserva de 1 noche persistida (para poder borrar su noche luego).
+        var habitacion = Guid.NewGuid();
+        var estancia = Estancia.Crear(new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 21));
+        Reserva reserva = Reserva.Crear(habitacion, estancia);
+        await EjecutarAsync(db =>
+        {
+            new ReservaRepository(db).Agregar(reserva);
+            return Task.CompletedTask;
+        });
+
+        var messageId = Guid.CreateVersion7();
+        await EjecutarAsync(db =>
+        {
+            db.OutboxMessages.Add(OutboxMessage.Crear(messageId, Guid.NewGuid(), "EventoA.v1", "{}", DateTimeOffset.UtcNow));
+            return Task.CompletedTask;
+        });
+
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() => EjecutarAsync(db =>
+        {
+            // Borra la noche (Deleted, vía stub adjuntado por PK) Y provoca la colisión de MessageId (Added) en la
+            // MISMA tx → el batch mezcla NocheHabitacion(Deleted) + OutboxMessage(Added).
+            var stub = new NocheHabitacion(habitacion, estancia.Entrada, reserva.Id);
+            db.NochesHabitacion.Attach(stub);
+            db.NochesHabitacion.Remove(stub);
+            db.OutboxMessages.Add(OutboxMessage.Crear(messageId, Guid.NewGuid(), "EventoB.v1", "{}", DateTimeOffset.UtcNow));
+            return Task.CompletedTask;
+        }));
+
+        Assert.IsNotType<HabitacionNoDisponibleException>(ex); // no es overbooking pese a la noche en el batch
+        Assert.IsNotAssignableFrom<ExcepcionNegocio>(ex);
+    }
 }

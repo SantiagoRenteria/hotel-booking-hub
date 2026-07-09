@@ -30,7 +30,7 @@ public sealed class ListarCancelacionesPendientesQueryHandler(
             .Select(f => new CancelacionPendienteDto(
                 f.ReservaId,
                 f.FechaSolicitud,
-                hoy.DayNumber - f.FechaSolicitud.DayNumber, // días en espera; sin expiración automática
+                Math.Max(0, hoy.DayNumber - f.FechaSolicitud.DayNumber), // días en espera (nunca negativo); sin expiración
                 f.MotivoCategoria,
                 f.PenalidadPorcentaje))
             .ToList();
