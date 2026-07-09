@@ -1,6 +1,10 @@
+---
+baseline_commit: e258f22508287b39e19f051613d0e7229d908f8a
+---
+
 # Story 4.2: Resolver cancelación (aprobar / condonar / rechazar) con auditoría
 
-Status: ready-for-dev
+Status: review
 
 <!-- Generado por bmad-create-story. Complejidad ALTA (liberación de inventario + concurrencia + auditoría +
 aislamiento por agente). 2ª VITRINA BDD: BDD (Given/When/Then) + TDD Red→Green visible. El modelo de dominio y la
@@ -40,21 +44,21 @@ con un round-trip real (una nueva reserva sobre esa noche vuelve a caber). Deter
 > (Opción c, `IContextoAgente` + `AgenteEmail`) — reusar, no reinventar. Si "dueño del hotel" difiere de
 > "quién reservó", escalar a party-mode (misma tensión que la Task 0 de 3.3).
 
-- [ ] **Task 1 — Transición de resolución en el dominio (AC: 1, 2, 3)** *(TDD + BDD)*
-  - [ ] `Reserva.Resolver(decision, penalidadDecidida, agente)` con guard (solo desde `CancelacionSolicitada`): aprobar (aplicar/condonar) → `Cancelada` + liberar slots; rechazar → `Confirmada`. Tests de tabla de transiciones. Doble resolución → guard + `rowVersion`.
-  - [ ] Liberación de inventario: borrar las `NochesHabitacion` de la estancia como parte del agregado (cascade ya existe; confirmar el borrado explícito y el guard contra doble liberación).
-- [ ] **Task 2 — Penalidad decidida + auditoría (AC: 1)** *(TDD)*
-  - [ ] Registrar `PenalidadDecidida` (flag default/override respecto a la sugerida congelada + quién decidió + cuándo). Persistir en la `Reserva`/solicitud. Migración si aplica.
-- [ ] **Task 3 — Command + handler + eventos (AC: 1, 2, 3)** *(TDD Red→Green)*
-  - [ ] `ResolverCancelacionCommand` + handler (`ICommand`, transaccional). Aprobar → `ReservaCancelada.v1`; rechazar → `SolicitudCancelacionRechazada.v1`. Ambos por outbox en la misma tx.
-  - [ ] Aislamiento: agente ajeno → `403` (Result.Prohibido) vía `IContextoAgente` (patrón 3.3).
-- [ ] **Task 4 — Contratos de eventos (contract test)**
-  - [ ] `ReservaCancelada.v1` + `SolicitudCancelacionRechazada.v1` en `Comun.Eventos` + pin de contrato.
-- [ ] **Task 5 — Endpoint (AC: 1, 2, 3, 4)**
-  - [ ] `POST /api/v1/reservas/{id}/cancelaciones/resolucion` (o `PUT .../cancelacion`) en `Reservas.Api`; identidad del agente server-side; Result→HTTP.
-- [ ] **Task 6 — Tests (unit + integración Testcontainers)**
-  - [ ] **El assert que importa (AC-E4.2.1):** aprobar → nueva reserva sobre `[D]` responde 201 (round-trip real con el motor anti-overbooking de E1). Rechazar no toca slots. Doble resolución concurrente → 409 y `count(slots)` no sube a 2 (money-test style). Agente ajeno → 403.
-- [ ] **Task 7 — Commits TDD (Red→Green) + BDD en rama `feature/4-2-resolver-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
+- [x] **Task 1 — Transición de resolución en el dominio (AC: 1, 2, 3)** *(TDD + BDD)*
+  - [x] `Reserva.Resolver(decision, resueltaPor, fechaResolucion, motivoRechazo)` con guard (solo desde `CancelacionSolicitada`): aprobar (aplicar/condonar) → `Cancelada` + liberar slots; rechazar → `Confirmada`. Tests de tabla de transiciones. Doble resolución → guard (+`rowVersion` en Task 3/infra).
+  - [x] Liberación de inventario: `_noches.Clear()` en el agregado (EF borra los huérfanos); guard contra doble liberación por el guard de estado.
+- [x] **Task 2 — Penalidad decidida + auditoría (AC: 1)** *(TDD)*
+  - [x] `SolicitudCancelacion` gana resolución (mismo episodio): `ResueltaPor`, `FechaResolucion`, `Resultado`, `PenalidadAplicadaPorcentaje`, `PenalidadFueOverride` (default/override vs la sugerida congelada), `MotivoResolucion`. Migración en Task 3/infra.
+- [x] **Task 3 — Command + handler + eventos (AC: 1, 2, 3)** *(TDD Red→Green)*
+  - [x] `ResolverCancelacionCommand` + handler (`ICommand`, transaccional). Aprobar → `ReservaCancelada.v1`; rechazar → `SolicitudCancelacionRechazada.v1`. Ambos por outbox en la misma tx. Concurrencia optimista → 409 (`EjecutorTransaccional` traduce `DbUpdateConcurrencyException`).
+  - [x] Aislamiento: agente ajeno / sin identidad → `403` (Result.Prohibido) vía `IContextoAgente` (patrón 3.3).
+- [x] **Task 4 — Contratos de eventos (contract test)**
+  - [x] `ReservaCancelada.v1` + `SolicitudCancelacionRechazada.v1` en `Comun.Eventos` + `ContratoEventosResolucionCancelacionTests`.
+- [x] **Task 5 — Endpoint (AC: 1, 2, 3, 4)**
+  - [x] `POST /api/v1/reservas/{id}/cancelacion/resolucion` en `Reservas.Api`; identidad del agente server-side; Result→HTTP.
+- [x] **Task 6 — Tests (unit + integración Testcontainers)**
+  - [x] **El assert que importa (AC-E4.2.1):** aprobar → nueva reserva sobre `[D]` responde 201 (round-trip real con el motor anti-overbooking de E1). Rechazar no toca slots. Doble resolución concurrente → 1×2xx/1×409 y `count(slots)` no sube a 2 (money-test style). Agente ajeno → 403.
+- [x] **Task 7 — Commits TDD (Red→Green) + BDD en rama `feature/4-2-resolver-cancelacion` + PR a `develop`** (autor Santiago Renteria; sin trailers)
 
 ## Dev Notes
 
@@ -89,10 +93,52 @@ con un round-trip real (una nueva reserva sobre esa noche vuelve a caber). Deter
 
 ### Agent Model Used
 
+claude-opus-4-8 (Amelia, dev-story) — 2026-07-09.
+
 ### Debug Log References
+
+- Suite completa verde: 329 tests, 0 fallos (Reservas.UnitTests 132, Reservas.IntegrationTests 42, Contracts 21, Comun.Web 15, Hoteles 100+19).
+- TDD Red→Green visible en commits (`test(4.2): RED …` → `feat(4.2): GREEN …`) para dominio y handler; BDD en dominio e integración.
 
 ### Completion Notes List
 
+- **AC-E4.2.1 (el assert que importa):** aprobar → `Cancelada` + `_noches.Clear()` (EF borra los huérfanos) → el slot queda libre; verificado con round-trip real (una nueva `CrearReserva` sobre la noche liberada responde 201).
+- **Aprobar aplicando vs condonando:** la penalidad NUNCA se recalcula; aplicar usa la sugerida congelada (4.1), condonar la fija en 0. `PenalidadFueOverride` = aplicada ≠ congelada. Auditoría (`ResueltaPor`/`FechaResolucion`/`Resultado`/`MotivoResolucion`) en la MISMA owned `SolicitudCancelacion`.
+- **AC-E4.2.2:** rechazar (con motivo) → vuelve a `Confirmada` sin tocar slots; evento `SolicitudCancelacionRechazada.v1`.
+- **AC-E4.2.3 (doble liberación):** el borrado de slots va en la MISMA tx que el bump de `rowVersion`; la 2ª resolución concurrente choca con `DbUpdateConcurrencyException`, que `EjecutorTransaccional` traduce a `ConflictoConcurrenciaException` → 409 (sin retry). Verificado: 1×2xx/1×409, `count(slots)`=0 (no sube a 2), exactamente 1 `ReservaCancelada`. **Cierra el diferido de concurrencia de 4.1.**
+- **AC-E4.2.4:** aislamiento por `AgenteEmail` (patrón 3.3, `IContextoAgente` fail-closed): agente ajeno / sin identidad → 403. Decisión de diseño: en este código la única identidad de agente es la del que reservó; no existe "dueño del hotel" separado → no requirió party-mode.
+- **Eventos** `ReservaCancelada.v1` y `SolicitudCancelacionRechazada.v1` (order key = `ReservaId`) con contract test propio; un evento por comando, en la tx del agregado.
+
 ### File List
 
+**Dominio (Reservas.Domain):**
+- `Reservas/DecisionCancelacion.cs` (A), `Reservas/ResultadoResolucion.cs` (A)
+- `Reservas/SolicitudCancelacion.cs` (M — resolución: RegistrarAprobacion/RegistrarRechazo)
+- `Reservas/Reserva.cs` (M — `Resolver` + liberación de slots)
+- `Puertos/IReservaRepository.cs` (M — `ObtenerConNochesAsync`)
+
+**Aplicación (Reservas.Application):**
+- `Reservas/ResolverCancelacion/ResolverCancelacionCommand.cs` (A — command + response DTO + request HTTP)
+- `Reservas/ResolverCancelacion/ResolverCancelacionCommandHandler.cs` (A)
+- `Reservas/ResolverCancelacion/ResolverCancelacionCommandValidator.cs` (A)
+
+**Comun:** `Eventos/ReservaCanceladaV1.cs` (A), `Eventos/SolicitudCancelacionRechazadaV1.cs` (A)
+
+**Infraestructura (Reservas.Infrastructure):**
+- `Persistencia/ReservasDbContext.cs` (M — mapeo de resolución)
+- `Persistencia/ReservaRepository.cs` (M — `ObtenerConNochesAsync`)
+- `Persistencia/EjecutorTransaccional.cs` (M — `DbUpdateConcurrencyException` → 409)
+- `Migraciones/20260709185445_AgregaResolucionCancelacion.cs` (+ Designer + snapshot) (A/M)
+
+**Api:** `Reservas.Api/Program.cs` (M — endpoint de resolución)
+
+**Tests:**
+- `Reservas.UnitTests/Dominio/ReservaResolucionTests.cs` (A)
+- `Reservas.UnitTests/Reservas/ResolverCancelacion/{ResolverCancelacionCommandHandlerTests,ResolverCancelacionCommandValidatorTests}.cs` (A)
+- `Reservas.UnitTests/Reservas/CrearReserva/Fakes.cs` (M — `ObtenerConNochesAsync`)
+- `Contracts/ContratoEventosResolucionCancelacionTests.cs` (A)
+- `Reservas.IntegrationTests/ResolverCancelacionTests.cs` (A)
+
 ### Change Log
+
+- 2026-07-09 — Story 4.2 implementada (dominio + aplicación + infraestructura + api + tests). Estado → review.
