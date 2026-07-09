@@ -45,6 +45,9 @@ public static class RegistroInfraestructura
         // Lectura de reservas del agente (Story 3.3): query aislada server-side por AgenteEmail.
         servicios.AddScoped<ILectorReservasAgente, LectorReservasAgenteSql>();
 
+        // Lectura de cancelaciones pendientes con antigüedad (Story 4.3): query aislada por AgenteEmail.
+        servicios.AddScoped<ILectorCancelacionesPendientes, LectorCancelacionesPendientesSql>();
+
         // Relay del outbox (productor): procesador + BackgroundService que sondea y publica.
         servicios.AddSingleton<OpcionesRelayOutbox>();
         servicios.AddSingleton<ProcesadorOutbox>();
