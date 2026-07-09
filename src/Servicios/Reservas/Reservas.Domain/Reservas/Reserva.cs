@@ -1,3 +1,5 @@
+using Reservas.Domain.Servicios;
+
 namespace Reservas.Domain.Reservas;
 
 /// <summary>
@@ -28,6 +30,12 @@ public sealed class Reserva
 
     /// <summary>Contacto de emergencia (FR-11); presente en el detalle (AC-E3.3.1).</summary>
     public ContactoEmergencia? ContactoEmergencia { get; private set; }
+
+    /// <summary>
+    /// Episodio de cancelación (owned, NULLABLE): <c>null</c> mientras la reserva sigue solo confirmada;
+    /// se puebla al solicitar la cancelación (Story 4.1) y lo completa la resolución (Story 4.2).
+    /// </summary>
+    public SolicitudCancelacion? SolicitudCancelacion { get; private set; }
 
     /// <summary>Slots de inventario que ocupa la reserva (una fila por noche del rango).</summary>
     public IReadOnlyCollection<NocheHabitacion> Noches => _noches.AsReadOnly();
@@ -73,5 +81,21 @@ public sealed class Reserva
         }
 
         return reserva;
+    }
+
+    /// <summary>
+    /// Solicita la cancelación (Story 4.1, AC-E4.1.1/.2/.3). Guards por EXCEPCIÓN de dominio (Task 0):
+    /// solo desde <see cref="EstadoReserva.Confirmada"/> (una 2ª solicitud ya no lo está → 409, AC-E4.1.2) y
+    /// solo con la estancia NO iniciada (<paramref name="fechaSolicitud"/> &lt; entrada; iniciada → no elegible
+    /// → 409, AC-E4.1.3, NO penalidad del 100%). Congela la penalidad calculada en <paramref name="fechaSolicitud"/>
+    /// y transiciona a <see cref="EstadoReserva.CancelacionSolicitada"/>. Devuelve la penalidad congelada.
+    /// </summary>
+    public PenalidadSugerida SolicitarCancelacion(
+        MotivoCancelacion motivo,
+        IniciadorCancelacion iniciador,
+        DateOnly fechaSolicitud,
+        CalculadorPenalidad calculadorPenalidad)
+    {
+        throw new NotImplementedException();
     }
 }
