@@ -128,7 +128,7 @@ public sealed class Reserva
     /// <see cref="EstadoReserva.Confirmada"/> sin tocar slots. La penalidad NUNCA se recalcula. Registra la
     /// auditoría (quién/cuándo/resultado + default/override) en la MISMA <see cref="SolicitudCancelacion"/>.
     /// </summary>
-    public void Resolver(DecisionCancelacion decision, string resueltaPor, DateOnly fechaResolucion, string? motivoRechazo)
+    public void Resolver(DecisionCancelacion decision, string resueltaPor, DateOnly fechaResolucion, string? motivo)
     {
         // Guard: solo se resuelve una solicitud en curso. Una 2ª resolución (ya Cancelada/Confirmada) → 409.
         if (Estado != EstadoReserva.CancelacionSolicitada || SolicitudCancelacion is null)
@@ -141,14 +141,23 @@ public sealed class Reserva
 
         if (decision == DecisionCancelacion.Rechazar)
         {
-            if (string.IsNullOrWhiteSpace(motivoRechazo))
+            if (string.IsNullOrWhiteSpace(motivo))
             {
-                throw new ArgumentException("El motivo del rechazo es obligatorio.", nameof(motivoRechazo));
+                throw new ArgumentException("El motivo del rechazo es obligatorio.", nameof(motivo));
             }
 
-            SolicitudCancelacion.RegistrarRechazo(resueltaPor, fechaResolucion, motivoRechazo.Trim());
+            SolicitudCancelacion.RegistrarRechazo(resueltaPor, fechaResolucion, motivo.Trim());
             Estado = EstadoReserva.Confirmada; // sin tocar slots
             return;
+        }
+
+        // Defensa: una reserva en CancelacionSolicitada SIEMPRE ocupa >=1 noche (vino de Confirmada con slots).
+        // Si _noches está vacía al aprobar, el agregado se cargó sin sus slots (p. ej. sin Include) y liberar
+        // sería un no-op silencioso → inventario fantasma. Fallar fuerte en vez de dejar el slot ocupado.
+        if (_noches.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "No se puede aprobar la cancelación sin las noches cargadas: se liberaría inventario de forma incompleta.");
         }
 
         // Aprobar: la penalidad NUNCA se recalcula. Aplicar usa la sugerida congelada; condonar la fija en 0.
@@ -156,7 +165,7 @@ public sealed class Reserva
             ? 0m
             : SolicitudCancelacion.PenalidadPorcentaje;
 
-        SolicitudCancelacion.RegistrarAprobacion(resueltaPor, fechaResolucion, penalidadAplicada, motivoRechazo);
+        SolicitudCancelacion.RegistrarAprobacion(resueltaPor, fechaResolucion, penalidadAplicada, motivo);
         Estado = EstadoReserva.Cancelada;
 
         // Libera el inventario: borrar los slots hace que una nueva reserva sobre esas noches vuelva a caber

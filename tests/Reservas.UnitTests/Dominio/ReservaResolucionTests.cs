@@ -32,7 +32,7 @@ public sealed class ReservaResolucionTests
         var reserva = ReservaSolicitada(diasAntelacion: 10); // <30 → penalidad congelada 100%
         var quien = "agente@hotel.com";
 
-        reserva.Resolver(DecisionCancelacion.AprobarAplicandoPenalidad, quien, _entrada.AddDays(-5), motivoRechazo: null);
+        reserva.Resolver(DecisionCancelacion.AprobarAplicandoPenalidad, quien, _entrada.AddDays(-5), motivo: null);
 
         Assert.Equal(EstadoReserva.Cancelada, reserva.Estado);
         Assert.Empty(reserva.Noches); // slot liberado (invariante anti-overbooking)
