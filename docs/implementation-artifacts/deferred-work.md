@@ -2,6 +2,13 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: code review of story-5.2 (2026-07-09)
+
+- **D1 · Enrutamiento multi-consumidor por tipo de evento** (blind, ALTA→latente) — con dos consumidores (`ConsumidorReservaConfirmada`, `ConsumidorSolicitudCancelacion`) y un `DespachadorNotificaciones` que inyecta UN solo `IProcesadorEvento`, no hay forma de despachar por tipo. Registrar ambos como `IProcesadorEvento` rompería el despachador (resolvería el último). Al cablear el transporte real (Dapr pub/sub), añadir un router por `evento.Type` (o `IEnumerable<IProcesadorEvento>` con fan-out y filtrado por tipo). Hoy no hay pump → no es bug en runtime, pero la funcionalidad de 5.2 no se dispararía end-to-end sin esto. `[Notificaciones.Worker/Program.cs, DespachadorNotificaciones.cs]`
+- **D2 · Atajo de un paso (4.3) genera acuse "por resolver" para algo ya resuelto** (edge, MED) — `CancelarEnUnPasoCommandHandler` emite `SolicitudCancelacionRegistrada.v1` Y la resolución en la misma tx (audit trail, AC-E4.3.1). El consumidor 5.2 reacciona al primero sin distinguir origen → el viajero recibiría "penalidad estimada, te avisaremos cuando se resuelva" seguido casi de inmediato del correo de resolución (5.3) → contradictorio/duplicado. Decidir en 5.3: suprimir el acuse de solicitud cuando el evento proviene del atajo, o ajustar el copy. `[Reservas.Application/.../CancelarEnUnPasoCommandHandler.cs, Notificaciones.Worker/.../ConsumidorSolicitudCancelacion.cs]`
+- **D3 · "Huésped principal = primero de la colección" sin orden garantizado** (blind+edge, BAJA) — los emisores toman `reserva.Huespedes.FirstOrDefault()?.Email`; la owned collection (`OwnsMany`) no tiene `OrderBy` explícito y el dominio no tiene noción de titular. En reservas multi-huésped el acuse podría ir a un acompañante. Introducir un "huésped titular" (flag/orden) si el negocio lo exige. Mismo supuesto que `ReservaConfirmada.v1` (5.1a). `[Reservas.Application/.../SolicitarCancelacionCommandHandler.cs, CancelarEnUnPasoCommandHandler.cs]`
+- **D4 · Skip silencioso de destinatario nulo sin observabilidad** (edge+auditor, BAJA) — `EnvioIdempotenteCorreos.EnviarLoteAsync` hace `continue` ante un destinatario nulo/vacío sin log; si ambos son nulos, el evento se procesa "con éxito" sin enviar nada ni rastro → una falla de ruteo es indistinguible de éxito. Añadir log de advertencia al omitir (junto con la observabilidad del dead-letter/transporte). `[Notificaciones.Worker/.../EnvioIdempotenteCorreos.cs]`
+
 ## Deferred from: code review of story-5.1b (2026-07-09)
 
 La mayoría depende de cablear el transporte real productor→worker (hoy diferido en todo el sistema) y/o de dar al tope de intentos la misma multi-instancia que el inbox.

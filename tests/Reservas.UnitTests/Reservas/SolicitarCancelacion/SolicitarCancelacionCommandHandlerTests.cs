@@ -29,6 +29,18 @@ public sealed class SolicitarCancelacionCommandHandlerTests
         return reserva;
     }
 
+    private Reserva SembrarConEmails(string huespedEmail, string agenteEmail)
+    {
+        var huesped = Huesped.Crear(
+            "Andrés", "Pérez", new DateOnly(1990, 5, 1), "M",
+            Documento.Crear("CC", "1234567"), huespedEmail, "3001234567");
+        var reserva = Reserva.Crear(
+            Guid.NewGuid(), Estancia.Crear(_entrada, _entrada.AddDays(2)),
+            huespedes: [huesped], agenteEmail: agenteEmail, precioTotal: 500m);
+        _repo.Existentes.Add(reserva);
+        return reserva;
+    }
+
     private static SolicitarCancelacionCommand Comando(Guid reservaId) =>
         new(reservaId, "CambioDePlanes", "El viajero ya no puede asistir.", IniciadorCancelacion.Viajero);
 
@@ -54,6 +66,19 @@ public sealed class SolicitarCancelacionCommandHandlerTests
         Assert.Equal("Viajero", data.Iniciador);
         Assert.Equal(0m, data.PenalidadPorcentaje);
         Assert.Equal(hoy, data.FechaSolicitud); // congelada con el reloj inyectado
+    }
+
+    [Fact]
+    public async Task Evento_incluye_emails_del_huesped_principal_y_del_agente()
+    {
+        // Story 5.2 (party-mode opción a): el emisor puebla el evento con los destinatarios desde la reserva.
+        var reserva = SembrarConEmails(huespedEmail: "andres@example.com", agenteEmail: "carolina@agencia.com");
+
+        await CrearHandler(_entrada.AddDays(-40)).Handle(Comando(reserva.Id), CancellationToken.None);
+
+        var data = Assert.IsType<SolicitudCancelacionRegistradaV1>(Assert.Single(_outbox.Encolados).Data);
+        Assert.Equal("andres@example.com", data.HuespedEmail);
+        Assert.Equal("carolina@agencia.com", data.AgenteEmail);
     }
 
     [Fact]
