@@ -1,6 +1,10 @@
+---
+baseline_commit: 94c29d09c929b42178764518bf8756bf2f2bceff
+---
+
 # Story 3.2: Búsqueda de habitaciones disponibles
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Generado por bmad-create-story. Complejidad NORMAL (query de lectura CQRS sobre la ProyeccionHabitacion
 de 3.1). Tests convencionales + TDD (Red→Green visible); NO BDD/Gherkin ceremonial (decisión party-mode:

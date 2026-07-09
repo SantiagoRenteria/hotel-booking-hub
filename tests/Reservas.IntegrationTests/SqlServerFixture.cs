@@ -43,4 +43,4 @@ public sealed class SqlServerFixture : IAsyncLifetime
 }
 
 [CollectionDefinition("sqlserver")]
-public sealed class SqlServerCollection : ICollectionFixture<SqlServerFixture>;
+public sealed class SqlServerCollection : ICollectionFixture<SqlServerFixture>, ICollectionFixture<RedisFixture>;
