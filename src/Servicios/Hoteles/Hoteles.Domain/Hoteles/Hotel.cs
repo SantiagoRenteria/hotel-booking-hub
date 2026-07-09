@@ -19,6 +19,14 @@ public sealed class Hotel
     /// <summary>Baja lógica (soft delete): un hotel eliminado deja de aparecer en consultas y de ofertar.</summary>
     public bool Eliminado { get; private set; }
 
+    /// <summary>
+    /// Versión de secuencia del estado del hotel (Story 3.2): parte monotónica del order key
+    /// <c>(HotelId, Version)</c> de los eventos <c>HotelHabilitado</c>/<c>HotelDeshabilitado</c>. Se incrementa en
+    /// CADA transición efectiva de estado (habilitar y deshabilitar), no en las idempotentes, de modo que el
+    /// consumidor (proyección de Reservas) resuelve el desorden por LWW. Independiente del <c>rowversion</c>.
+    /// </summary>
+    public int Version { get; private set; }
+
     private Hotel() { } // EF Core
 
     public static Hotel Crear(string nombre, string ciudad, string direccion, string descripcion, EstadoHotel estado)
@@ -57,11 +65,35 @@ public sealed class Hotel
     public void Eliminar() => Eliminado = true;
 
     /// <summary>
-    /// Habilita el hotel (AC-E2.3.1). Idempotente. Junto con <see cref="Deshabilitar"/> es la ÚNICA vía de
-    /// transición del ciclo de vida: la edición (2.2) no toca el estado (un solo dueño de la regla).
+    /// Habilita el hotel (AC-E2.3.1). Idempotente. Devuelve <c>true</c> si cambió el estado; en ese caso emite
+    /// <c>HotelHabilitado</c> e incrementa la <see cref="Version"/> (Story 3.2). Junto con <see cref="Deshabilitar"/>
+    /// es la ÚNICA vía de transición del ciclo de vida: la edición (2.2) no toca el estado.
     /// </summary>
-    public void Habilitar() => Estado = EstadoHotel.Habilitado;
+    public bool Habilitar()
+    {
+        if (Estado == EstadoHotel.Habilitado)
+        {
+            return false;
+        }
 
-    /// <summary>Deshabilita el hotel (AC-E2.3.1): deja de ofertarse. Idempotente. Ver <see cref="Habilitar"/>.</summary>
-    public void Deshabilitar() => Estado = EstadoHotel.Deshabilitado;
+        Estado = EstadoHotel.Habilitado;
+        Version++;
+        return true;
+    }
+
+    /// <summary>
+    /// Deshabilita el hotel (AC-E2.3.1): deja de ofertarse. Idempotente. Devuelve <c>true</c> si cambió el estado;
+    /// en ese caso emite <c>HotelDeshabilitado</c> e incrementa la <see cref="Version"/> (Story 3.2, AC-E3.2.2).
+    /// </summary>
+    public bool Deshabilitar()
+    {
+        if (Estado == EstadoHotel.Deshabilitado)
+        {
+            return false;
+        }
+
+        Estado = EstadoHotel.Deshabilitado;
+        Version++;
+        return true;
+    }
 }

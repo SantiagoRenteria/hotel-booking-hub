@@ -16,7 +16,8 @@ namespace Reservas.Infrastructure.Proyeccion;
 /// revierte TODO: el evento no se re-aplica (idempotencia dura, AC-E3.1.2/4). La convergencia bajo desorden la
 /// da el propio read-model (guardas por versión de bloque), no este consumidor.
 /// </summary>
-public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventosCatalogo
+public sealed class ProyectorCatalogo(ReservasDbContext db, IInvalidadorCacheDisponibilidad? invalidadorCache = null)
+    : IConsumidorEventosCatalogo
 {
     private static readonly JsonSerializerOptions _opciones = new(JsonSerializerDefaults.Web);
 
@@ -42,12 +43,30 @@ public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventos
             return;
         }
 
-        await AplicarAsync(evento, ct);
+        var ciudadAfectada = await AplicarAsync(evento, ct);
         await db.SaveChangesAsync(ct); // proyección; commitea junto con el inbox
         await tx.CommitAsync(ct);
+
+        // Invalidación dirigida de la caché de lectura (AC-E3.2.3), FUERA de la transacción del read-model: si
+        // Redis fallara no debe revertir la proyección YA confirmada. Se envuelve en try/catch (best-effort): un
+        // fallo de Redis no debe propagar tras el commit (haría que la reentrega salte por el dedup del inbox y la
+        // invalidación se pierda para siempre); la caché se autocorrige por TTL. Solo si hay ciudad conocida: una
+        // fila de habitación parcial (no hidratada) no aparece en la búsqueda → no hay nada que invalidar.
+        if (invalidadorCache is not null && ciudadAfectada is { } ciudad)
+        {
+            try
+            {
+                await invalidadorCache.InvalidarCiudadAsync(ciudad, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Best-effort: la proyección ya está confirmada; la caché converge por TTL.
+            }
+        }
     }
 
-    private async Task AplicarAsync(EventoIntegracion evento, CancellationToken ct)
+    /// <summary>Aplica el evento y devuelve la CIUDAD afectada (para invalidar su caché), o null si no aplica.</summary>
+    private async Task<string?> AplicarAsync(EventoIntegracion evento, CancellationToken ct)
     {
         switch (evento.Type)
         {
@@ -58,7 +77,7 @@ public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventos
                     fila.AplicarAgregada(
                         d.HotelId, d.Ciudad, d.TipoHabitacion, d.Ubicacion, d.Capacidad,
                         d.CostoBase, d.Impuestos, d.Estado, evento.Version);
-                    break;
+                    return fila.Ciudad;
                 }
 
             case PrecioHabitacionCambiadoV1.Tipo:
@@ -66,7 +85,7 @@ public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventos
                     var d = Payload<PrecioHabitacionCambiadoV1>(evento);
                     var fila = await CargarOCrear(d.AggregateId, ct);
                     fila.AplicarPrecio(d.CostoBase, d.Impuestos, evento.Version);
-                    break;
+                    return fila.Ciudad;
                 }
 
             case HabitacionDeshabilitadaV1.Tipo:
@@ -74,12 +93,28 @@ public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventos
                     var d = Payload<HabitacionDeshabilitadaV1>(evento);
                     var fila = await CargarOCrear(d.AggregateId, ct);
                     fila.AplicarDeshabilitada(evento.Version);
-                    break;
+                    return fila.Ciudad;
+                }
+
+            case HotelDeshabilitadoV1.Tipo:
+                {
+                    var d = Payload<HotelDeshabilitadoV1>(evento);
+                    var fila = await CargarOCrearHotel(d.AggregateId, ct);
+                    fila.AplicarDeshabilitado(evento.Version);
+                    return d.Ciudad;
+                }
+
+            case HotelHabilitadoV1.Tipo:
+                {
+                    var d = Payload<HotelHabilitadoV1>(evento);
+                    var fila = await CargarOCrearHotel(d.AggregateId, ct);
+                    fila.AplicarHabilitado(evento.Version);
+                    return d.Ciudad;
                 }
 
             // Evento desconocido/no de catálogo: se ignora (el inbox igual lo marca → no se reintenta en bucle).
             default:
-                break;
+                return null;
         }
     }
 
@@ -90,6 +125,19 @@ public sealed class ProyectorCatalogo(ReservasDbContext db) : IConsumidorEventos
         {
             fila = ProyeccionHabitacion.Nueva(habitacionId); // delta antes del alta → fila parcial
             db.ProyeccionesHabitacion.Add(fila);
+        }
+
+        return fila;
+    }
+
+    private async Task<ProyeccionHotelEstado> CargarOCrearHotel(Guid hotelId, CancellationToken ct)
+    {
+        var fila = await db.ProyeccionesHotelEstado.FirstOrDefaultAsync(p => p.HotelId == hotelId, ct);
+        if (fila is null)
+        {
+            // El evento de hotel puede llegar ANTES del alta de sus habitaciones (fila huérfana, correcta por join).
+            fila = ProyeccionHotelEstado.Nueva(hotelId);
+            db.ProyeccionesHotelEstado.Add(fila);
         }
 
         return fila;
