@@ -30,8 +30,10 @@ public sealed class ConsumidorReservaConfirmada(INotificador notificador, IInbox
             ?? throw new InvalidOperationException(
                 $"Evento {evento.Id} ({evento.Type}) sin data deserializable a {nameof(ReservaConfirmadaV1)}.");
 
-        var estancia = $"{data.Entrada:yyyy-MM-dd} → {data.Salida:yyyy-MM-dd}";
-        // InvariantCulture: el importe del correo NO debe variar con la config regional del host.
+        // InvariantCulture: ni las fechas ni el importe del correo deben variar con la config regional del host.
+        var entrada = data.Entrada.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var salida = data.Salida.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var estancia = $"{entrada} → {salida}";
         var total = data.PrecioTotal.ToString("0.00", CultureInfo.InvariantCulture);
 
         // Cada correo es un efecto idempotente independiente (dedup por MessageId/version/destinatario); el helper

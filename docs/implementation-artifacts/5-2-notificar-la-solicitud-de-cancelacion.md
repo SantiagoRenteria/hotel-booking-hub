@@ -4,7 +4,7 @@ baseline_commit: b2a429d1540d9fdb20bbfa59bc33ba222e26d00d
 
 # Story 5.2: Notificar la solicitud de cancelación
 
-Status: review
+Status: done
 
 <!-- Generado por bmad-create-story (lote Épica 5). Complejidad NORMAL. Consume SolicitudCancelacionRegistrada.v1
 (definido y probado por 4.1). Reutiliza INotificador (5.1a) + inbox idempotente (5.1b). TDD Red→Green. -->
@@ -35,9 +35,9 @@ para **conocer la penalidad estimada y (el agente) saber que hay algo por resolv
 
 ### Review Findings (bmad-code-review 2026-07-09 · Blind + Edge + Auditor)
 
-- [ ] [Review][Patch] P1 — `FechaSolicitud` se formatea con `CurrentCulture` (interpolación) mientras la penalidad usa `InvariantCulture`; bajo culturas no gregorianas/dígitos no-ASCII el correo varía. Usar `InvariantCulture` para la fecha (y corregir el mismo patrón preexistente en la `estancia` de `ConsumidorReservaConfirmada`). [ConsumidorSolicitudCancelacion.cs, ConsumidorReservaConfirmada.cs]
-- [ ] [Review][Patch] P2 — Falta el test de la condición 3 de Murat: un payload del esquema previo (sin `huespedEmail`/`agenteEmail`) debe seguir deserializando (a null). Añadir contract test de compatibilidad aditiva. [tests/Contracts/ContratoSolicitudCancelacionRegistradaTests.cs]
-- [ ] [Review][Patch] P3 — El emisor 4.3 (`CancelarEnUnPasoCommandHandler`) puebla los emails sin test (asimetría con 4.1). Añadir aserción del evento. [tests/Reservas.UnitTests/.../CancelarEnUnPasoCommandHandlerTests.cs]
+- [x] [Review][Patch] P1 — RESUELTO: `ConsumidorSolicitudCancelacion` formatea `FechaSolicitud` con `InvariantCulture`; también se corrigió el patrón preexistente de las fechas de la `estancia` en `ConsumidorReservaConfirmada`. [ConsumidorSolicitudCancelacion.cs, ConsumidorReservaConfirmada.cs]
+- [x] [Review][Patch] P2 — RESUELTO: `Compatibilidad_aditiva_un_payload_del_esquema_previo_deserializa_con_emails_null` en el contract test (payload sin emails → campos null). [tests/Contracts/ContratoSolicitudCancelacionRegistradaTests.cs]
+- [x] [Review][Patch] P3 — RESUELTO: `El_evento_de_solicitud_del_atajo_incluye_los_emails_del_destinatario` en `CancelarEnUnPasoCommandHandlerTests`. [tests/Reservas.UnitTests/.../CancelarEnUnPasoCommandHandlerTests.cs]
 - [x] [Review][Defer] D1 — Enrutamiento multi-consumidor: `ConsumidorSolicitudCancelacion` no se registra como `IProcesadorEvento` y el `Despachador` inyecta uno solo; registrar ambos ingenuamente lo rompería. Router por tipo al cablear el transporte real (hoy sin pump → no es bug en runtime). [Program.cs] — deferred
 - [x] [Review][Defer] D2 — El atajo de un paso (4.3) emite `SolicitudCancelacionRegistrada` + la resolución; el consumidor 5.2 avisaría "estimada/por resolver" para algo ya resuelto → contradictorio/duplicado cuando 5.3 exista. Revisar en 5.3 (guard/supresión o copy). [CancelarEnUnPasoCommandHandler.cs, ConsumidorSolicitudCancelacion.cs] — deferred
 - [x] [Review][Defer] D3 — "Huésped principal = primero de la colección" sin orden garantizado ni concepto de titular en el dominio; en reservas multi-huésped el acuse podría ir a un acompañante. Introducir "huésped titular" cuando el dominio lo requiera. [SolicitarCancelacionCommandHandler.cs, CancelarEnUnPasoCommandHandler.cs] — deferred
@@ -117,3 +117,4 @@ claude-opus-4-8 (dev-story autónomo, Épica 5).
 - 2026-07-09 — Ciclo A: enriquecimiento aditivo de `SolicitudCancelacionRegistrada.v1` + emisores 4.1/4.3 lo pueblan. Red→Green.
 - 2026-07-09 — Ciclo B: `ConsumidorSolicitudCancelacion` (acuse estimación + aviso por resolver) sobre `EnvioIdempotenteCorreos` (helper extraído); refactor de `ConsumidorReservaConfirmada`. Red→Green.
 - 2026-07-09 — Regresión completa (377 tests) verde + `dotnet format` limpio; Status → review.
+- 2026-07-09 — Code review (Blind + Edge + Auditor): 3 patch, 4 defer. Corregidos P1 (fechas con `InvariantCulture`), P2 (test de compatibilidad aditiva), P3 (test del emisor 4.3). Deferidos D1-D4 en `deferred-work.md`. Regresión 379 tests verde.

@@ -37,6 +37,18 @@ public sealed class CancelarEnUnPasoCommandHandlerTests
         return reserva;
     }
 
+    private Reserva SembrarConEmails(string huespedEmail, string agenteEmail)
+    {
+        var huesped = Huesped.Crear(
+            "Andrés", "Pérez", new DateOnly(1990, 5, 1), "M",
+            Documento.Crear("CC", "1234567"), huespedEmail, "3001234567");
+        var reserva = Reserva.Crear(
+            Guid.NewGuid(), Estancia.Crear(_entrada, _entrada.AddDays(2)),
+            huespedes: [huesped], agenteEmail: agenteEmail, precioTotal: 500m);
+        _repo.Existentes.Add(reserva);
+        return reserva;
+    }
+
     private static CancelarEnUnPasoCommand Comando(Guid id, DecisionCancelacion decision, string? motivoRechazo = null) =>
         new(id, "CambioDePlanes", "detalle", IniciadorCancelacion.Agente, decision, motivoRechazo);
 
@@ -70,6 +82,19 @@ public sealed class CancelarEnUnPasoCommandHandlerTests
         Assert.Equal(SolicitudCancelacionRegistradaV1.Tipo, _outbox.Encolados[0].Tipo);
         Assert.Equal(SolicitudCancelacionRechazadaV1.Tipo, _outbox.Encolados[1].Tipo);
         Assert.DoesNotContain(_outbox.Encolados, e => e.Tipo == ReservaCanceladaV1.Tipo);
+    }
+
+    [Fact]
+    public async Task El_evento_de_solicitud_del_atajo_incluye_los_emails_del_destinatario()
+    {
+        // Story 5.2 (party-mode opción a): el atajo también puebla HuespedEmail+AgenteEmail en el evento de solicitud.
+        var reserva = SembrarConEmails(huespedEmail: "andres@example.com", agenteEmail: Dueno);
+
+        await Handler(Dueno).Handle(Comando(reserva.Id, DecisionCancelacion.AprobarAplicandoPenalidad), CancellationToken.None);
+
+        var data = Assert.IsType<SolicitudCancelacionRegistradaV1>(_outbox.Encolados[0].Data);
+        Assert.Equal("andres@example.com", data.HuespedEmail);
+        Assert.Equal(Dueno, data.AgenteEmail);
     }
 
     [Fact]

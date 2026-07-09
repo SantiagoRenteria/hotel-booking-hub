@@ -77,4 +77,29 @@ public sealed class ContratoSolicitudCancelacionRegistradaTests
     {
         Assert.Equal("SolicitudCancelacionRegistrada.v1", SolicitudCancelacionRegistradaV1.Tipo);
     }
+
+    [Fact]
+    public void Compatibilidad_aditiva_un_payload_del_esquema_previo_deserializa_con_emails_null()
+    {
+        // Story 5.2: los emails se añadieron de forma ADITIVA. Un payload del esquema PREVIO (sin
+        // huespedEmail/agenteEmail) debe seguir deserializando; los campos aditivos caen a null.
+        const string jsonPrevio =
+            """
+            {
+              "aggregateId": "019f43ef-0000-7000-8000-0000000001aa",
+              "iniciador": "Viajero",
+              "motivoCategoria": "CambioDePlanes",
+              "motivoDetalle": "El viajero ya no puede asistir.",
+              "penalidadPorcentaje": 100,
+              "fechaSolicitud": "2026-08-20"
+            }
+            """;
+
+        var data = JsonSerializer.Deserialize<SolicitudCancelacionRegistradaV1>(jsonPrevio, _opciones)!;
+
+        Assert.Equal("Viajero", data.Iniciador);        // los campos previos siguen mapeando
+        Assert.Equal(100m, data.PenalidadPorcentaje);
+        Assert.Null(data.HuespedEmail);                 // los aditivos ausentes → null (no rompe)
+        Assert.Null(data.AgenteEmail);
+    }
 }
