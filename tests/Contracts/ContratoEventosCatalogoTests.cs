@@ -32,6 +32,14 @@ public sealed class ContratoEventosCatalogoTests
             HabitacionDeshabilitadaV1.Tipo,
             new HabitacionDeshabilitadaV1(_hab, _hotel),
             new[] { "aggregateId", "hotelId" }];
+        yield return [
+            HotelDeshabilitadoV1.Tipo,
+            new HotelDeshabilitadoV1(_hotel, "Bogotá"),
+            new[] { "aggregateId", "ciudad" }];
+        yield return [
+            HotelHabilitadoV1.Tipo,
+            new HotelHabilitadoV1(_hotel, "Bogotá"),
+            new[] { "aggregateId", "ciudad" }];
     }
 
     private static EventoIntegracion Envelope(string tipo, object data) => new(
@@ -76,5 +84,7 @@ public sealed class ContratoEventosCatalogoTests
         Assert.Equal("HabitacionAgregada.v1", HabitacionAgregadaV1.Tipo);
         Assert.Equal("PrecioHabitacionCambiado.v1", PrecioHabitacionCambiadoV1.Tipo);
         Assert.Equal("HabitacionDeshabilitada.v1", HabitacionDeshabilitadaV1.Tipo);
+        Assert.Equal("HotelDeshabilitado.v1", HotelDeshabilitadoV1.Tipo);
+        Assert.Equal("HotelHabilitado.v1", HotelHabilitadoV1.Tipo);
     }
 }
