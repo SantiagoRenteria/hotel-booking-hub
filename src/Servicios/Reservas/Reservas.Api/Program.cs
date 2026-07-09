@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
 using Reservas.Api;
@@ -6,6 +7,7 @@ using Reservas.Application.Reservas.BuscarDisponibilidad;
 using Reservas.Application.Reservas.CrearReserva;
 using Reservas.Application.Reservas.ListarReservasDelAgente;
 using Reservas.Application.Reservas.ObtenerReservaDetalle;
+using Reservas.Application.Reservas.SolicitarCancelacion;
 using Reservas.Domain.Servicios;
 using Reservas.Infrastructure;
 
@@ -17,14 +19,24 @@ builder.AddServiceDefaults();
 // OpenAPI nativo de .NET 10 (sin Swashbuckle). La UI Scalar se añade cuando haya endpoints de negocio.
 builder.Services.AddOpenApi();
 
+// Enums por NOMBRE en el JSON (entrada y salida): el cuerpo acepta "iniciador":"Viajero"/"Agente" —simétrico
+// con el evento, que serializa el nombre— en vez de forzar el ordinal numérico. Un nombre desconocido lo atrapa
+// el validator (IsInEnum → 400).
+builder.Services.ConfigureHttpJsonOptions(opciones =>
+    opciones.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
 // Excepciones de negocio → Problem Details RFC 7807 (handler transversal en Comun.Web; overbooking → 409).
 builder.Services.AddManejoExcepcionesNegocio();
 
 // Pipeline del mediator (Logging → Validation → Handler) + validators, por scan del assembly de Application.
 builder.Services.AddMediatorPipeline(typeof(CrearReservaCommand).Assembly);
 
-// Domain service de precio (puro, sin estado).
+// Domain services puros, sin estado.
 builder.Services.AddSingleton<CalculadorPrecio>();
+builder.Services.AddSingleton<CalculadorPenalidad>(); // penalidad de cancelación sugerida (Story 4.1)
+
+// Reloj inyectable: el handler resuelve la fecha de solicitud para congelar la penalidad de forma determinista.
+builder.Services.AddSingleton(TimeProvider.System);
 
 // Adaptadores de infraestructura (DbContext + repositorio + placeholders de disponibilidad/eventos).
 builder.Services.AddReservasInfrastructure(builder.Configuration.GetConnectionString("reservasdb"));
@@ -67,6 +79,19 @@ app.MapPost("/api/v1/reservas", async (CrearReservaCommand comando, ISender send
         return resultado.ToCreatedResult(dto => $"/api/v1/reservas/{dto.Id}");
     })
     .WithName("CrearReserva")
+    .WithTags("Reservas");
+
+// CAP · Solicitar cancelación con política sugerida (Story 4.1). Transición Confirmada→CancelacionSolicitada:
+// guards de dominio (no elegible/duplicada/estancia iniciada) → 409; la respuesta incluye la penalidad SUGERIDA
+// congelada (no se cobra). Result→HTTP centralizado.
+app.MapPost("/api/v1/reservas/{id:guid}/solicitud-cancelacion", async (
+        Guid id, SolicitarCancelacionRequest cuerpo, ISender sender, CancellationToken ct) =>
+    {
+        var comando = new SolicitarCancelacionCommand(id, cuerpo.CategoriaMotivo, cuerpo.DetalleMotivo, cuerpo.Iniciador);
+        var resultado = await sender.Send(comando, ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("SolicitarCancelacion")
     .WithTags("Reservas");
 
 // CAP-4 · Búsqueda de habitaciones disponibles (FR-8). Query CQRS servida desde la proyección + caché Redis.
