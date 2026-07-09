@@ -41,4 +41,26 @@ public sealed class SolicitarCancelacionCommandValidatorTests
         var comando = Valido() with { Iniciador = (IniciadorCancelacion)99 };
         Assert.False(_validator.Validate(comando).IsValid);
     }
+
+    // Review][Patch] — un motivo más largo que la columna debe cortar en 400 (no llegar a SaveChanges → 500).
+    [Fact]
+    public void Categoria_mas_larga_que_la_columna_es_invalida()
+    {
+        var comando = Valido() with { CategoriaMotivo = new string('x', 81) }; // columna nvarchar(80)
+        Assert.False(_validator.Validate(comando).IsValid);
+    }
+
+    [Fact]
+    public void Detalle_mas_largo_que_la_columna_es_invalido()
+    {
+        var comando = Valido() with { DetalleMotivo = new string('x', 1001) }; // columna nvarchar(1000)
+        Assert.False(_validator.Validate(comando).IsValid);
+    }
+
+    [Fact]
+    public void Motivo_en_el_limite_exacto_es_valido()
+    {
+        var comando = Valido() with { CategoriaMotivo = new string('x', 80), DetalleMotivo = new string('y', 1000) };
+        Assert.True(_validator.Validate(comando).IsValid);
+    }
 }

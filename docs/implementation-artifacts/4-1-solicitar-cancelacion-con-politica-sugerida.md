@@ -4,7 +4,7 @@ baseline_commit: 023e2bb3d96d99a0e3a4b84e0772b90959bcd731
 
 # Story 4.1: Solicitar cancelación con política sugerida
 
-Status: in-progress
+Status: review
 
 <!-- Generado por bmad-create-story. Complejidad ALTA (núcleo de dominio: máquina de estados + penalidad
 congelada + evento nuevo + concurrencia). 2ª VITRINA BDD: aplicar BDD (Given/When/Then) además de TDD Red→Green
@@ -64,8 +64,8 @@ consuma (regla de propiedad de eventos, party-mode Winston).
 
 <!-- Code review adversarial (Blind Hunter + Edge Case Hunter + Acceptance Auditor), 2026-07-09. -->
 
-- [ ] [Review][Patch] Motivo sin `MaximumLength` → truncamiento SQL = 500 en vez de 400 [SolicitarCancelacionCommandValidator.cs] — validar `CategoriaMotivo`<=80 y `DetalleMotivo`<=1000 (columnas `nvarchar(80)/(1000)`), con tests.
-- [ ] [Review][Patch] Enum `Iniciador` en el body solo bindea número (asimétrico con el evento que emite "Viajero"/"Agente") [Reservas.Api/Program.cs] — registrar `JsonStringEnumConverter` para aceptar los nombres.
+- [x] [Review][Patch] Motivo sin `MaximumLength` → truncamiento SQL = 500 en vez de 400 [SolicitarCancelacionCommandValidator.cs] — ✅ `MaximumLength(80/1000)` en el validator + tests (borde exacto válido, +1 inválido). Ahora corta en 400.
+- [x] [Review][Patch] Enum `Iniciador` en el body solo bindea número (asimétrico con el evento que emite "Viajero"/"Agente") [Reservas.Api/Program.cs] — ✅ `JsonStringEnumConverter` registrado vía `ConfigureHttpJsonOptions` + test de contrato del binding por nombre.
 - [x] [Review][Defer] Concurrencia optimista: 2ª solicitud en carrera → `DbUpdateConcurrencyException` no traducida → 500 en vez de 409 [EjecutorTransaccional.cs] — deferido a **Story 4.2** (Task 0 asigna la arbitración de concurrencia/doble-liberación a 4.2; requiere cambio de infra compartida + tests).
 - [x] [Review][Defer] "Hoy" en UTC vs fecha calendario de la estancia (borde de zona horaria puede invertir 0%↔100% o la elegibilidad por un día) [SolicitarCancelacionCommandHandler.cs] — deferido; convención UTC+`DateOnly` de todo el sistema (pre-existente, ver `HuespedDtoValidator`).
 - [x] [Review][Defer] Autorización: sin aislamiento por agente (IDOR) y `Iniciador` autodeclarado por el cliente [Reservas.Api/Program.cs, handler] — deferido a **Épica 6** (auth/RBAC/aislamiento).

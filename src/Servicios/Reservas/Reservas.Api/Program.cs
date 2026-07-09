@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
 using Reservas.Api;
@@ -17,6 +18,12 @@ builder.AddServiceDefaults();
 
 // OpenAPI nativo de .NET 10 (sin Swashbuckle). La UI Scalar se añade cuando haya endpoints de negocio.
 builder.Services.AddOpenApi();
+
+// Enums por NOMBRE en el JSON (entrada y salida): el cuerpo acepta "iniciador":"Viajero"/"Agente" —simétrico
+// con el evento, que serializa el nombre— en vez de forzar el ordinal numérico. Un nombre desconocido lo atrapa
+// el validator (IsInEnum → 400).
+builder.Services.ConfigureHttpJsonOptions(opciones =>
+    opciones.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 // Excepciones de negocio → Problem Details RFC 7807 (handler transversal en Comun.Web; overbooking → 409).
 builder.Services.AddManejoExcepcionesNegocio();
