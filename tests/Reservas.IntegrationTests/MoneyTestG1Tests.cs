@@ -32,7 +32,11 @@ public sealed class MoneyTestG1Tests(SqlServerFixture fixture, ITestOutputHelper
     [Fact]
     public Task Money_test_fuzzeado_entre_30_y_100()
     {
-        var semilla = Environment.TickCount;
+        // Semilla parametrizable (AC-E1.6c.1): fijar MONEYTEST_SEED reproduce exactamente una corrida
+        // fallida; si no está, se sortea por tiempo y se registra en la salida.
+        var semilla = int.TryParse(Environment.GetEnvironmentVariable("MONEYTEST_SEED"), out var inyectada)
+            ? inyectada
+            : Environment.TickCount;
         var n = new Random(semilla).Next(30, 101);
         return EjecutarMoneyTestAsync(n, semilla);
     }

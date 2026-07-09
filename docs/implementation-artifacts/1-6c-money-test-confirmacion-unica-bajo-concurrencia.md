@@ -4,7 +4,7 @@ baseline_commit: 4dc2564
 
 # Story 1.6c: Money test — confirmación única bajo concurrencia
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -47,6 +47,13 @@ para **garantizar cero overbooking bajo carga**.
   - [x] Collection xUnit `G1` con `[CollectionDefinition("G1", DisableParallelization = true)]`, contenedor propio; reset por test vía `HelpersOutbox.LimpiarAsync` (en vez de `Respawn` para no añadir dependencia)
   - [x] CI: stage secuencial aparte (`--filter "Category=G1"`); el pool paralelo corre `--filter "Category!=G1"`
 - [x] **Task 5 — Commit + push a `develop`** (autor Santiago Renteria; sin trailers)
+
+### Review Findings (code review 2026-07-08)
+
+- [x] [Review][Patch] El catch de "1205 agotado → 409" solo atrapaba `DbUpdateException`, pero un 1205 puede aflorar como `SqlException` cruda (commit/begin) que `PoliticaReintentos.EsDeadlock` ya contempla → escaparía como 500 (viola "nunca 500"). **Resuelto:** el catch externo usa el MISMO predicado `PoliticaReintentos.EsDeadlock(ex)` (cubre crudo y envuelto). `[EjecutorTransaccional.cs]`
+- [x] [Review][Patch] La semilla del fuzz solo se logueaba, no era inyectable → reproducibilidad incompleta. **Resuelto:** `MONEYTEST_SEED` (env var) reproduce una corrida; si no está, se sortea y registra. `[MoneyTestG1Tests.cs]`
+- [x] [Review][Defer] La rama "1205 agotado → 409" no tiene aserción que la ejercite (bajo contención de fila única los perdedores reciben 2627, no 1205; forzar un 1205 real es impráctico — `SqlException` sin ctor público). Se cubre con el test de integración de 1205 forzado ya diferido en 1.5. `[EjecutorTransaccional.cs]` — deferido (ver deferred-work 1.5).
+- Dismiss: `confirmadas==0` por ganador víctima de deadlock (contención de fila única → sin ciclo → imposible); builder sin filas Hotel/Habitacion (no hay tablas hasta E2, documentado); 201/409 a nivel de comando (mapeo HTTP probado en 1.6a/b).
 
 ## Dev Notes
 
