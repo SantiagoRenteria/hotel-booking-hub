@@ -1,5 +1,6 @@
 using Hoteles.Infrastructure.Persistencia;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Testcontainers.MsSql;
 using Xunit;
 
@@ -25,12 +26,17 @@ public sealed class SqlServerFixture : IAsyncLifetime
 
     public Task DisposeAsync() => _sql.DisposeAsync().AsTask();
 
-    public HotelesDbContext CrearContexto()
+    public HotelesDbContext CrearContexto(params IInterceptor[] interceptores)
     {
-        var opciones = new DbContextOptionsBuilder<HotelesDbContext>()
-            .UseSqlServer(_sql.GetConnectionString())
-            .Options;
-        return new HotelesDbContext(opciones);
+        var builder = new DbContextOptionsBuilder<HotelesDbContext>()
+            .UseSqlServer(_sql.GetConnectionString());
+
+        if (interceptores.Length > 0)
+        {
+            builder.AddInterceptors(interceptores);
+        }
+
+        return new HotelesDbContext(builder.Options);
     }
 }
 
