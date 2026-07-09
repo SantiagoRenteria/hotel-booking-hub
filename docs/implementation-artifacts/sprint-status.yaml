@@ -75,7 +75,7 @@ development_status:
   4-1-solicitar-cancelacion-con-politica-sugerida: done
   4-2-resolver-cancelacion-con-auditoria: done
   4-3-atajo-de-un-paso-ciclo-de-vida-y-visibilidad: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # ---- Epic 5: Notificaciones por correo sin pérdida ni duplicado ----
   epic-5: backlog
