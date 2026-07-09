@@ -91,6 +91,33 @@ public sealed class ProyeccionHabitacionConvergenciaTests
         Assert.Equal("Deshabilitada", p.Estado); // v3 > v1 → no revive
     }
 
+    // AC-E3.1.1 Scenario Outline — cualquier orden de llegada de {alta v1, precio v2, deshabilitar v3} converge
+    // al MISMO estado final (precio v2, estado v3, catálogo del alta). La convergencia es order-independent.
+    [Theory]
+    [InlineData("1,2,3")]
+    [InlineData("3,1,2")]
+    [InlineData("2,3,1")]
+    [InlineData("3,2,1")]
+    [InlineData("2,1,3")]
+    public void Cualquier_orden_de_llegada_converge_al_mismo_estado_final(string orden)
+    {
+        var p = NuevaVacia();
+        foreach (var n in orden.Split(','))
+        {
+            switch (n)
+            {
+                case "1": Agregada(p, version: 1, costo: 100m); break;      // alta (Habilitada, precio 100)
+                case "2": p.AplicarPrecio(150m, 28.5m, version: 2); break;  // cambio de precio
+                case "3": p.AplicarDeshabilitada(version: 3); break;         // deshabilitar
+            }
+        }
+
+        Assert.True(p.Hidratada);
+        Assert.Equal("Bogotá", p.Ciudad);          // catálogo del alta
+        Assert.Equal(150m, p.CostoBase);           // precio v2 gana
+        Assert.Equal("Deshabilitada", p.Estado);   // estado v3 gana
+    }
+
     // Escenario 6 (delta viejo descartado): un PrecioCambiado con versión menor no pisa el precio vigente.
     [Fact]
     public void Precio_con_version_vieja_se_descarta()

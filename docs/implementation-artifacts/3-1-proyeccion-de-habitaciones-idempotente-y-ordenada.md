@@ -1,6 +1,6 @@
 # Story 3.1: Proyección de habitaciones idempotente y ordenada
 
-Status: ready-for-dev
+Status: done
 
 <!-- Generado por bmad-create-story. Historia de ALTA COMPLEJIDAD y VITRINA de diseño arquitectónico
 (party-mode Winston+John): sus AC NACEN como escenarios BDD Gherkin ejecutables (specs, no bullets),
@@ -37,6 +37,11 @@ Feature: La ProyeccionHabitacion combina catálogo y disponibilidad
       capacidad, activa) y disponibilidad (noches ocupadas)
     Y ambos lados quedan disponibles para alimentar la búsqueda de AC-E3.2.1
 ```
+
+> **Nota de alcance (code review):** en 3.1 el proyector materializa el lado de **CATÁLOGO** (`ProyeccionHabitacion`).
+> El lado de **disponibilidad** NO se denormaliza: vive en `NochesHabitacion` (fuente de verdad local) y 3.2 lo
+> **une** por join en tiempo de consulta. Por eso el proyector no consume `ReservaConfirmada` ni almacena
+> ocupación. "Ambos lados disponibles para la búsqueda" se cumple a nivel de 3.2 (join), no dentro de 3.1.
 
 ### AC-E3.1.4 — Inbox de idempotencia compartido (habilitador, decidido aquí)
 
@@ -92,10 +97,12 @@ Feature: Reprocesar el mismo evento no duplica ni altera la proyección
 
 ### AC-E3.1.3 — Reconciliación / recompute idempotente (reformulado · party-mode D4)
 
-> **Nota (D4):** no hay event-store durable cross-BC → "rebuild desde event-log" es inalcanzable. La
-> reconciliación de 3.1 es un **recompute idempotente desde las tablas base locales de Reservas**. El rebuild
-> de atributos de catálogo (solo provienen de eventos de Hoteles) requiere un snapshot API de Hoteles que no
-> existe → **diferido** (ver `deferred-work.md`).
+> **Nota (D4 · precisada en code review):** con el diseño final la **disponibilidad NO se proyecta** (vive en
+> `NochesHabitacion`, la fuente), así que no hay estado derivado local que "recomputar". La reconciliación de
+> 3.1 se reduce entonces a: (a) **idempotencia del proyector** —re-aplicar eventos converge, PROBADA—; y
+> (b) **rebuild de atributos de catálogo**, que solo provienen de eventos de Hoteles y sin event-store /
+> snapshot API es inalcanzable → **DIFERIDO** (ver `deferred-work.md`). AC-E3.1.3 queda parcial y honesto: sin
+> fuente reconstruible localmente, un job de recompute sería humo.
 
 ```gherkin
 Feature: La proyección se recomputa idempotentemente desde las tablas base locales
@@ -254,4 +261,18 @@ claude-opus-4-8 (Amelia). Decisiones vía `/bmad-party-mode` (Task 0 D1–D4; ci
 
 ### Change Log
 
-- 2026-07-09 — 3.1: cierre de hueco de contrato (capacidad/ciudad) + proyección idempotente/ordenada (CRDT field-ownership) + consumidor con inbox SQL. Pendiente: `/bmad-code-review` y PR. AC-E3.1.3 (recompute desde fuente) y reemplazo del placeholder diferidos.
+- 2026-07-09 — 3.1: cierre de hueco de contrato (capacidad/ciudad) + proyección idempotente/ordenada (CRDT field-ownership) + consumidor con inbox SQL. `/bmad-code-review` aplicado (ver abajo). AC-E3.1.3 (recompute desde fuente) y reemplazo del placeholder diferidos.
+
+## Review Findings (bmad-code-review · 2026-07-09)
+
+Revisión adversarial de 3 capas sobre `2bff8bf..HEAD`. Decisiones party-mode (field-ownership C, `.v1` aditivo, inbox SQL) intactas y verificadas.
+
+- [x] **[Review][Patch·CRÍTICO] Catch de dedup demasiado amplio → pérdida silenciosa de evento** [ProyectorCatalogo.cs] — un `2627` de la PK de `ProyeccionHabitacion` (carrera de creación concurrente) se malinterpretaba como dedup del inbox y se tragaba. **Corregido:** el inbox se inserta en su propio `SaveChanges` (misma tx) → el `2627` ahí es inequívocamente dedup; cualquier otra violación se propaga (el transporte reentrega y converge). Tests verdes.
+- [x] **[Review][Patch] AC-E3.1.1 `Scenario Outline` sin test** — añadido test paramétrico de permutaciones de orden de llegada (`ProyeccionHabitacionConvergenciaTests`).
+- [x] **[Review][Patch] Dedup unit/×4** — el test de integración de idempotencia reentrega ×4 (antes ×2); cardinalidad exacta (1 fila, 1 inbox).
+- [x] **[Review][Patch·doc] AC-E3.1.0 reformulado** — ver nota de alcance en el AC (3.1 proyecta el CATÁLOGO; la disponibilidad la une 3.2 contra `NochesHabitacion`; el proyector no consume `ReservaConfirmada`).
+- [x] **[Review][Patch·doc] AC-E3.1.3 reformulado** — ver nota (la disponibilidad no se denormaliza → no hay recompute local; reconciliación = idempotencia del proyector [hecha] + rebuild de catálogo [diferido, snapshot de Hoteles]).
+- [x] **[Review][Defer·ALTA] Sin token de concurrencia en `ProyeccionHabitacion` (regresión de versión con competing-consumers)** [ProyeccionHabitacion.cs] — el compare-and-set vive en C# (read-modify-write), no en SQL. Seguro con consumidor único por partición (el productor 2.5 es head-of-line single-instance). Endurecimiento para competing-consumers (RowVersion + retry o `UPDATE ... WHERE Version<@v`) DIFERIDO. Ver deferred-work.
+- [x] **[Review][Defer] `IInbox` abstracción compartida** — E5 usará Redis SETNX (efecto externo), store distinto; forzar una abstracción común ahora es prematuro. El *concepto* de dedup por `MessageId` sí se reutiliza. Ver deferred-work (2.5/3.1).
+- [x] **[Review][Defer] Índice `IX_ProyeccionHabitacion_Ciudad` sin filtrar por `Hidratada`** — latente; sin lector aún (3.2). Filtrar (`WHERE VersionEstatico IS NOT NULL`) al construir la búsqueda de 3.2.
+- Dismissed: re-habilitación imposible en el read-model (habilitar no emite) — asimetría YA documentada de 2.5 (deferred-work), no es hallazgo nuevo.
