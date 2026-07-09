@@ -4,7 +4,7 @@ baseline_commit: e258f22508287b39e19f051613d0e7229d908f8a
 
 # Story 4.2: Resolver cancelación (aprobar / condonar / rechazar) con auditoría
 
-Status: review
+Status: done
 
 <!-- Generado por bmad-create-story. Complejidad ALTA (liberación de inventario + concurrencia + auditoría +
 aislamiento por agente). 2ª VITRINA BDD: BDD (Given/When/Then) + TDD Red→Green visible. El modelo de dominio y la
