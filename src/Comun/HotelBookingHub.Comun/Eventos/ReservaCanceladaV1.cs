@@ -11,7 +11,10 @@ public sealed record ReservaCanceladaV1(
     string ResueltaPor,
     DateOnly FechaResolucion,
     decimal PenalidadAplicadaPorcentaje,  // efectivamente aplicada (0 si se condonó).
-    bool PenalidadFueOverride)            // true si el agente sobrescribió la sugerida congelada.
+    bool PenalidadFueOverride,            // true si el agente sobrescribió la sugerida congelada.
+    // Enriquecimiento aditivo (Story 5.3, party-mode opción a): destinatario del correo de resolución (viajero).
+    // Nullable por fidelidad al dominio; el consumidor omite el envío si es nulo. Solo se notifica al viajero (AC).
+    string? HuespedEmail = null)
 {
     /// <summary>Tipo del evento (PascalCase español + semver). Va en <see cref="EventoIntegracion.Type"/>.</summary>
     public const string Tipo = "ReservaCancelada.v1";
