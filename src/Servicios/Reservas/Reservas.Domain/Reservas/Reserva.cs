@@ -130,6 +130,37 @@ public sealed class Reserva
     /// </summary>
     public void Resolver(DecisionCancelacion decision, string resueltaPor, DateOnly fechaResolucion, string? motivoRechazo)
     {
-        throw new NotImplementedException();
+        // Guard: solo se resuelve una solicitud en curso. Una 2ª resolución (ya Cancelada/Confirmada) → 409.
+        if (Estado != EstadoReserva.CancelacionSolicitada || SolicitudCancelacion is null)
+        {
+            var destino = decision == DecisionCancelacion.Rechazar
+                ? EstadoReserva.Confirmada
+                : EstadoReserva.Cancelada;
+            throw new TransicionEstadoInvalidaException(Estado, destino);
+        }
+
+        if (decision == DecisionCancelacion.Rechazar)
+        {
+            if (string.IsNullOrWhiteSpace(motivoRechazo))
+            {
+                throw new ArgumentException("El motivo del rechazo es obligatorio.", nameof(motivoRechazo));
+            }
+
+            SolicitudCancelacion.RegistrarRechazo(resueltaPor, fechaResolucion, motivoRechazo.Trim());
+            Estado = EstadoReserva.Confirmada; // sin tocar slots
+            return;
+        }
+
+        // Aprobar: la penalidad NUNCA se recalcula. Aplicar usa la sugerida congelada; condonar la fija en 0.
+        var penalidadAplicada = decision == DecisionCancelacion.AprobarCondonandoPenalidad
+            ? 0m
+            : SolicitudCancelacion.PenalidadPorcentaje;
+
+        SolicitudCancelacion.RegistrarAprobacion(resueltaPor, fechaResolucion, penalidadAplicada, motivoRechazo);
+        Estado = EstadoReserva.Cancelada;
+
+        // Libera el inventario: borrar los slots hace que una nueva reserva sobre esas noches vuelva a caber
+        // (invariante anti-overbooking de E1). El borrado va en la MISMA tx que el bump de rowVersion (4.2).
+        _noches.Clear();
     }
 }
