@@ -13,6 +13,7 @@ public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options)
 {
     public DbSet<Hotel> Hoteles => Set<Hotel>();
     public DbSet<Habitacion> Habitaciones => Set<Habitacion>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,6 +56,22 @@ public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options)
             b.Property(h => h.CostoBase).HasPrecision(LongitudesHabitacion.PrecisionMonto, LongitudesHabitacion.EscalaMonto);
             b.Property(h => h.Impuestos).HasPrecision(LongitudesHabitacion.PrecisionMonto, LongitudesHabitacion.EscalaMonto);
             b.Property(h => h.Estado).HasConversion<string>().HasMaxLength(20);
+
+            // Version de secuencia del agregado (2.5): parte monotónica del order key de los eventos de catálogo.
+            // Columna de negocio propia, INDEPENDIENTE del rowversion de concurrencia (miden cosas distintas).
+            b.Property(h => h.Version);
+        });
+
+        modelBuilder.Entity<OutboxMessage>(b =>
+        {
+            b.ToTable("OutboxMessages");
+            b.HasKey(o => o.Seq);
+            b.Property(o => o.Seq).UseIdentityColumn();
+            b.HasIndex(o => o.MessageId).IsUnique(); // dedup del consumidor (E5)
+            b.Property(o => o.Type).HasMaxLength(200);
+            b.Property(o => o.Estado).HasMaxLength(32);
+            // Índice de polling del relay: pendientes en orden de secuencia.
+            b.HasIndex(o => new { o.Estado, o.Seq });
         });
     }
 }
