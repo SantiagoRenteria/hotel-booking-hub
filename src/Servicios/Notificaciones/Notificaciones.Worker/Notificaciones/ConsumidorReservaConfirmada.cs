@@ -13,10 +13,28 @@ public sealed class ConsumidorReservaConfirmada(INotificador notificador)
 {
     private static readonly JsonSerializerOptions _opciones = new(JsonSerializerDefaults.Web);
 
-    public Task ProcesarAsync(EventoIntegracion evento, CancellationToken ct)
+    public async Task ProcesarAsync(EventoIntegracion evento, CancellationToken ct)
     {
-        _ = (notificador, Deserializar(evento), ct);
-        throw new NotImplementedException();
+        // Solo reacciona a la confirmación de reserva; otros eventos se ignoran silenciosamente.
+        if (evento.Type != ReservaConfirmadaV1.Tipo)
+        {
+            return;
+        }
+
+        var data = Deserializar(evento);
+        var estancia = $"{data.Entrada:yyyy-MM-dd} → {data.Salida:yyyy-MM-dd}";
+
+        await notificador.NotificarAsync(
+            data.HuespedEmail,
+            $"Reserva confirmada en {data.HotelNombre}",
+            $"Hola {data.HuespedNombre}, tu reserva en {data.HotelNombre} ({data.Ciudad}) está confirmada para {estancia}. Total: {data.PrecioTotal:0.00}.",
+            ct);
+
+        await notificador.NotificarAsync(
+            data.AgenteEmail,
+            $"Reserva confirmada: {data.HotelNombre}",
+            $"La reserva de {data.HuespedNombre} en {data.HotelNombre} ({data.Ciudad}) para {estancia} quedó confirmada. Total: {data.PrecioTotal:0.00}.",
+            ct);
     }
 
     /// <summary>Tras el transporte, <c>Data</c> llega como <c>JsonElement</c>; en invocación directa como el tipo.</summary>
