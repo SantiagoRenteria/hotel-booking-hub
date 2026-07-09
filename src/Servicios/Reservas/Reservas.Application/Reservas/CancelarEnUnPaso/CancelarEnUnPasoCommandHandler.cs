@@ -65,7 +65,10 @@ public sealed class CancelarEnUnPasoCommandHandler(
                 MotivoCategoria: motivo.Categoria,
                 MotivoDetalle: motivo.Detalle,
                 PenalidadPorcentaje: penalidadSugerida.Porcentaje,
-                FechaSolicitud: fecha),
+                FechaSolicitud: fecha,
+                // Destinatarios de la notificación (Story 5.2), tomados de la reserva (party-mode opción a).
+                HuespedEmail: reserva.Huespedes.FirstOrDefault()?.Email,
+                AgenteEmail: reserva.AgenteEmail),
             traceId);
 
         if (solicitud.Resultado == ResultadoResolucion.Aprobada)
