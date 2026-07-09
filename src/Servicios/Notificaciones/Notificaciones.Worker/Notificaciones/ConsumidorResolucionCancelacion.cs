@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using HotelBookingHub.Comun.Eventos;
 
 namespace Notificaciones.Worker.Notificaciones;
@@ -5,14 +7,65 @@ namespace Notificaciones.Worker.Notificaciones;
 /// <summary>
 /// Consumidor de la resolución de una cancelación (Story 5.3): reacciona a <c>ReservaCancelada.v1</c> (aprobación/
 /// condonación, AC-E5.3.1) y a <c>SolicitudCancelacionRechazada.v1</c> (rechazo, AC-E5.3.2), notificando al
-/// viajero el desenlace FINAL. Invariante: un rechazo NUNCA comunica cancelación y viceversa. STUB (RED): aún no
-/// envía.
+/// viajero el desenlace FINAL. <b>Invariante</b> (contrato de 4.2): un rechazo NUNCA comunica cancelación y
+/// viceversa — se garantiza despachando por <see cref="EventoIntegracion.Type"/>. Reutiliza
+/// <see cref="INotificador"/> + inbox idempotente vía <see cref="EnvioIdempotenteCorreos"/> (dedup por
+/// <c>(MessageId, version, "viajero")</c>).
 /// </summary>
 public sealed class ConsumidorResolucionCancelacion(INotificador notificador, IInboxIdempotencia inbox) : IProcesadorEvento
 {
-    public Task ProcesarAsync(EventoIntegracion evento, CancellationToken ct)
+    private static readonly JsonSerializerOptions _opciones = new(JsonSerializerDefaults.Web);
+    private readonly EnvioIdempotenteCorreos _envio = new(notificador, inbox);
+
+    public async Task ProcesarAsync(EventoIntegracion evento, CancellationToken ct)
     {
-        _ = (notificador, inbox); // TODO 5.3 GREEN.
-        return Task.CompletedTask;
+        var correo = evento.Type switch
+        {
+            ReservaCanceladaV1.Tipo => CorreoAprobacion(Payload<ReservaCanceladaV1>(evento)),
+            SolicitudCancelacionRechazadaV1.Tipo => CorreoRechazo(Payload<SolicitudCancelacionRechazadaV1>(evento)),
+            _ => null, // otros eventos se ignoran silenciosamente.
+        };
+
+        if (correo is null)
+        {
+            return;
+        }
+
+        await _envio.EnviarLoteAsync(evento, [correo], ct);
+    }
+
+    /// <summary>AC-E5.3.1: penalidad FINAL aplicada, o aviso de condonación si fue 0%; nota de ajuste si el agente
+    /// se apartó de la sugerida.</summary>
+    private static Correo CorreoAprobacion(ReservaCanceladaV1 data)
+    {
+        var pct = data.PenalidadAplicadaPorcentaje.ToString("0.##", CultureInfo.InvariantCulture);
+        var cuerpo = data.PenalidadAplicadaPorcentaje == 0m
+            ? "Tu cancelación fue aprobada y la penalidad fue CONDONADA (0%). No se te cobrará penalidad."
+            : $"Tu cancelación fue aprobada. Penalidad FINAL aplicada: {pct}%." +
+              (data.PenalidadFueOverride ? " (ajustada por el agente respecto a la estimación inicial)." : string.Empty);
+
+        return new Correo("viajero", data.HuespedEmail, "Tu cancelación fue resuelta", cuerpo);
+    }
+
+    /// <summary>AC-E5.3.2: mensaje inequívoco — la reserva sigue Confirmada + el motivo. NO comunica cancelación.</summary>
+    private static Correo CorreoRechazo(SolicitudCancelacionRechazadaV1 data) =>
+        new(
+            Efecto: "viajero",
+            Destinatario: data.HuespedEmail,
+            Asunto: "Tu solicitud de cancelación fue rechazada",
+            Cuerpo: $"Tu solicitud de cancelación fue rechazada; tu reserva sigue CONFIRMADA. Motivo: {data.MotivoRechazo}");
+
+    private static T Payload<T>(EventoIntegracion evento)
+    {
+        // Tras el transporte, Data llega como JsonElement (no como el tipo concreto): se deserializa aquí.
+        if (evento.Data is T tipado)
+        {
+            return tipado;
+        }
+
+        var json = JsonSerializer.Serialize(evento.Data, _opciones);
+        return JsonSerializer.Deserialize<T>(json, _opciones)
+            ?? throw new InvalidOperationException(
+                $"Evento {evento.Id} ({evento.Type}) sin data deserializable a {typeof(T).Name}.");
     }
 }
