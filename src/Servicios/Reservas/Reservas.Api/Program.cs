@@ -1,5 +1,6 @@
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
+using Reservas.Application.Reservas.BuscarDisponibilidad;
 using Reservas.Application.Reservas.CrearReserva;
 using Reservas.Domain.Servicios;
 using Reservas.Infrastructure;
@@ -24,6 +25,18 @@ builder.Services.AddSingleton<CalculadorPrecio>();
 // Adaptadores de infraestructura (DbContext + repositorio + placeholders de disponibilidad/eventos).
 builder.Services.AddReservasInfrastructure(builder.Configuration.GetConnectionString("reservasdb"));
 
+// Caché de lectura de disponibilidad (Story 3.2): Redis si está configurado (Aspire lo referencia como "redis");
+// si no, caché en memoria para desarrollo local sin orquestador. IDistributedCache es la abstracción común.
+var cadenaRedis = builder.Configuration.GetConnectionString("redis");
+if (!string.IsNullOrWhiteSpace(cadenaRedis))
+{
+    builder.Services.AddStackExchangeRedisCache(opciones => opciones.Configuration = cadenaRedis);
+}
+else
+{
+    builder.Services.AddDistributedMemoryCache();
+}
+
 var app = builder.Build();
 
 app.UseExceptionHandler();
@@ -46,5 +59,15 @@ app.MapPost("/api/v1/reservas", async (CrearReservaCommand comando, ISender send
     })
     .WithName("CrearReserva")
     .WithTags("Reservas");
+
+// CAP-4 · Búsqueda de habitaciones disponibles (FR-8). Query CQRS servida desde la proyección + caché Redis.
+app.MapGet("/api/v1/habitaciones/disponibles", async (
+        string ciudad, DateOnly entrada, DateOnly salida, int huespedes, ISender sender, CancellationToken ct) =>
+    {
+        var resultado = await sender.Send(new BuscarDisponibilidadQuery(ciudad, entrada, salida, huespedes), ct);
+        return resultado.ToOkResult();
+    })
+    .WithName("BuscarDisponibilidad")
+    .WithTags("Habitaciones");
 
 app.Run();
