@@ -12,6 +12,7 @@ public static class RegistroInfraestructura
     {
         servicios.AddDbContext<HotelesDbContext>(opciones => opciones.UseSqlServer(cadenaConexion));
         servicios.AddScoped<IHotelRepository, HotelRepository>();
+        servicios.AddScoped<IHabitacionRepository, HabitacionRepository>();
         return servicios;
     }
 }
