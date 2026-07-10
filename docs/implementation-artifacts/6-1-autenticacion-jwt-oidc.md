@@ -4,7 +4,7 @@
 baseline_commit: 9191d80ba2f693791a427c8cdabccfde332f919c
 ---
 
-Status: review
+Status: in-progress
 
 <!-- Generado por bmad-create-story (modo autónomo, Épica 6). Complejidad ALTA (infra de seguridad
 transversal + topología de validación en Gateway y servicios). TDD con Red→Green visible en los AC
@@ -89,7 +89,23 @@ para **impedir el acceso no autenticado (401)**.
   - [x] Unit: el helper produce `TokenValidationParameters` con las 4 validaciones activas + clock skew acotado + fail-closed sin clave (3 tests).
   - [x] Los tests **generan** sus JWTs con la clave de test (no hardcodean tokens capturados).
   - [x] Nota: el 401 a nivel de servicio (defensa en profundidad) se ejercitará con los tests HTTP de rol/aislamiento de 6.2/6.3 (evita colisión de dos `Program` públicos en un mismo proyecto de test).
-- [x] **Task 6 — Commits en rama `feature/6-1-autenticacion-jwt-oidc` + PR a `develop`** (autor Santiago Renteria; sin trailers; `dotnet format` verde). *(PR se abre al cerrar la historia.)*
+- [x] **Task 6 — Commits en rama `feature/6-1-autenticacion-jwt-oidc` + PR a `develop`** (autor Santiago Renteria; sin trailers; `dotnet format` verde). PR [#17](https://github.com/SantiagoRenteria/hotel-booking-hub/pull/17).
+
+### Review Findings
+
+_Code review 2026-07-10 (3 capas: Blind Hunter + Edge Case Hunter + Acceptance Auditor). **Veredicto: CUMPLE los 4 AC**, sin secretos ni bypass de autenticación. 8 patch · 3 defer · 0 dismiss. Patches aplicados vía `/bmad-agent-dev` (Paso 4)._
+
+- [ ] **[Review][Patch] Validación fail-closed perezosa → 500 opaco en el borde** (MEDIA, `blind+edge+auditor`) — el `throw` de `ConstruirParametrosValidacion` vive dentro del lambda de `AddJwtBearer` (perezoso, por request). Con `${JWT_SIGNING_KEY:-}` vacío, los contenedores arrancan sanos (health anónimo) pero la primera petición protegida lanza `InvalidOperationException`; el Gateway no tiene `UseExceptionHandler` → 500 con cuerpo vacío. Fix: validar la config *eager* en `AddAutenticacionJwt` (fail-fast al arrancar). `[AutenticacionJwtExtensions.cs, ApiGateway/Program.cs]`
+- [ ] **[Review][Patch] Sin validación de longitud mínima de la clave (≥32 bytes / 256 bits)** (MEDIA, `blind+edge`) — el guard solo hace `IsNullOrWhiteSpace`; una clave corta se acepta pese a que `.env.example` promete ≥256 bits. Fix: rechazar `Encoding.UTF8.GetByteCount(SigningKey) < 32`. `[AutenticacionJwtExtensions.cs]`
+- [ ] **[Review][Patch] Issuer/Audience vacíos no validados → rechazo total opaco** (BAJA, `edge`) — con `ValidIssuer=""`/`ValidAudience=""` se rechaza todo token, indistinguible de "todos inválidos". Fix: validar no-vacíos junto a la clave. `[AutenticacionJwtExtensions.cs]`
+- [ ] **[Review][Patch] `ValidAlgorithms` no fijado** (BAJA, `edge`) — hoy seguro (clave simétrica + `RequireSignedTokens`), pero sin allow-list explícita reaparece la confusión HS/RS si se introduce clave asimétrica. Fix: `ValidAlgorithms = [SecurityAlgorithms.HmacSha256]`. `[AutenticacionJwtExtensions.cs]`
+- [ ] **[Review][Patch] `OnChallenge` sin guard `Response.HasStarted`** (BAJA, `edge`) — asignar StatusCode/headers tras iniciar la respuesta lanzaría. Fix: `if (respuesta.HasStarted) return;`. `[AutenticacionJwtExtensions.cs]`
+- [ ] **[Review][Patch] 401 Problem Details diverge del contrato del sistema** (BAJA, `blind+edge+auditor`) — objeto anónimo sin `traceId`/`instance`, `type` = rfc7235 (reto de auth) en vez del contrato uniforme. Fix: añadir `traceId` (de `Activity.Current`) + `instance` + `status`. `[AutenticacionJwtExtensions.cs]`
+- [ ] **[Review][Patch] Tests débiles no guardan la intención** (BAJA, `blind+auditor`) — clock skew asserta `<=5min` (no protege el endurecimiento a 1 min); la aserción positiva solo comprueba `!=401`; no se verifica `Content-Type: application/problem+json` ni `WWW-Authenticate: Bearer`. Fix: clock skew `==1min`; positivo asserta 5xx de proxy; añadir asserts del contrato de error. `[AutenticacionJwtTests.cs, AutenticacionGatewayTests.cs]`
+- [ ] **[Review][Patch] Fragilidad de precedencia de config en el test factory** (BAJA, `blind`) — el factory inyecta issuer/audience de test por `ConfigureHostConfiguration`, que difiere de `appsettings.json`; la suite depende de que host-config gane. Fix: usar `ConfigureAppConfiguration` (precedencia determinista sobre appsettings). `[JwtTestFactory.cs]`
+- [x] **[Review][Defer] Clave HMAC simétrica compartida por Gateway + servicios** (MEDIA-diseño, `blind`) — cualquier componente puede forjar tokens válidos en todo el sistema; la defensa en profundidad se debilita si se filtra la clave. Riesgo aceptado en el alcance de la prueba (JWT/OIDC propio, sin IdP). Producción: claves asimétricas (RS256, clave privada de firma aislada del validador). Diferido — documentado en `deferred-work.md`.
+- [x] **[Review][Defer] Autorización opt-in en servicios vs secure-by-default** (BAJA-MEDIA, `blind`) → **Story 6.2** — un endpoint futuro sin `.RequireAuthorization()` quedaría anónimo (servicios expuestos en 8081/8082). 6.2 consolida el modelo de autorización por endpoint (roles) y adoptará `FallbackPolicy` con `AllowAnonymous` explícito en health. Diferido a 6.2.
+- [x] **[Review][Defer] Naming del claim de rol (`ClaimTypes.Role` URI vs `role`)** (INFO, `auditor`) → **Story 6.2** — el emisor usa `ClaimTypes.Role` (URI larga); el README documenta `role`. Funciona con `IsInRole` (RoleClaimType por defecto), pero una policy que espere `role` corto tendría fricción. 6.2 (dueña del RBAC) fija el `RoleClaimType`/claim. Diferido a 6.2.
 
 ## Dev Notes
 
