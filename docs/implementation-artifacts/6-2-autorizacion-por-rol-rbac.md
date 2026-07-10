@@ -4,7 +4,7 @@
 baseline_commit: 07319f08cb67cc248f4a57aad5623d58918e1a63
 ---
 
-Status: review
+Status: in-progress
 
 <!-- Generado por bmad-create-story (modo autónomo, Épica 6). Complejidad NORMAL (policies .NET sobre los
 claims que 6.1 dejó en HttpContext.User). TDD con Red→Green visible en el AC negativo (403). Depende de 6.1
@@ -60,6 +60,17 @@ para **que cada actor solo ejecute las operaciones de su rol (403 si no le corre
   - [x] Test estructural de cobertura del mapa: enumera `EndpointDataSource` y falla si un endpoint `/api/**` no lleva `IAuthorizeData` (secure-by-default verificado en CI).
 - [x] **Task 5 — Documentar el mapa rol→endpoint** en el README (sección "Autorización por rol — RBAC").
 - [x] **Task 6 — Commits en rama `feature/6-2-autorizacion-por-rol-rbac` + PR a `develop`** (autor Santiago Renteria; sin trailers; `dotnet format` verde).
+
+### Review Findings
+
+_Code review 2026-07-10 (3 capas: Blind Hunter + Edge Case Hunter + Acceptance Auditor). **Veredicto: mapa rol→endpoint CORRECTO** (sin swaps, coincide con Task 0/FRs); TDD visible; docs presentes. 3 patch · 2 defer · 1 dismiss. Patches aplicados vía `/bmad-agent-dev` (Paso 4)._
+
+- [ ] **[Review][Patch] Test de cobertura solo verifica presencia de metadata, no la policy correcta** (ALTA, `blind+edge`) — `GetMetadata<IAuthorizeData>() is null` deja pasar un endpoint degradado a `RequireAuthorization()` sin policy, o con la policy equivocada (`AgenteOViajero` donde debía `SoloAgente`) → escalada de privilegios indetectable. Fix: verificar la **policy exacta** por endpoint contra un mapa esperado + guard anti-vacuo (contar endpoints inspeccionados > 0) + normalizar el prefijo (`TrimStart('/')`) para no depender del formato de `RawText`. `[tests/Reservas.FunctionalTests/CoberturaAutorizacionTests.cs]`
+- [ ] **[Review][Patch] El 403 no se emite como Problem Details RFC 7807** (ALTA, `auditor`) — AC-E6.2.1 exige cuerpo RFC 7807, pero no hay `OnForbidden` (simétrico al `OnChallenge` del 401) ni `UseStatusCodePages` → el 403 del `AuthorizationMiddleware` sale con cuerpo vacío. Fix: `OnForbidden` que escriba Problem Details 403 (refactor de `EscribirProblemDetails401` a método parametrizado por status) + reforzar el test para verificar `Content-Type: application/problem+json` y `status:403`. `[AutenticacionJwtExtensions.cs, tests/Reservas.FunctionalTests/AutorizacionRbacTests.cs]`
+- [ ] **[Review][Patch] Hoteles.Api sin gate de cobertura ni tests RBAC** (MEDIA, `blind+edge+auditor`) — el test estructural y los 403 solo cubren Reservas; Hoteles (9 endpoints `SoloAgente`) no tiene `public partial class Program` ni `Hoteles.FunctionalTests` → un endpoint futuro sin policy quedaría anónimo sin que CI lo cace (el README afirma que CI lo verifica). Fix: `public partial class Program` en Hoteles.Api + `Hoteles.FunctionalTests` con el mismo gate de cobertura (todos `SoloAgente`). `[Hoteles.Api/Program.cs]`
+- [x] **[Review][Defer] Detalle de reserva `SoloAgente` mientras Viajero puede crear/solicitar** (MEDIA, `blind`) — un Viajero que crea una reserva (`AgenteOViajero`) no puede releerla por `GET /api/v1/reservas/{id}` (`SoloAgente`) → 403. Es **per-spec**: FR-13 hace el listado/detalle una capacidad del **agente** (conciliar comisiones); no hay FR de "viajero consulta su reserva por id" (la recibe en el 201 del alta). Sobre-restricción (segura), no escalada. Diferido: si producto pide una vista de reserva para el viajero, es historia propia.
+- [x] **[Review][Defer] `RequireRole` sin normalización de caso ni soporte de rol CSV/array** (BAJA, `edge`) — `IsInRole` compara ordinal/case-sensitive; un IdP OIDC externo (alcance F2) que emita `"agente"` o `"Agente,Viajero"` en un solo claim caería en 403. Fail-closed hoy (emisor propio consistente con `Agente`/`Viajero`). Diferido a cuando se integre un IdP real: normalizar/expandir el claim de rol.
+- [x] **[Review][Dismiss] Test de cobertura "vacuo" por `StartsWith("api/")`** (ALTA propuesto por `blind`, REFUTADO por `edge`) — Edge verificó contra el código real que `RoutePatternFactory.Parse` recorta la barra inicial → `RawText="api/v1/..."` (sin `/`), así que el filtro SÍ empareja; el test no es un pase vacío. Desestimado; aun así la reescritura del patch A elimina la dependencia del prefijo.
 
 ## Dev Notes
 
