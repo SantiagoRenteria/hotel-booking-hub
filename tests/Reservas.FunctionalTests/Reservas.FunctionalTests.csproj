@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    Tests funcionales HTTP de Reservas.Api (WebApplicationFactory, sin base de datos real): el RBAC (403) y el
+    aislamiento se deciden en la autorización ANTES del handler, así que no requieren infra. Referencia SOLO
+    Reservas.Api (una única clase `Program` pública en alcance → sin colisión con la del Gateway).
+  -->
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Servicios\Reservas\Reservas.Api\Reservas.Api.csproj" />
+    <ProjectReference Include="..\TestKit.Auth\TestKit.Auth.csproj" />
+  </ItemGroup>
+
+</Project>

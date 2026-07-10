@@ -7,13 +7,25 @@ namespace Reservas.Domain.Reservas;
 /// </summary>
 public sealed record Huesped
 {
-    public string Nombres { get; }
-    public string Apellidos { get; }
-    public DateOnly FechaNacimiento { get; }
-    public string Genero { get; }
-    public Documento Documento { get; }
-    public string Email { get; }
-    public string Telefono { get; }
+    // Setters privados + ctor sin parámetros para EF Core: el owned anidado (Documento) NO puede bindearse por
+    // constructor, así que EF materializa por propiedades. La fábrica Crear sigue siendo la única vía de dominio.
+    public string Nombres { get; private set; }
+    public string Apellidos { get; private set; }
+    public DateOnly FechaNacimiento { get; private set; }
+    public string Genero { get; private set; }
+    public Documento Documento { get; private set; }
+    public string Email { get; private set; }
+    public string Telefono { get; private set; }
+
+    private Huesped() // EF Core
+    {
+        Nombres = string.Empty;
+        Apellidos = string.Empty;
+        Genero = string.Empty;
+        Documento = null!;
+        Email = string.Empty;
+        Telefono = string.Empty;
+    }
 
     private Huesped(
         string nombres,

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-07-08
-last_updated: 2026-07-09T17:00
+last_updated: 2026-07-10T02:00
 project: hotel-booking-hub
 project_key: NOKEY
 tracking_system: file-system
@@ -64,34 +64,34 @@ development_status:
   epic-2-retrospective: optional
 
   # ---- Epic 3: Búsqueda de disponibilidad y reservas del agente ----
-  epic-3: in-progress
+  epic-3: done
   3-1-proyeccion-de-habitaciones-idempotente-y-ordenada: done
-  3-2-busqueda-de-habitaciones-disponibles: ready-for-dev
-  3-3-listado-de-reservas-del-agente-con-detalle: ready-for-dev
-  epic-3-retrospective: optional
+  3-2-busqueda-de-habitaciones-disponibles: done
+  3-3-listado-de-reservas-del-agente-con-detalle: done
+  epic-3-retrospective: done
 
   # ---- Epic 4: Ciclo de vida de la reserva — cancelación con discreción ----
-  epic-4: backlog
-  4-1-solicitar-cancelacion-con-politica-sugerida: backlog
-  4-2-resolver-cancelacion-con-auditoria: backlog
-  4-3-atajo-de-un-paso-ciclo-de-vida-y-visibilidad: backlog
-  epic-4-retrospective: optional
+  epic-4: done
+  4-1-solicitar-cancelacion-con-politica-sugerida: done
+  4-2-resolver-cancelacion-con-auditoria: done
+  4-3-atajo-de-un-paso-ciclo-de-vida-y-visibilidad: done
+  epic-4-retrospective: done
 
   # ---- Epic 5: Notificaciones por correo sin pérdida ni duplicado ----
-  epic-5: backlog
-  5-1a-notificacion-minima-de-confirmacion: backlog
-  5-1b-worker-idempotente-sin-perdida-ni-duplicado: backlog
-  5-2-notificar-la-solicitud-de-cancelacion: backlog
-  5-3-notificar-la-resolucion-de-la-cancelacion: backlog
-  epic-5-retrospective: optional
+  epic-5: done
+  5-1a-notificacion-minima-de-confirmacion: done
+  5-1b-worker-idempotente-sin-perdida-ni-duplicado: done
+  5-2-notificar-la-solicitud-de-cancelacion: done
+  5-3-notificar-la-resolucion-de-la-cancelacion: done
+  epic-5-retrospective: done
 
   # ---- Epic 6: Seguridad y acceso ----
-  epic-6: backlog
-  6-1-autenticacion-jwt-oidc: backlog
-  6-2-autorizacion-por-rol-rbac: backlog
-  6-3-aislamiento-entre-agentes: backlog
-  6-4-endurecimiento-owasp: backlog
-  epic-6-retrospective: optional
+  epic-6: done
+  6-1-autenticacion-jwt-oidc: done
+  6-2-autorizacion-por-rol-rbac: done
+  6-3-aislamiento-entre-agentes: done
+  6-4-endurecimiento-owasp: done
+  epic-6-retrospective: done
 
   # ---- Epic 7: Observabilidad de extremo a extremo ----
   epic-7: backlog

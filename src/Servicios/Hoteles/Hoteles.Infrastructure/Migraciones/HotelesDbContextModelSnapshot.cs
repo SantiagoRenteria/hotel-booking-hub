@@ -91,6 +91,11 @@ namespace Hoteles.Infrastructure.Migraciones
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AgentePropietario")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
                     b.Property<string>("Ciudad")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -129,6 +134,9 @@ namespace Hoteles.Infrastructure.Migraciones
                         .HasColumnType("bigint");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Seq"));
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 

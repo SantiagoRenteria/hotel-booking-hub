@@ -8,7 +8,7 @@ namespace Hoteles.UnitTests.Habitaciones;
 public sealed class CrearHabitacionCommandHandlerTests
 {
     private static Hotel UnHotel() =>
-        Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado);
+        Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
 
     private static CrearHabitacionCommand Comando(Guid hotelId) =>
         new(hotelId, "Suite", 100.00m, 19.00m, "Piso 3", EstadoHabitacion.Habilitada, Capacidad: 2);

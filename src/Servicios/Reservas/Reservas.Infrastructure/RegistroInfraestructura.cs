@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Reservas.Application.Abstracciones;
 using Reservas.Domain.Puertos;
+using Reservas.Infrastructure.Cache;
 using Reservas.Infrastructure.Disponibilidad;
 using Reservas.Infrastructure.Mensajeria;
 using Reservas.Infrastructure.Outbox;
@@ -29,6 +30,23 @@ public static class RegistroInfraestructura
 
         // Consumidor de eventos de catálogo (E3): proyecta a ProyeccionHabitacion con inbox de idempotencia.
         servicios.AddScoped<IConsumidorEventosCatalogo, ProyectorCatalogo>();
+
+        // Lectura de disponibilidad (Story 3.2): buscador SQL sobre el read-model + decoradora de caché Redis.
+        // La caché (singleton, sobre IDistributedCache) hace de lector y de invalidador por ciudad.
+        servicios.AddSingleton<OpcionesCacheDisponibilidad>();
+        servicios.AddSingleton<CacheDisponibilidadRedis>();
+        servicios.AddSingleton<ICacheDisponibilidad>(sp => sp.GetRequiredService<CacheDisponibilidadRedis>());
+        servicios.AddSingleton<IInvalidadorCacheDisponibilidad>(sp => sp.GetRequiredService<CacheDisponibilidadRedis>());
+        servicios.AddScoped<BuscadorDisponibilidadSql>();
+        servicios.AddScoped<IBuscadorDisponibilidad>(sp => new BuscadorDisponibilidadCacheado(
+            sp.GetRequiredService<BuscadorDisponibilidadSql>(),
+            sp.GetRequiredService<ICacheDisponibilidad>()));
+
+        // Lectura de reservas del agente (Story 3.3): query aislada server-side por AgenteEmail.
+        servicios.AddScoped<ILectorReservasAgente, LectorReservasAgenteSql>();
+
+        // Lectura de cancelaciones pendientes con antigüedad (Story 4.3): query aislada por AgenteEmail.
+        servicios.AddScoped<ILectorCancelacionesPendientes, LectorCancelacionesPendientesSql>();
 
         // Relay del outbox (productor): procesador + BackgroundService que sondea y publica.
         servicios.AddSingleton<OpcionesRelayOutbox>();

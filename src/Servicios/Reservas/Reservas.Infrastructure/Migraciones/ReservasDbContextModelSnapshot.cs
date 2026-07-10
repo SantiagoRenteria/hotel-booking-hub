@@ -46,6 +46,10 @@ namespace Reservas.Infrastructure.Migraciones
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AgenteEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
                     b.Property<string>("Estado")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -53,6 +57,10 @@ namespace Reservas.Infrastructure.Migraciones
 
                     b.Property<Guid>("HabitacionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("PrecioTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -190,6 +198,23 @@ namespace Reservas.Infrastructure.Migraciones
                     b.ToTable("ProyeccionHabitacion", (string)null);
                 });
 
+            modelBuilder.Entity("Reservas.Infrastructure.Proyeccion.ProyeccionHotelEstado", b =>
+                {
+                    b.Property<Guid>("HotelId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("VersionEstado")
+                        .HasColumnType("int");
+
+                    b.HasKey("HotelId");
+
+                    b.ToTable("ProyeccionHotelEstado", (string)null);
+                });
+
             modelBuilder.Entity("Reservas.Domain.Reservas.NocheHabitacion", b =>
                 {
                     b.HasOne("Reservas.Domain.Reservas.Reserva", null)
@@ -201,6 +226,31 @@ namespace Reservas.Infrastructure.Migraciones
 
             modelBuilder.Entity("Reservas.Domain.Reservas.Reserva", b =>
                 {
+                    b.OwnsOne("Reservas.Domain.Reservas.ContactoEmergencia", "ContactoEmergencia", b1 =>
+                        {
+                            b1.Property<Guid>("ReservaId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("NombreCompleto")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("ContactoNombreCompleto");
+
+                            b1.Property<string>("Telefono")
+                                .IsRequired()
+                                .HasMaxLength(40)
+                                .HasColumnType("nvarchar(40)")
+                                .HasColumnName("ContactoTelefono");
+
+                            b1.HasKey("ReservaId");
+
+                            b1.ToTable("Reservas");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ReservaId");
+                        });
+
                     b.OwnsOne("Reservas.Domain.Reservas.Estancia", "Estancia", b1 =>
                         {
                             b1.Property<Guid>("ReservaId")
@@ -222,8 +272,160 @@ namespace Reservas.Infrastructure.Migraciones
                                 .HasForeignKey("ReservaId");
                         });
 
+                    b.OwnsMany("Reservas.Domain.Reservas.Huesped", "Huespedes", b1 =>
+                        {
+                            b1.Property<Guid>("ReservaId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("Id")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("int");
+
+                            SqlServerPropertyBuilderExtensions.UseIdentityColumn(b1.Property<int>("Id"));
+
+                            b1.Property<string>("Apellidos")
+                                .IsRequired()
+                                .HasMaxLength(120)
+                                .HasColumnType("nvarchar(120)");
+
+                            b1.Property<string>("Email")
+                                .IsRequired()
+                                .HasMaxLength(256)
+                                .HasColumnType("nvarchar(256)");
+
+                            b1.Property<DateOnly>("FechaNacimiento")
+                                .HasColumnType("date");
+
+                            b1.Property<string>("Genero")
+                                .IsRequired()
+                                .HasMaxLength(40)
+                                .HasColumnType("nvarchar(40)");
+
+                            b1.Property<string>("Nombres")
+                                .IsRequired()
+                                .HasMaxLength(120)
+                                .HasColumnType("nvarchar(120)");
+
+                            b1.Property<string>("Telefono")
+                                .IsRequired()
+                                .HasMaxLength(40)
+                                .HasColumnType("nvarchar(40)");
+
+                            b1.HasKey("ReservaId", "Id");
+
+                            b1.ToTable("ReservaHuespedes", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("ReservaId");
+
+                            b1.OwnsOne("Reservas.Domain.Reservas.Documento", "Documento", b2 =>
+                                {
+                                    b2.Property<Guid>("HuespedReservaId")
+                                        .HasColumnType("uniqueidentifier");
+
+                                    b2.Property<int>("HuespedId")
+                                        .HasColumnType("int");
+
+                                    b2.Property<string>("Numero")
+                                        .IsRequired()
+                                        .HasMaxLength(60)
+                                        .HasColumnType("nvarchar(60)")
+                                        .HasColumnName("DocumentoNumero");
+
+                                    b2.Property<string>("Tipo")
+                                        .IsRequired()
+                                        .HasMaxLength(40)
+                                        .HasColumnType("nvarchar(40)")
+                                        .HasColumnName("DocumentoTipo");
+
+                                    b2.HasKey("HuespedReservaId", "HuespedId");
+
+                                    b2.ToTable("ReservaHuespedes");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("HuespedReservaId", "HuespedId");
+                                });
+
+                            b1.Navigation("Documento")
+                                .IsRequired();
+                        });
+
+                    b.OwnsOne("Reservas.Domain.Reservas.SolicitudCancelacion", "SolicitudCancelacion", b1 =>
+                        {
+                            b1.Property<Guid>("ReservaId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateOnly?>("FechaResolucion")
+                                .HasColumnType("date")
+                                .HasColumnName("CancelacionFechaResolucion");
+
+                            b1.Property<DateOnly>("FechaSolicitud")
+                                .HasColumnType("date")
+                                .HasColumnName("CancelacionFechaSolicitud");
+
+                            b1.Property<string>("IniciadaPor")
+                                .IsRequired()
+                                .HasMaxLength(20)
+                                .HasColumnType("nvarchar(20)")
+                                .HasColumnName("CancelacionIniciadaPor");
+
+                            b1.Property<string>("MotivoCategoria")
+                                .IsRequired()
+                                .HasMaxLength(80)
+                                .HasColumnType("nvarchar(80)")
+                                .HasColumnName("CancelacionMotivoCategoria");
+
+                            b1.Property<string>("MotivoDetalle")
+                                .IsRequired()
+                                .HasMaxLength(1000)
+                                .HasColumnType("nvarchar(1000)")
+                                .HasColumnName("CancelacionMotivoDetalle");
+
+                            b1.Property<string>("MotivoResolucion")
+                                .HasMaxLength(1000)
+                                .HasColumnType("nvarchar(1000)")
+                                .HasColumnName("CancelacionMotivoResolucion");
+
+                            b1.Property<decimal?>("PenalidadAplicadaPorcentaje")
+                                .HasPrecision(5, 2)
+                                .HasColumnType("decimal(5,2)")
+                                .HasColumnName("CancelacionPenalidadAplicadaPorcentaje");
+
+                            b1.Property<bool>("PenalidadFueOverride")
+                                .HasColumnType("bit")
+                                .HasColumnName("CancelacionPenalidadFueOverride");
+
+                            b1.Property<decimal>("PenalidadPorcentaje")
+                                .HasPrecision(5, 2)
+                                .HasColumnType("decimal(5,2)")
+                                .HasColumnName("CancelacionPenalidadPorcentaje");
+
+                            b1.Property<string>("ResueltaPor")
+                                .HasMaxLength(256)
+                                .HasColumnType("nvarchar(256)")
+                                .HasColumnName("CancelacionResueltaPor");
+
+                            b1.Property<string>("Resultado")
+                                .HasMaxLength(20)
+                                .HasColumnType("nvarchar(20)")
+                                .HasColumnName("CancelacionResultado");
+
+                            b1.HasKey("ReservaId");
+
+                            b1.ToTable("Reservas");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ReservaId");
+                        });
+
+                    b.Navigation("ContactoEmergencia");
+
                     b.Navigation("Estancia")
                         .IsRequired();
+
+                    b.Navigation("Huespedes");
+
+                    b.Navigation("SolicitudCancelacion");
                 });
 
             modelBuilder.Entity("Reservas.Domain.Reservas.Reserva", b =>

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    Gate RBAC de Hoteles.Api (WebApplicationFactory, sin base de datos): cobertura estructural (todo endpoint de
+    gestión es SoloAgente) + 403 de un rol sin permiso. Referencia SOLO Hoteles.Api (una única clase `Program`).
+  -->
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Servicios\Hoteles\Hoteles.Api\Hoteles.Api.csproj" />
+    <ProjectReference Include="..\TestKit.Auth\TestKit.Auth.csproj" />
+  </ItemGroup>
+
+</Project>
