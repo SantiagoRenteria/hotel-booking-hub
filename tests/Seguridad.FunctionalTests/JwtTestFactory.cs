@@ -46,6 +46,10 @@ public sealed class JwtTestFactory : WebApplicationFactory<Program>
         var clave = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey ?? SigningKey));
         var credenciales = new SigningCredentials(clave, SecurityAlgorithms.HmacSha256);
 
+        var expiracion = expira ?? DateTime.UtcNow.AddHours(1);
+        // notBefore SIEMPRE anterior a expires (evita el IDX12401 al fabricar un token ya expirado).
+        var noAntesDe = expiracion.AddHours(-2);
+
         var token = new JwtSecurityToken(
             issuer: issuer,
             audience: audience,
@@ -55,8 +59,8 @@ public sealed class JwtTestFactory : WebApplicationFactory<Program>
                 new Claim(JwtRegisteredClaimNames.Email, email),
                 new Claim(ClaimTypes.Role, rol),
             ],
-            notBefore: DateTime.UtcNow.AddMinutes(-5),
-            expires: expira ?? DateTime.UtcNow.AddHours(1),
+            notBefore: noAntesDe,
+            expires: expiracion,
             signingCredentials: credenciales);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
