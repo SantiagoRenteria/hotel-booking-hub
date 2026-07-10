@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using TestKit.Auth;
 
 namespace Seguridad.FunctionalTests;
 
@@ -41,7 +42,7 @@ public class AutenticacionGatewayTests(JwtTestFactory factory) : IClassFixture<J
     [Fact]
     public async Task Token_expirado_responde_401()
     {
-        var token = JwtTestFactory.EmitirToken(expira: DateTime.UtcNow.AddHours(-1));
+        var token = TokenDePrueba.Emitir(expira: DateTime.UtcNow.AddHours(-1));
 
         var respuesta = await EnviarConToken(token);
 
@@ -51,7 +52,7 @@ public class AutenticacionGatewayTests(JwtTestFactory factory) : IClassFixture<J
     [Fact]
     public async Task Token_con_firma_invalida_responde_401()
     {
-        var token = JwtTestFactory.EmitirToken(signingKey: "otra-clave-distinta-que-no-coincide-con-la-real-256b");
+        var token = TokenDePrueba.Emitir(signingKey: "otra-clave-distinta-que-no-coincide-con-la-real-256b");
 
         var respuesta = await EnviarConToken(token);
 
@@ -61,7 +62,7 @@ public class AutenticacionGatewayTests(JwtTestFactory factory) : IClassFixture<J
     [Fact]
     public async Task Token_con_issuer_incorrecto_responde_401()
     {
-        var token = JwtTestFactory.EmitirToken(issuer: "emisor-no-confiable");
+        var token = TokenDePrueba.Emitir(issuer: "emisor-no-confiable");
 
         var respuesta = await EnviarConToken(token);
 
@@ -71,7 +72,7 @@ public class AutenticacionGatewayTests(JwtTestFactory factory) : IClassFixture<J
     [Fact]
     public async Task Token_con_audience_incorrecto_responde_401()
     {
-        var token = JwtTestFactory.EmitirToken(audience: "otra-audiencia");
+        var token = TokenDePrueba.Emitir(audience: "otra-audiencia");
 
         var respuesta = await EnviarConToken(token);
 
@@ -81,7 +82,7 @@ public class AutenticacionGatewayTests(JwtTestFactory factory) : IClassFixture<J
     [Fact]
     public async Task Token_valido_pasa_la_autenticacion_y_se_rutea_al_proxy()
     {
-        var token = JwtTestFactory.EmitirToken();
+        var token = TokenDePrueba.Emitir();
 
         var respuesta = await EnviarConToken(token);
 

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    Utilidad de test transversal: emite JWTs de prueba con la clave/issuer/audience compartidos. NO referencia
+    ningún servicio (evita arrastrar múltiples clases `Program` públicas a un mismo proyecto de test funcional).
+    Reutilizada por Seguridad.FunctionalTests (Gateway) y Reservas.FunctionalTests (RBAC/aislamiento).
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+  </ItemGroup>
+
+</Project>
