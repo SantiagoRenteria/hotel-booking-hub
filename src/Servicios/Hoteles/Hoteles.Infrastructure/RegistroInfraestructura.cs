@@ -5,7 +5,9 @@ using Hoteles.Infrastructure.Mensajeria;
 using Hoteles.Infrastructure.Outbox;
 using Hoteles.Infrastructure.Persistencia;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Hoteles.Infrastructure;
 
@@ -27,8 +29,15 @@ public static class RegistroInfraestructura
         servicios.AddSingleton<ProcesadorOutbox>();
         servicios.AddHostedService<RelayOutbox>();
 
-        // Placeholder de transporte (reemplazado por Dapr pub/sub).
-        servicios.AddSingleton<IPublicadorEventos, PublicadorEventosLog>();
+        // Transporte de eventos por entorno (Story 9.1, ADR-019): RabbitMQ si hay cadena (local/compose), si no
+        // el placeholder que solo loguea. El adaptador Dapr→Service Bus de nube usa este mismo seam (Épica 8).
+        servicios.AddSingleton<IPublicadorEventos>(sp =>
+        {
+            var cadenaRabbit = sp.GetRequiredService<IConfiguration>().GetConnectionString("rabbitmq");
+            return string.IsNullOrWhiteSpace(cadenaRabbit)
+                ? new PublicadorEventosLog(sp.GetRequiredService<ILogger<PublicadorEventosLog>>())
+                : new PublicadorEventosRabbitMq(cadenaRabbit, sp.GetRequiredService<ILogger<PublicadorEventosRabbitMq>>());
+        });
 
         return servicios;
     }

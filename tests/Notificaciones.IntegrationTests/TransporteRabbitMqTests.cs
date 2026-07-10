@@ -19,6 +19,7 @@ public sealed class TransporteRabbitMqTests : IAsyncLifetime
 {
     // Contrato de transporte: debe coincidir con PublicadorEventosRabbitMq.Exchange y con el binding del consumidor.
     private const string Exchange = "hotelbookinghub.eventos";
+    private const string Cola = "notificaciones.reservas";
     private const string Topico = "reservas";
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
@@ -55,7 +56,11 @@ public sealed class TransporteRabbitMqTests : IAsyncLifetime
         var fabrica = new ConnectionFactory { Uri = new Uri(_rabbit.GetConnectionString()) };
         await using var conexion = await fabrica.CreateConnectionAsync();
         await using var canal = await conexion.CreateChannelAsync();
+        // Topología durable declarada antes de publicar (idempotente): el mensaje queda en la cola aunque el
+        // consumidor aún no esté suscrito → sin carrera de arranque; el consumidor la drena cuando conecta.
         await canal.ExchangeDeclareAsync(Exchange, ExchangeType.Direct, durable: true, autoDelete: false);
+        await canal.QueueDeclareAsync(Cola, durable: true, exclusive: false, autoDelete: false);
+        await canal.QueueBindAsync(Cola, Exchange, Topico);
         var cuerpo = JsonSerializer.SerializeToUtf8Bytes(evento, _json);
         var propiedades = new BasicProperties { Persistent = true, MessageId = evento.Id.ToString(), Type = evento.Type };
         await canal.BasicPublishAsync(Exchange, Topico, mandatory: false, basicProperties: propiedades, body: cuerpo);
