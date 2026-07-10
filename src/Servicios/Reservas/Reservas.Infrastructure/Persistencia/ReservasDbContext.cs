@@ -18,6 +18,7 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
 
     // Read-model de catálogo (E3) alimentado por eventos de Hoteles + inbox de idempotencia del consumidor.
     public DbSet<ProyeccionHabitacion> ProyeccionesHabitacion => Set<ProyeccionHabitacion>();
+    public DbSet<ProyeccionHotelEstado> ProyeccionesHotelEstado => Set<ProyeccionHotelEstado>();
     public DbSet<MensajeProcesado> MensajesProcesados => Set<MensajeProcesado>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -37,6 +38,10 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
             b.Property(r => r.HabitacionId);
             b.Property(r => r.Estado).HasConversion<string>().HasMaxLength(32);
 
+            // Story 3.3: datos de negocio persistidos (antes solo iban al evento).
+            b.Property(r => r.AgenteEmail).HasMaxLength(256); // eje de aislamiento del listado (AC-E3.3.2)
+            b.Property(r => r.PrecioTotal).HasPrecision(18, 2);
+
             // Estancia como owned type (columnas Entrada/Salida); Noches es computado → ignorar.
             b.OwnsOne(r => r.Estancia, e =>
             {
@@ -44,6 +49,51 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
                 e.Property(x => x.Salida).HasColumnName("Salida");
                 e.Ignore(x => x.Noches);
             });
+
+            // Contacto de emergencia (FR-11) como owned reference (columnas en la propia tabla Reservas).
+            b.OwnsOne(r => r.ContactoEmergencia, c =>
+            {
+                c.Property(x => x.NombreCompleto).HasColumnName("ContactoNombreCompleto").HasMaxLength(200);
+                c.Property(x => x.Telefono).HasColumnName("ContactoTelefono").HasMaxLength(40);
+            });
+
+            // Solicitud de cancelación (Story 4.1) como owned reference NULLABLE: columnas en la propia tabla
+            // Reservas, todas nulas mientras la reserva no tenga un episodio de cancelación. Un solo episodio
+            // (4.2 completará esta misma owned con la resolución — decisión party-mode Task 0).
+            b.OwnsOne(r => r.SolicitudCancelacion, s =>
+            {
+                s.Property(x => x.MotivoCategoria).HasColumnName("CancelacionMotivoCategoria").HasMaxLength(80);
+                s.Property(x => x.MotivoDetalle).HasColumnName("CancelacionMotivoDetalle").HasMaxLength(1000);
+                s.Property(x => x.IniciadaPor).HasColumnName("CancelacionIniciadaPor").HasConversion<string>().HasMaxLength(20);
+                s.Property(x => x.PenalidadPorcentaje).HasColumnName("CancelacionPenalidadPorcentaje").HasPrecision(5, 2);
+                s.Property(x => x.FechaSolicitud).HasColumnName("CancelacionFechaSolicitud");
+
+                // Resolución (Story 4.2): mismo owned, columnas nullable hasta que el agente resuelve.
+                s.Property(x => x.ResueltaPor).HasColumnName("CancelacionResueltaPor").HasMaxLength(256);
+                s.Property(x => x.FechaResolucion).HasColumnName("CancelacionFechaResolucion");
+                s.Property(x => x.Resultado).HasColumnName("CancelacionResultado").HasConversion<string>().HasMaxLength(20);
+                s.Property(x => x.PenalidadAplicadaPorcentaje).HasColumnName("CancelacionPenalidadAplicadaPorcentaje").HasPrecision(5, 2);
+                s.Property(x => x.PenalidadFueOverride).HasColumnName("CancelacionPenalidadFueOverride");
+                s.Property(x => x.MotivoResolucion).HasColumnName("CancelacionMotivoResolucion").HasMaxLength(1000);
+            });
+
+            // Huéspedes (FR-10) como owned collection en su propia tabla; Documento es un VO anidado.
+            b.OwnsMany(r => r.Huespedes, h =>
+            {
+                h.ToTable("ReservaHuespedes");
+                h.WithOwner().HasForeignKey("ReservaId");
+                h.Property(x => x.Nombres).HasMaxLength(120);
+                h.Property(x => x.Apellidos).HasMaxLength(120);
+                h.Property(x => x.Genero).HasMaxLength(40);
+                h.Property(x => x.Email).HasMaxLength(256);
+                h.Property(x => x.Telefono).HasMaxLength(40);
+                h.OwnsOne(x => x.Documento, d =>
+                {
+                    d.Property(x => x.Tipo).HasColumnName("DocumentoTipo").HasMaxLength(40);
+                    d.Property(x => x.Numero).HasColumnName("DocumentoNumero").HasMaxLength(60);
+                });
+            });
+            b.Navigation(r => r.Huespedes).UsePropertyAccessMode(PropertyAccessMode.Field);
 
             // Slots como parte del aggregate (acceso por campo _noches).
             b.HasMany(r => r.Noches)
@@ -85,6 +135,14 @@ public sealed class ReservasDbContext(DbContextOptions<ReservasDbContext> option
             b.Ignore(p => p.Hidratada); // derivado en C# (VersionEstatico != null); 3.2 filtra por VersionEstatico.
             // Índice para la búsqueda por ciudad (3.2), acotando a filas ya hidratadas.
             b.HasIndex(p => p.Ciudad);
+        });
+
+        modelBuilder.Entity<ProyeccionHotelEstado>(b =>
+        {
+            b.ToTable("ProyeccionHotelEstado");
+            b.HasKey(p => p.HotelId);
+            // Dimensión independiente del estado de hotel (3.2): la búsqueda excluye habitaciones cuyo hotel esté
+            // inactivo. Fila ausente = hotel activo (COALESCE en la query), coherente con E2 sin eventos de hotel.
         });
 
         modelBuilder.Entity<MensajeProcesado>(b =>

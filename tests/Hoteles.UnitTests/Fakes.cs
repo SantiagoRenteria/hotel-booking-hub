@@ -1,7 +1,32 @@
+using Hoteles.Application.Abstracciones;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Domain.Puertos;
 
 namespace Hoteles.UnitTests;
+
+/// <summary>
+/// <see cref="IContextoAgente"/> fake (Story 6.3): resuelve una identidad fija server-side. Con
+/// <see cref="AgenteActual"/> no-nulo, <c>CrearHotelCommandHandler</c> pasa el fail-closed y crea el hotel.
+/// </summary>
+public sealed class ContextoAgenteFake : IContextoAgente
+{
+    public string? AgenteActual { get; init; } = "agente@test.com";
+}
+
+/// <summary>
+/// Fábrica de un <see cref="HotelRepositoryFake"/> que reporta el hotel padre como VISIBLE (Story 6.3), para que
+/// los handlers de habitación (que ahora cargan el hotel y devuelven 404 si es null) mantengan verde el
+/// happy-path/edición existente.
+/// </summary>
+public static class HotelesVisiblesFake
+{
+    public const string Propietario = "agente@test.com";
+
+    public static HotelRepositoryFake ConHotelVisible() => new()
+    {
+        Existente = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, Propietario),
+    };
+}
 
 /// <summary>
 /// Repositorio fake compartido por los slices (alta/edición/baja), sin BD: captura los hoteles creados y

@@ -1,5 +1,6 @@
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Resultados;
+using Hoteles.Application.Abstracciones;
 using Hoteles.Application.Hoteles.CrearHotel;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Domain.Puertos;
@@ -20,6 +21,7 @@ public sealed class PipelineTests
         var servicios = new ServiceCollection();
         servicios.AddLogging();
         servicios.AddSingleton<IHotelRepository>(_repo);
+        servicios.AddSingleton<IContextoAgente>(new ContextoAgenteFake());
         servicios.AddMediatorPipeline(typeof(CrearHotelCommand).Assembly);
         return servicios.BuildServiceProvider();
     }

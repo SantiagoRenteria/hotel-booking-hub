@@ -12,4 +12,7 @@ public static class LongitudesHotel
     public const int Ciudad = 120;
     public const int Direccion = 300;
     public const int Descripcion = 2000;
+
+    /// <summary>Agente propietario (Story 6.3): email en forma canónica; tope holgado y acorde a un email.</summary>
+    public const int AgentePropietario = 320;
 }

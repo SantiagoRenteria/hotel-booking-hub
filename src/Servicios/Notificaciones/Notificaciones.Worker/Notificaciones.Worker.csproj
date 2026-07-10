@@ -9,4 +9,9 @@
     <ProjectReference Include="..\..\..\Comun\HotelBookingHub.Comun\HotelBookingHub.Comun.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- SETNX+TTL atómico del inbox de idempotencia (Story 5.1b). -->
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+
 </Project>

@@ -218,6 +218,33 @@ No requiere instalar el SDK ni el *workload* de Aspire. Incluye el dashboard de 
 
 Defensa en profundidad con 8 prácticas mapeadas a **OWASP Top 10 (2021)**: JWT/OIDC (A07), RBAC server-side (A01), rate limiting, validación anti-inyección (A03), secretos en Key Vault + Managed Identity (A02), HTTPS/HSTS (A05), logging de eventos de seguridad (A09) y protección de PII (A08/A10). Adicionalmente, *readiness* documentada para **PCI DSS** e **ISO 27001**. Detalle en [docs/DOCUMENTO-BASE.md §8.10 y §11](docs/DOCUMENTO-BASE.md).
 
+### Autenticación JWT (Épica 6, Story 6.1)
+
+Toda operación de negocio exige un **JWT Bearer** válido: el **Gateway** lo valida en el borde (401 si falta o es inválido) y cada servicio lo revalida (defensa en profundidad). Se verifican **issuer, audience, expiración y firma** (HMAC-SHA256).
+
+- **Clave de firma — cero secretos en el repo.** La clave vive en `Jwt:SigningKey`, provista por entorno/`user-secrets`/Key Vault, **nunca** en `appsettings.json` (que solo lleva `Issuer`/`Audience`). Para Docker Compose, define `JWT_SIGNING_KEY` en `deploy/.env` (ver `deploy/.env.example`). Genera una con `openssl rand -base64 48`.
+  ```bash
+  # Local (por servicio): dotnet user-secrets set "Jwt:SigningKey" "<clave-256-bits>"
+  # Compose:  echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" >> deploy/.env
+  ```
+- **Contrato del token.** `iss = hotel-booking-hub`, `aud = hotel-booking-hub-api`, y claims `sub`/`email` (identidad del agente) + `role` (`Agente` | `Viajero`). El `role` habilita el RBAC (6.2) y la identidad, el aislamiento entre agentes (6.3).
+- **Obtener un token de dev para Postman/Newman.** Como el emisor es propio y la clave es simétrica compartida, un *pre-request script* de Postman lo firma en el sandbox (CryptoJS), sin secretos en la colección (la clave se lee de una variable de entorno de Postman). La lógica de emisión de referencia está en `tests/TestKit.Auth/TokenDePrueba.Emitir`.
+
+### Autorización por rol — RBAC (Story 6.2)
+
+El claim `role` (`Agente` | `Viajero`) se resuelve **server-side** en cada servicio con policies nativas de .NET. Un rol sin permiso recibe **403** (distinto del 401 de autenticación). Mapa rol→endpoint:
+
+| Endpoint | Policy | Rol |
+|----------|--------|-----|
+| `POST /api/v1/hoteles`, y todo `hoteles/*` y `habitaciones/*` (gestión) | `SoloAgente` | **Agente** |
+| `GET /api/v1/reservas`, `GET /api/v1/reservas/{id}` (listado/detalle del agente) | `SoloAgente` | **Agente** |
+| `POST .../cancelacion/resolucion`, `.../cancelaciones/atajo`, `GET .../cancelaciones-pendientes` | `SoloAgente` | **Agente** |
+| `GET /api/v1/habitaciones/disponibles` (búsqueda) | `AgenteOViajero` | Viajero **y** Agente |
+| `POST /api/v1/reservas` (crear-confirmar) | `AgenteOViajero` | Viajero **y** Agente |
+| `POST .../solicitud-cancelacion` (solicitar) | `AgenteOViajero` | Viajero **y** Agente |
+
+Un test estructural en CI verifica que **ningún** endpoint de negocio quede sin policy (secure-by-default). El **aislamiento por datos** entre agentes (un agente no toca lo de otro) es la Story 6.3 — ortogonal al rol.
+
 ## Pruebas
 
 - **TDD obligatorio** (Red → Green → Refactor) en el flujo crítico: *cálculo de precio* y *creación de reserva con anti-overbooking*.

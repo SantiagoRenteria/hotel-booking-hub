@@ -17,7 +17,7 @@ public sealed class HabitacionTests(SqlServerFixture fixture)
     private async Task<Guid> CrearHotelAsync()
     {
         await using var db = fixture.CrearContexto();
-        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado);
+        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
         await new HotelRepository(db).CrearAsync(hotel, CancellationToken.None);
         return hotel.Id;
     }

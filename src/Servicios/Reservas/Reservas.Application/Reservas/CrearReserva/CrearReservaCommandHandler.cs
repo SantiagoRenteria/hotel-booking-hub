@@ -36,11 +36,11 @@ public sealed class CrearReservaCommandHandler(
         var estancia = Estancia.Crear(request.Entrada, request.Salida);
         var precioTotal = calculadorPrecio.Calcular(habitacion.CostoBase, habitacion.Impuesto, estancia);
 
-        // VOs de dominio (defensa en profundidad). Persistir huéspedes/contacto en el agregado se difiere.
+        // VOs de dominio (defensa en profundidad). Story 3.3: se PERSISTEN en el agregado (antes se descartaban).
         var huespedes = request.Huespedes.Select(MapearHuesped).ToList();
-        _ = ContactoEmergencia.Crear(request.ContactoEmergencia.NombreCompleto, request.ContactoEmergencia.Telefono);
+        var contacto = ContactoEmergencia.Crear(request.ContactoEmergencia.NombreCompleto, request.ContactoEmergencia.Telefono);
 
-        var reserva = Reserva.Crear(habitacion.Id, estancia);
+        var reserva = Reserva.Crear(habitacion.Id, estancia, huespedes, contacto, request.AgenteEmail, precioTotal);
         repositorio.Agregar(reserva);
 
         var principal = huespedes[0];
