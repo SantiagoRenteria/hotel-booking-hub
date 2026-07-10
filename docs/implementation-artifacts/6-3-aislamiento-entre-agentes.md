@@ -1,6 +1,10 @@
 # Story 6.3: Aislamiento entre agentes
 
-Status: ready-for-dev
+---
+baseline_commit: ed9cfdd18d45713956bc51d67dc0e47ccf3f9b2a
+---
+
+Status: in-progress
 
 <!-- Generado por bmad-create-story (modo autónomo, Épica 6). Complejidad ALTA → candidata a BDD
 (Given/When/Then) además de TDD: cruza frontera BC (Reservas ya aísla por AgenteEmail; Hoteles NO tiene
