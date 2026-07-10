@@ -35,5 +35,6 @@
     <Project Path="tests/Comun.Web.UnitTests/Comun.Web.UnitTests.csproj" />
     <Project Path="tests/Notificaciones.UnitTests/Notificaciones.UnitTests.csproj" />
     <Project Path="tests/Notificaciones.IntegrationTests/Notificaciones.IntegrationTests.csproj" />
+    <Project Path="tests/Seguridad.FunctionalTests/Seguridad.FunctionalTests.csproj" />
   </Folder>
 </Solution>

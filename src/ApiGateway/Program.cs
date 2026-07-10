@@ -16,3 +16,6 @@ app.MapDefaultEndpoints();
 app.MapReverseProxy();
 
 app.Run();
+
+// Expone la clase Program para WebApplicationFactory (tests funcionales de autenticación, Story 6.1).
+public partial class Program;
