@@ -4,7 +4,7 @@
 baseline_commit: 1c3e3a5adb6ee55930e10c7786f24e9c2d44577d
 ---
 
-Status: in-progress
+Status: done
 
 <!-- Generado por bmad-create-story (modo autónomo, Épica 6). Complejidad NORMAL-ALTA en superficie pero
 mayormente CONFIGURACIÓN + DOCUMENTACIÓN (varias prácticas ya existen del trabajo previo). Diferenciador ·
@@ -66,12 +66,12 @@ para **demostrar seguridad proporcional y verificable**.
 
 _Code review 2026-07-10 (3 capas). Auditor: CUMPLE (checkboxes honestos). Blind+Edge: hallazgos operativos del rate limiter. 6 patch · 0 defer. Aplicados vía `/bmad-agent-dev` (Paso 4)._
 
-- [ ] **[Review][Patch] Partición del rate limiter por IP colapsa tras el ingress** (ALTA, `blind+edge`) — `Connection.RemoteIpAddress` es la IP del ingress (ACA), no del cliente; sin `UseForwardedHeaders` todos comparten una partición → cupo global + brute-force no mitigado por cliente. Fix: `UseForwardedHeaders` (XForwardedFor|XForwardedProto) antes de `UseRateLimiter` (también hace que `Request.IsHttps` sea real → HSTS efectivo). `[ApiGateway/Program.cs]`
-- [ ] **[Review][Patch] `/health`/`/alive` bajo el limitador global → sondas 429 → reinicios** (BAJA/operativo ALTA, `blind+edge`) — el `GlobalLimiter` cubre los health checks. Fix: `GetNoLimiter` para `/health` y `/alive` en la función de partición. `[ApiGateway/Program.cs]`
-- [ ] **[Review][Patch] 429 sin cuerpo Problem Details ni `Retry-After`** (MEDIA, `blind+edge`) — solo se fija `RejectionStatusCode`; cuerpo vacío, incoherente con el 401/403 del sistema. Fix: `OnRejected` escribe `application/problem+json` (status 429) + `Retry-After`. `[ApiGateway/Program.cs]`
-- [ ] **[Review][Patch] `PermitLimit`/`WindowSeconds` ≤ 0 no validados** (MEDIA, `blind+edge`) — el `?? default` no cubre 0/negativo; `SlidingWindowRateLimiterOptions` lanza en la 1ª petición → 500. Fix: validar > 0 al arrancar (fail-fast). `[ApiGateway/Program.cs]`
-- [ ] **[Review][Patch] Endurecer HSTS + aserción de test débil** (BAJA, `blind`) — HSTS por defecto (30d, sin subdominios); el test solo asevera `!=429`. Fix: `HstsOptions` (IncludeSubDomains + max-age más largo); el test asevera 2xx en las peticiones que pasan. `[ApiGateway/Program.cs, RateLimitGatewayTests.cs]`
-- [ ] **[Review][Patch] Precisión documental** (BAJA, `auditor`) — 14 (no 12) `AbstractValidator`; "0 `FromSqlRaw`/`ExecuteSql` **en producción**" (hay 3 en tests de limpieza, SQL estático); dejar explícito que `Cors:AllowedOrigins: []` vacío es intencional (se puebla por entorno). `[security-and-quality.md]`
+- [x] **[Review][Patch] Partición del rate limiter por IP colapsa tras el ingress** (ALTA, `blind+edge`) — `Connection.RemoteIpAddress` es la IP del ingress (ACA), no del cliente; sin `UseForwardedHeaders` todos comparten una partición → cupo global + brute-force no mitigado por cliente. Fix: `UseForwardedHeaders` (XForwardedFor|XForwardedProto) antes de `UseRateLimiter` (también hace que `Request.IsHttps` sea real → HSTS efectivo). `[ApiGateway/Program.cs]`
+- [x] **[Review][Patch] `/health`/`/alive` bajo el limitador global → sondas 429 → reinicios** (BAJA/operativo ALTA, `blind+edge`) — el `GlobalLimiter` cubre los health checks. Fix: `GetNoLimiter` para `/health` y `/alive` en la función de partición. `[ApiGateway/Program.cs]`
+- [x] **[Review][Patch] 429 sin cuerpo Problem Details ni `Retry-After`** (MEDIA, `blind+edge`) — solo se fija `RejectionStatusCode`; cuerpo vacío, incoherente con el 401/403 del sistema. Fix: `OnRejected` escribe `application/problem+json` (status 429) + `Retry-After`. `[ApiGateway/Program.cs]`
+- [x] **[Review][Patch] `PermitLimit`/`WindowSeconds` ≤ 0 no validados** (MEDIA, `blind+edge`) — el `?? default` no cubre 0/negativo; `SlidingWindowRateLimiterOptions` lanza en la 1ª petición → 500. Fix: validar > 0 al arrancar (fail-fast). `[ApiGateway/Program.cs]`
+- [x] **[Review][Patch] Endurecer HSTS + aserción de test débil** (BAJA, `blind`) — HSTS por defecto (30d, sin subdominios); el test solo asevera `!=429`. Fix: `HstsOptions` (IncludeSubDomains + max-age más largo); el test asevera 2xx en las peticiones que pasan. `[ApiGateway/Program.cs, RateLimitGatewayTests.cs]`
+- [x] **[Review][Patch] Precisión documental** (BAJA, `auditor`) — 14 (no 12) `AbstractValidator`; "0 `FromSqlRaw`/`ExecuteSql` **en producción**" (hay 3 en tests de limpieza, SQL estático); dejar explícito que `Cors:AllowedOrigins: []` vacío es intencional (se puebla por entorno). `[security-and-quality.md]`
 
 _Verificados y DESESTIMADOS por los revisores: sin flakiness entre factories, smoke de CI intacto (retry-on-failure), no se añadió `UseHttpsRedirection` (HTTP local OK), orden CORS/auth válido, allowlist vacía = secure default._
 
@@ -150,7 +150,7 @@ claude-opus-4-8 (bmad-dev-story, modo autónomo).
 ### File List
 
 **Producción (modificados):**
-- `src/ApiGateway/Program.cs` (`AddRateLimiter` sliding window + 429; `UseHsts` no-dev; CORS allowlist explícita)
+- `src/ApiGateway/Program.cs` (`AddRateLimiter` sliding window + 429; `UseHsts` no-dev; CORS allowlist explícita; **review:** `UseForwardedHeaders`, exención de health, `OnRejected` Problem Details+Retry-After, validación fail-fast, `AddHsts` IncludeSubDomains)
 - `src/ApiGateway/appsettings.json` (secciones `RateLimit` + `Cors`)
 
 **Docs (modificados):**
@@ -161,4 +161,5 @@ claude-opus-4-8 (bmad-dev-story, modo autónomo).
 
 ### Change Log
 
-- 2026-07-10 — Story 6.4 implementada. Endurecimiento OWASP: rate limiting (Gateway, 429) + HSTS + CORS allowlist (código); anti-inyección/validación/secretos verificados (existentes); mapeo de 8 prácticas → OWASP Top 10 con evidencia en `security-and-quality.md`. TLS/logger dedicado/cifrado PII = readiness/F2 documentado (alcance party-mode, no gold-plating). Suite 427 tests en verde.
+- 2026-07-10 — Story 6.4 implementada. Endurecimiento OWASP: rate limiting (Gateway, 429) + HSTS + CORS allowlist (código); anti-inyección/validación/secretos verificados; mapeo de 8 prácticas → OWASP Top 10 con evidencia. TLS/logger dedicado/cifrado PII = readiness/F2 (alcance party-mode).
+- 2026-07-10 — Code review (3 capas): Auditor CUMPLE (checkboxes honestos). 6 patch aplicados: `UseForwardedHeaders`, health exento del limitador, 429 Problem Details + Retry-After, validación fail-fast, HSTS IncludeSubDomains, precisión documental. Suite 427 tests en verde.

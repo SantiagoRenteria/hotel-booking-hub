@@ -39,15 +39,23 @@ public class RateLimitGatewayTests(RateLimitGatewayTests.LimiteBajoFactory facto
     {
         var cliente = factory.CreateClient();
 
-        // Las primeras `Cupo` peticiones pasan el limitador (health es anónimo; el limitador corre antes de auth).
+        // Se usa una ruta de negocio (no /health, que está EXENTO del limitador). Sin token → 401, pero el
+        // limitador corre ANTES de la autenticación, así que las primeras `Cupo` no son 429 y la siguiente sí.
+        const string ruta = "/api/v1/reservas";
         for (var i = 0; i < LimiteBajoFactory.Cupo; i++)
         {
-            var ok = await cliente.GetAsync("/health");
-            Assert.NotEqual(HttpStatusCode.TooManyRequests, ok.StatusCode);
+            var permitida = await cliente.GetAsync(ruta);
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, permitida.StatusCode);
         }
 
-        // La siguiente excede la ventana → 429.
-        var exceso = await cliente.GetAsync("/health");
+        // La siguiente excede la ventana → 429 con Problem Details.
+        var exceso = await cliente.GetAsync(ruta);
         Assert.Equal(HttpStatusCode.TooManyRequests, exceso.StatusCode);
+        Assert.Equal("application/problem+json", exceso.Content.Headers.ContentType?.MediaType);
+        Assert.True(exceso.Headers.Contains("Retry-After"));
+
+        // Control: /health está EXENTO del limitador aunque se haya superado el cupo.
+        var salud = await cliente.GetAsync("/health");
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, salud.StatusCode);
     }
 }
