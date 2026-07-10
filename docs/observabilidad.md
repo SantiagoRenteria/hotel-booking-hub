@@ -42,6 +42,22 @@ Verificación determinista con `ActivityListener` en memoria (sin dashboard):
 - `tests/Hoteles.UnitTests/Observabilidad/TrazaPipelineTests.cs` — el pipeline REAL (`AddMediatorPipeline`) emite el span de negocio (prueba el cableado en `RegistroMediador`).
 - `tests/Notificaciones.UnitTests/CorrelacionTrazaTests.cs` — el span del consumidor cuelga del mismo `trace-id` del envelope (32 hex o `traceparent` completo), y es tolerante a `trace-id` ausente.
 
+## Métricas de duración p95/p99 por endpoint (Épica 7, FR-26)
+
+- **Histograma por endpoint:** la instrumentación `AddAspNetCoreInstrumentation` de métricas (en `ServiceDefaults`, desde E1) emite `http.server.request.duration` (meter `Microsoft.AspNetCore.Hosting`) con dimensión por **ruta** (`http.route`) + método + código de estado. La dimensión por ruta plantilla (no URL con ids) mantiene la cardinalidad controlada y hace comparables los percentiles entre endpoints.
+- **p95/p99:** son percentiles derivados del histograma; el dashboard de Aspire los calcula y muestra por serie (endpoint). No se instrumenta un `Meter` de negocio extra: el histograma HTTP ya cubre FR-26 sin duplicar señal.
+- **Alcance (party-mode: Winston):** se **instrumenta y evidencia**; **no** se monta un load test dedicado (k6) para *validar* percentiles bajo carga — sería over-engineering para la prueba. La carga concurrente del **money test G1** (`Reservas.IntegrationTests`) basta como fuente de tráfico.
+- **Health fuera de las series de negocio:** las sondas `/health`/`/alive` quedan en su propia serie de ruta, **separable** de los endpoints `api/v1` (no distorsionan los percentiles de negocio).
+
+### Prueba automatizada (gate de CI)
+
+- `tests/Reservas.FunctionalTests/MetricasDuracionTests.cs` — con un `MeterListener` en memoria sobre `http.server.request.duration`, verifica que tras ejercer ≥2 endpoints hay mediciones **segmentadas por ruta** (≥2 rutas de negocio distintas, una de ellas `reservas`) y que las sondas de salud **no** se atribuyen a rutas de negocio. La no-paralelización del ensamblado (`AssemblyInfo.cs`) aísla el listener process-wide de otras clases de test HTTP.
+
+### Reproducir p95/p99 en el dashboard (evidencia manual)
+
+1. Levantar el `AppHost` (ver abajo) y generar tráfico (ejercer endpoints o correr el money test G1).
+2. Dashboard de Aspire → pestaña **Metrics** → recurso del servicio → `http.server.request.duration`: ver el histograma por `http.route` y los percentiles (p95/p99) por endpoint; comparar la latencia de la búsqueda vs. otros endpoints (vigilancia de G7/NFR-1).
+
 ## Reproducir la traza en el dashboard de Aspire (evidencia manual)
 
 1. `dotnet run --project src/AppHost/AppHost` (requiere Docker para SQL/Redis/RabbitMQ). Aspire inyecta `OTEL_EXPORTER_OTLP_ENDPOINT` y expone el dashboard.
