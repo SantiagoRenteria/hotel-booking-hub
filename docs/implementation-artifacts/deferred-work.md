@@ -2,6 +2,10 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: code review of story-7.1 (2026-07-10)
+
+- **Parent con span-id sintético → posible nodo huérfano en el waterfall** (blind, BAJA) — cuando la correlación se hace desde un trace-id de 32 hex (caso real de todos los emisores actuales), `ActividadHotelBookingHub.ContextoDesde` fabrica un `ActivityContext` con un `SpanId` **aleatorio**. El span del consumidor agrupa por `TraceId` correctamente, pero su `ParentSpanId` apunta a un span inexistente → algunos backends (Jaeger/Tempo/Aspire) pueden renderizarlo como nodo huérfano en vez de colgarlo del span originante. Consecuencia directa del transporte Dapr diferido: al cablear Dapr, el sidecar propaga el `traceparent` completo (con el span-id padre real) y el nodo cuelga limpiamente. `[Comun/Observabilidad/ActividadHotelBookingHub.cs]`
+
 ## Deferred from: Story 7.1 (traza distribuida, 2026-07-10)
 
 - **Salto físico por sidecar Dapr no cableado (propagación de `traceparent` en el CloudEvent)** (alcance, informativo) — el transporte Dapr pub/sub sigue diferido en todo el sistema (E1/E5): el publicador es `PublicadorEventosLog` (placeholder) y el `Worker` no tiene suscripción de transporte real. La correlación asíncrona de 7.1 se hace **Dapr-ready** por el `trace-id` de negocio del envelope (span de consumidor bajo la misma traza), pero el `traceparent` completo (con el span-id padre real) no viaja hasta que se cablee Dapr. Al cablear Dapr, el sidecar propaga el `traceparent` en el CloudEvent y la correlación manual de `DespachadorNotificaciones`/`ActividadHotelBookingHub.IniciarConsumo` se puede retirar. `[Notificaciones.Worker/Notificaciones/DespachadorNotificaciones.cs, Comun/Observabilidad/ActividadHotelBookingHub.cs]`

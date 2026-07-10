@@ -3,7 +3,7 @@ baseline_commit: 0740d9b7ee6a5e575f89050d522beb3e0c374ecb
 ---
 # Story 7.1: Traza distribuida propagada extremo a extremo
 
-Status: review
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -130,6 +130,18 @@ para **localizar el span exacto donde algo falla**.
 - [Source: docs/implementation-artifacts/epic-6-retro-2026-07-10.md] — preparación E7, deuda diferida, lecciones de proceso.
 - [Source: src/AppHost/ServiceDefaults/Extensions.cs] — configuración OTel actual (gap: falta `AddSource("HotelBookingHub")`).
 - [Source: src/Comun/HotelBookingHub.Comun/Eventos/EventoIntegracion.cs] — envelope con `TraceId` de negocio.
+
+### Review Findings
+
+_Code review adversarial de 3 capas (Blind Hunter · Edge Case Hunter · Acceptance Auditor), 2026-07-10. 4 patch, 1 defer, 5 dismiss (2 refutados por verificación contra el código real)._
+
+- [ ] [Review][Patch] Tests de tracing flaky: `ActivityListener` process-wide + `Assert.Single` → carrera con `DespachadorNotificacionesTests` (clases en paralelo, mismo ensamblado, listener global captura spans ajenos). Filtrar la aserción por un discriminador único (trace-id/DisplayName por test). [tests/Notificaciones.UnitTests/CorrelacionTrazaTests.cs, tests/Comun.Web.UnitTests/Observabilidad/TracingBehaviorTests.cs]
+- [ ] [Review][Patch] `TracingBehavior` marca `OperationCanceledException` como span `Error` (aborto de cliente/shutdown se ve como fallo del servidor; incoherente con el worker que la excluye). Añadir `when (ex is not OperationCanceledException)`. [src/Comun/HotelBookingHub.Comun/Mensajeria/Behaviors/TracingBehavior.cs]
+- [ ] [Review][Patch] Asimetría de flags W3C en `ContextoDesde`: la rama `traceparent` conserva la flag entrante (un `00`/no-muestreado → el span del consumidor no se muestrea en prod y se pierde en silencio), mientras la rama 32-hex fuerza `Recorded`. Normalizar ambas a `Recorded` + `isRemote: true` (padre vino "por el cable"). [src/Comun/HotelBookingHub.Comun/Observabilidad/ActividadHotelBookingHub.cs]
+- [ ] [Review][Patch] AC-E7.1.4 incompleto en el salto asíncrono: el span del consumidor hace `SetStatus(Error)` pero NO `AddException` (el tipo de excepción no se graba); el test del behavior solo verifica `Status`, no la excepción; y ningún test ejercita el fallo del consumidor. Añadir `AddException` al consumidor + reforzar el test del behavior + test de fallo del consumidor. [src/Servicios/Notificaciones/Notificaciones.Worker/Notificaciones/DespachadorNotificaciones.cs, tests/Comun.Web.UnitTests/Observabilidad/TracingBehaviorTests.cs]
+- [x] [Review][Defer] Parent con span-id sintético (aleatorio) → el span del consumidor puede renderizarse como nodo huérfano en el waterfall (agrupa por trace-id, pero el parent-span-id no existe) — deferred, es consecuencia directa del transporte Dapr diferido (el sidecar aportaría el traceparent completo). [src/Comun/HotelBookingHub.Comun/Observabilidad/ActividadHotelBookingHub.cs]
+
+**Dismiss (no accionables):** catch estrecho de `ContextoDesde` (refutado: todo input inválido lanza `ArgumentOutOfRangeException` → null, verificado empíricamente); validación 4xx como Error (refutado: `ValidationBehavior` devuelve `Result.Invalido`, no lanza); trace-id en mayúsculas (latente, emisores usan minúsculas, fallback seguro a span raíz); negocio≠técnico documental (por diseño); rama `traceparent` sin emisor real (defensivo).
 
 ## Dev Agent Record
 
