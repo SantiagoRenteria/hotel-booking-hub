@@ -105,6 +105,9 @@ public static class AutenticacionJwtExtensions
             .AddJwtBearer(bearer =>
             {
                 bearer.TokenValidationParameters = parametros;
+                // Desactiva el mapeo legacy de claims (que reescribiría "role"→URI larga de ClaimTypes.Role y
+                // rompería RequireRole con RoleClaimType="role"). Así sub/email/role quedan tal cual vienen.
+                bearer.MapInboundClaims = false;
                 // El reto por defecto responde 401 con cuerpo vacío; lo reescribimos a Problem Details RFC 7807
                 // para que el contrato de errores sea uniforme con el resto del sistema.
                 bearer.Events = new JwtBearerEvents
