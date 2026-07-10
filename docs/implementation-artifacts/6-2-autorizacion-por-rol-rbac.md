@@ -1,6 +1,10 @@
 # Story 6.2: Autorización por rol (RBAC)
 
-Status: ready-for-dev
+---
+baseline_commit: 07319f08cb67cc248f4a57aad5623d58918e1a63
+---
+
+Status: in-progress
 
 <!-- Generado por bmad-create-story (modo autónomo, Épica 6). Complejidad NORMAL (policies .NET sobre los
 claims que 6.1 dejó en HttpContext.User). TDD con Red→Green visible en el AC negativo (403). Depende de 6.1
