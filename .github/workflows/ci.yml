@@ -66,8 +66,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Crear deploy/.env (secreto efímero de CI)
-        run: echo "MSSQL_SA_PASSWORD=Ci_$(openssl rand -hex 12)!" > deploy/.env
+      - name: Crear deploy/.env (secretos efímeros de CI)
+        run: |
+          echo "MSSQL_SA_PASSWORD=Ci_$(openssl rand -hex 12)!" > deploy/.env
+          # Clave JWT efímera (Story 6.1): los servicios validan la config de forma eager y NO arrancan sin
+          # ella. Generada en tiempo de CI → cero secretos en el repositorio.
+          echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" >> deploy/.env
       - name: docker compose up
         run: docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
       - name: Verificar /health (gateway 8080, hoteles 8081, reservas 8082, notificaciones 8083)

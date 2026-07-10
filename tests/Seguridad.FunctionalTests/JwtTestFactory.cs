@@ -23,6 +23,10 @@ public sealed class JwtTestFactory : WebApplicationFactory<Program>
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
+        // Se usa ConfigureHostConfiguration (no App): la validación EAGER de la clave corre en
+        // AddAutenticacionJwt al construir el host, así que la config debe estar disponible ANTES —
+        // la host-config lo está y, en el host de test, tiene precedencia sobre appsettings.json
+        // (issuer/audience de test ganan de forma determinista).
         builder.ConfigureHostConfiguration(config =>
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
