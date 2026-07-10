@@ -91,7 +91,7 @@ development_status:
   6-2-autorizacion-por-rol-rbac: done
   6-3-aislamiento-entre-agentes: done
   6-4-endurecimiento-owasp: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
 
   # ---- Epic 7: Observabilidad de extremo a extremo ----
   epic-7: backlog
