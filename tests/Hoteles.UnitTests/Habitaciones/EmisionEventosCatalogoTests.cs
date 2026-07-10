@@ -26,7 +26,7 @@ public sealed class EmisionEventosCatalogoTests
     [Fact]
     public async Task Crear_habitacion_emite_HabitacionAgregada_con_version_1()
     {
-        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado);
+        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
         var hoteles = new HotelRepositoryFake { Existente = hotel };
         var habitaciones = new HabitacionRepositoryFake();
         var outbox = new ColaOutboxFake();
@@ -70,7 +70,7 @@ public sealed class EmisionEventosCatalogoTests
         var outbox = new ColaOutboxFake();
         var comando = new EditarHabitacionCommand(habitacion.Id, _rowVersion, "Suite Premium", 150m, 28.5m, "Piso 5", Capacidad: 2);
 
-        await new EditarHabitacionCommandHandler(repo, outbox).Handle(comando, CancellationToken.None);
+        await new EditarHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), outbox).Handle(comando, CancellationToken.None);
 
         var encolado = Assert.Single(outbox.Encolados);
         Assert.Equal(PrecioHabitacionCambiadoV1.Tipo, encolado.Tipo);
@@ -90,7 +90,7 @@ public sealed class EmisionEventosCatalogoTests
         // Cambia tipo/ubicación pero deja costoBase/impuestos idénticos.
         var comando = new EditarHabitacionCommand(habitacion.Id, _rowVersion, "Suite Deluxe", 100m, 19m, "Piso 9", Capacidad: 2);
 
-        await new EditarHabitacionCommandHandler(repo, outbox).Handle(comando, CancellationToken.None);
+        await new EditarHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), outbox).Handle(comando, CancellationToken.None);
 
         Assert.Empty(outbox.Encolados);
     }
@@ -105,7 +105,7 @@ public sealed class EmisionEventosCatalogoTests
         var outbox = new ColaOutboxFake();
         var comando = new CambiarEstadoHabitacionCommand(habitacion.Id, _rowVersion, EstadoHabitacion.Deshabilitada);
 
-        await new CambiarEstadoHabitacionCommandHandler(repo, outbox).Handle(comando, CancellationToken.None);
+        await new CambiarEstadoHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), outbox).Handle(comando, CancellationToken.None);
 
         var encolado = Assert.Single(outbox.Encolados);
         Assert.Equal(HabitacionDeshabilitadaV1.Tipo, encolado.Tipo);
@@ -123,7 +123,7 @@ public sealed class EmisionEventosCatalogoTests
         var outbox = new ColaOutboxFake();
         var comando = new CambiarEstadoHabitacionCommand(habitacion.Id, _rowVersion, EstadoHabitacion.Habilitada);
 
-        await new CambiarEstadoHabitacionCommandHandler(repo, outbox).Handle(comando, CancellationToken.None);
+        await new CambiarEstadoHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), outbox).Handle(comando, CancellationToken.None);
 
         Assert.Empty(outbox.Encolados);
     }
@@ -137,7 +137,7 @@ public sealed class EmisionEventosCatalogoTests
         var outbox = new ColaOutboxFake();
         var comando = new CambiarEstadoHabitacionCommand(habitacion.Id, _rowVersion, EstadoHabitacion.Deshabilitada);
 
-        await new CambiarEstadoHabitacionCommandHandler(repo, outbox).Handle(comando, CancellationToken.None);
+        await new CambiarEstadoHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), outbox).Handle(comando, CancellationToken.None);
 
         Assert.Empty(outbox.Encolados);
     }

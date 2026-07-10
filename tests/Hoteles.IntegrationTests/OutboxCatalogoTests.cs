@@ -32,7 +32,7 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
     private async Task<Guid> CrearHotelAsync()
     {
         await using var db = fixture.CrearContexto();
-        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado);
+        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
         await new HotelRepository(db).CrearAsync(hotel, CancellationToken.None);
         return hotel.Id;
     }
@@ -48,7 +48,7 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
 
     private static async Task<byte[]> EditarPrecioAsync(HotelesDbContext db, Guid id, byte[] rowVersion, decimal costo)
     {
-        var handler = new EditarHabitacionCommandHandler(new HabitacionRepository(db), new ColaOutbox(db));
+        var handler = new EditarHabitacionCommandHandler(new HabitacionRepository(db), new HotelRepository(db), new ColaOutbox(db));
         var r = await handler.Handle(
             new EditarHabitacionCommand(id, rowVersion, "Suite", costo, 19m, "Piso 3", Capacidad: 2), CancellationToken.None);
         return Convert.FromBase64String(r.Valor!.RowVersion);
@@ -116,7 +116,7 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
 
         await using (var db = fixture.CrearContexto(new InterceptorFallaOutbox()))
         {
-            var handler = new EditarHabitacionCommandHandler(new HabitacionRepository(db), new ColaOutbox(db));
+            var handler = new EditarHabitacionCommandHandler(new HabitacionRepository(db), new HotelRepository(db), new ColaOutbox(db));
             var comando = new EditarHabitacionCommand(habId, rowVersion, "Suite", 999m, 99m, "Piso 3", Capacidad: 2); // precio nuevo
             await Assert.ThrowsAnyAsync<Exception>(() => handler.Handle(comando, CancellationToken.None));
         }
@@ -149,7 +149,7 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
             rv = await EditarPrecioAsync(db, habId, rv, 150m); // v2
             rv = await EditarPrecioAsync(db, habId, rv, 175m); // v3
 
-            var estado = new CambiarEstadoHabitacionCommandHandler(new HabitacionRepository(db), new ColaOutbox(db));
+            var estado = new CambiarEstadoHabitacionCommandHandler(new HabitacionRepository(db), new HotelRepository(db), new ColaOutbox(db));
             await estado.Handle(
                 new CambiarEstadoHabitacionCommand(habId, rv, EstadoHabitacion.Deshabilitada), CancellationToken.None); // v4
         }
