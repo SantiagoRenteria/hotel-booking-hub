@@ -106,7 +106,7 @@ development_status:
 
   # ---- Epic 9: Transporte real de eventos entre BCs (cierre de brecha, correct-course 2026-07-10) ----
   epic-9: in-progress
-  9-1-transporte-real-de-eventos-rabbitmq: ready-for-dev
+  9-1-transporte-real-de-eventos-rabbitmq: in-progress
   epic-9-retrospective: optional
 
   # ---- Epic T: Entrega y requisitos transversales (DoD de entrega) ----

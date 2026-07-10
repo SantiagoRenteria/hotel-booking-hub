@@ -12,6 +12,8 @@
   <ItemGroup>
     <!-- SETNX+TTL atómico del inbox de idempotencia (Story 5.1b). -->
     <PackageReference Include="StackExchange.Redis" />
+    <!-- Story 9.1 (ADR-019): consumidor RabbitMQ del transporte real de eventos (local). -->
+    <PackageReference Include="RabbitMQ.Client" />
   </ItemGroup>
 
 </Project>

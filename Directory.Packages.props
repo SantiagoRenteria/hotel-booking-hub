@@ -31,6 +31,8 @@
     <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.9" />
     <!-- Inbox de idempotencia del consumidor (Story 5.1b): SETNX+TTL atómico vía IConnectionMultiplexer. -->
     <PackageVersion Include="StackExchange.Redis" Version="2.7.27" />
+    <!-- Transporte real de eventos local (Story 9.1, ADR-019): RabbitMQ directo detrás de IPublicadorEventos. -->
+    <PackageVersion Include="RabbitMQ.Client" Version="7.1.2" />
     <!-- Aspire ServiceDefaults: resiliencia + service discovery + OpenTelemetry -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.6.0" />
@@ -47,6 +49,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="Testcontainers.MsSql" Version="4.13.0" />
     <PackageVersion Include="Testcontainers.Redis" Version="4.13.0" />
+    <PackageVersion Include="Testcontainers.RabbitMq" Version="4.13.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />

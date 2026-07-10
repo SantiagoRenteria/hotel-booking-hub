@@ -1,6 +1,9 @@
+---
+baseline_commit: 671fb00db9effda4f33aae326a67b4902d71ad21
+---
 # Story 9.1: Transporte real de eventos por RabbitMQ (local)
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
