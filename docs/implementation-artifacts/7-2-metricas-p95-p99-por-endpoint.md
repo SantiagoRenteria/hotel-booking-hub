@@ -1,6 +1,9 @@
+---
+baseline_commit: e51eb2c1d4720aa3e46de69554445e71f8fcb01c
+---
 # Story 7.2: Métricas p95/p99 por endpoint
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -38,22 +41,22 @@ para **detectar degradación de latencia**.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Verificar el histograma de duración por endpoint** (AC: 7.2.1, 7.2.2)
-  - [ ] Confirmar que `AddAspNetCoreInstrumentation()` (ya en `ServiceDefaults/Extensions.cs::ConfigureOpenTelemetry.WithMetrics`) emite `http.server.request.duration` con dimensiones `http.route` / `http.request.method` / `http.response.status_code`.
-  - [ ] Confirmar que la **ruta** (no la URL cruda con ids) es la dimensión → evita explosión de cardinalidad y hace comparables los percentiles por endpoint. Si algún endpoint no expone plantilla de ruta, ajustarlo.
-- [ ] **Task 2 — Percentiles p95/p99 visibles en el dashboard** (AC: 7.2.1)
-  - [ ] Verificar en el dashboard de Aspire que el histograma permite leer p95/p99 por endpoint. Si el dashboard requiere `ExplicitBucketBoundaries` o vista de percentiles configurada, ajustarla en la config de métricas OTel (en `ServiceDefaults`, no por servicio).
-  - [ ] (Opcional, solo si aporta) un `Meter` de negocio `"HotelBookingHub"` para una métrica de dominio puntual (p. ej. duración del handler de búsqueda). **No** duplicar lo que la instrumentación HTTP ya da; añadir solo si hay una degradación de dominio que el histograma HTTP no capture.
-- [ ] **Task 3 — Fuente de tráfico = money test G1** (AC: 7.2.1)
-  - [ ] Reutilizar el test de concurrencia G1 (N reservas concurrentes, ya existente en `Reservas.IntegrationTests`) como generador de carga; **no** crear un load test nuevo (k6). Documentar cómo el operador reproduce la observación.
-- [ ] **Task 4 — Health/aliveness fuera de la métrica de negocio** (AC: 7.2.3)
-  - [ ] Verificar que `/health` y `/alive` no contaminan las series de negocio (ya se excluyen de **trazas**; para **métricas** confirmar el comportamiento y, si aparecen, separarlas por ruta o filtrarlas de forma consistente con el filtro de trazas).
-- [ ] **Task 5 — Tests** (AC: 7.2.1, 7.2.2)
-  - [ ] Test con `MetricCollector<double>` / lector de métricas en memoria de OTel: afirmar que tras N peticiones a ≥2 endpoints se registran mediciones en `http.server.request.duration` **etiquetadas por ruta**, y que hay muestras suficientes para derivar percentiles. Determinista, sin dashboard.
-  - [ ] Test negativo: peticiones a `/health` no aparecen mezcladas en las series de negocio.
-- [ ] **Task 6 — Evidencia y documentación** (AC: 7.2.1)
-  - [ ] Capturar del dashboard de Aspire el histograma con p95/p99 por endpoint (bajo el tráfico de G1) como evidencia del diferenciador. Guardar en `docs/` y referenciar.
-  - [ ] Documentar el alcance honesto: instrumentado + observable; validación bajo carga con k6 **explícitamente fuera de alcance** (decisión Winston), no una omisión.
+- [x] **Task 1 — Verificar el histograma de duración por endpoint** (AC: 7.2.1, 7.2.2)
+  - [x] Confirmado: `AddAspNetCoreInstrumentation()` (ya en `ServiceDefaults`) emite `http.server.request.duration` (meter `Microsoft.AspNetCore.Hosting`) con dimensión `http.route` + método + código. Verificado por test (`MetricasDuracionTests`).
+  - [x] Confirmado que la dimensión es la **ruta plantilla** (`/api/v1/reservas`, `/api/v1/habitaciones/disponibles`), no la URL con query → cardinalidad controlada; percentiles comparables por endpoint.
+- [x] **Task 2 — Percentiles p95/p99 visibles en el dashboard** (AC: 7.2.1)
+  - [x] 📄 El histograma con buckets por defecto de OTel permite derivar p95/p99 en el dashboard de Aspire (pestaña Metrics). **Decisión:** NO se añade `Meter` de negocio ni `ExplicitBucketBoundaries` — el histograma HTTP ya cubre FR-26 sin duplicar señal (evita over-engineering). Documentado en `docs/observabilidad.md`.
+- [x] **Task 3 — Fuente de tráfico = money test G1** (AC: 7.2.1)
+  - [x] 📄 El test automatizado usa endpoints funcionales como fuente de tráfico determinista; el money test G1 (`Reservas.IntegrationTests`) queda documentado como fuente de carga para la observación manual del dashboard. **No** se creó load test k6 (decisión Winston).
+- [x] **Task 4 — Health/aliveness fuera de la métrica de negocio** (AC: 7.2.3)
+  - [x] Verificado por test: las sondas `/health` no se atribuyen a rutas de negocio (`api/v1`) → serie separable. No requirió filtro extra (la dimensión por ruta ya las separa).
+- [x] **Task 5 — Tests** (AC: 7.2.1, 7.2.2, 7.2.3)
+  - [x] `MeterListener` en memoria sobre `http.server.request.duration`: tras ejercer ≥2 endpoints hay mediciones **etiquetadas por ruta** (≥2 rutas de negocio distintas, una `reservas`). Determinista (poll acotado + no-paralelización del ensamblado), sin dashboard. *(Se usó `MeterListener` del runtime en vez de `MetricCollector<T>` para no añadir un paquete NuGet.)*
+  - [x] Test negativo: peticiones a `/health` no se mezclan en las series de negocio.
+- [x] **Task 6 — Evidencia y documentación** (AC: 7.2.1)
+  - [x] `docs/observabilidad.md` ampliado con la sección de métricas p95/p99: histograma por ruta, alcance (sin k6), health separable, test de CI y pasos para reproducir p95/p99 en el dashboard.
+  - [📄] **Captura del dashboard DIFERIDA (no hecha):** la subtarea original pedía "guardar la captura en `docs/`"; requiere levantar el `AppHost` (multi-contenedor Aspire) + navegador, fuera del entorno de CI. En su lugar se dejaron **pasos de reproducción** en `docs/observabilidad.md`. Registrado en `deferred-work.md`. (Honestidad de checkbox, lección retro E6: no marcar `[x]` un entregable no producido.)
+  - [x] Alcance honesto documentado: instrumentado + observable; validación bajo carga con k6 **explícitamente fuera de alcance** (decisión Winston), no una omisión.
 
 ## Dev Notes
 
@@ -98,14 +101,45 @@ para **detectar degradación de latencia**.
 - [Source: src/AppHost/ServiceDefaults/Extensions.cs] — `WithMetrics` con `AddAspNetCoreInstrumentation` (histograma ya emitido).
 - [Source: docs/implementation-artifacts/epic-6-retro-2026-07-10.md] — E7 no bloqueada por 6.x.
 
+### Review Findings
+
+_Code review adversarial de 3 capas (Blind · Edge · Auditor), 2026-07-10. 2 patch, 4 dismiss._
+
+- [x] [Review][Patch] El test `Las_sondas_de_salud_no_contaminan_las_series_de_negocio` no afirmaba positivamente la serie de `/health` y la ausencia global de `api/v1` era vulnerable a contaminación cross-assembly. ✅ Resuelto: ahora afirma por **presencia** que existe la serie con ruta `"/health"` (verificado empíricamente el valor del tag), distinta de las de negocio → separable e inmune a contaminación; `EsperarMedidas` falla con diagnóstico de rutas observadas en timeout. Determinista en 3 corridas. [tests/Reservas.FunctionalTests/MetricasDuracionTests.cs]
+- [x] [Review][Patch] Honestidad de checkbox (Task 6). ✅ Resuelto: la subtarea de **captura** del dashboard se recalificó a `[📄]` DIFERIDA (no hecha) con pasos de reproducción en su lugar; registrado en `deferred-work.md`. [docs/implementation-artifacts/7-2-metricas-p95-p99-por-endpoint.md, docs/implementation-artifacts/deferred-work.md]
+
+**Dismiss (no accionables):** dependencia de que `GET /api/v1/reservas` esté mapeado (verificado: los endpoints existen en `Reservas.Api/Program.cs` y `http.route` se emite aun con 401/5xx); `DisableTestParallelization` a nivel de ensamblado (es el alcance correcto — una colección dedicada no evitaría que otra clase HTTP del mismo ensamblado corra en paralelo y contamine el `MeterListener` process-wide); AC-E7.2.2 solo verifica `http.route` y no método/código (el núcleo "por endpoint" está probado; método/código son dimensiones OTel por defecto); diseño del poll (margen 3s + mensaje en el positivo, defendible).
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-opus-4-8 (Amelia / dev-story, modo autónomo)
 
 ### Debug Log References
 
+- Historia de **verificación + evidencia**: FR-26 ya lo satisface la instrumentación OTel de E1 (`AddAspNetCoreInstrumentation` de métricas); no hubo código de producción nuevo. Por eso no aplica un ciclo Red→Green de lógica: el test es de **caracterización** del comportamiento existente (pasa en verde al escribirse).
+- Flakiness detectada y resuelta durante el desarrollo: el `MeterListener` es process-wide → en la corrida completa capturaba/desincronizaba mediciones de otras clases de test HTTP en paralelo (misma lección del listener de tracing en 7.1). Fix: `[assembly: CollectionBehavior(DisableTestParallelization = true)]` en `Reservas.FunctionalTests` + poll acotado para la ventana de timing cliente/servidor. Verificado determinista en 3 corridas.
+- Suite completa: **437 tests verdes** (+2 de métricas), 0 warnings, build limpio, `dotnet format` limpio.
+
 ### Completion Notes List
 
+- **Sin código de producción:** el histograma `http.server.request.duration` por `http.route` ya lo emite `ServiceDefaults` (E1). La historia lo **verifica** (test) y lo **evidencia** (doc), honrando el alcance de Winston (instrumentar + mostrar, sin k6).
+- **Test determinista:** `MeterListener` del runtime (sin añadir `Microsoft.Extensions.Diagnostics.Testing`); poll acotado; ensamblado no-paralelizado para aislar el listener global.
+- **Decisiones de alcance:** no se añadió `Meter` de negocio ni buckets explícitos (el histograma HTTP basta para FR-26); p95/p99 se derivan en el dashboard de Aspire (evidencia manual documentada); k6 fuera de alcance.
+
 ### File List
+
+**Nuevos**
+- `tests/Reservas.FunctionalTests/MetricasDuracionTests.cs`
+- `tests/Reservas.FunctionalTests/AssemblyInfo.cs`
+
+**Modificados**
+- `docs/observabilidad.md` (sección de métricas p95/p99 por endpoint)
+
+## Change Log
+
+| Fecha | Cambio |
+|---|---|
+| 2026-07-10 | Story 7.2: verificación + evidencia de las métricas p95/p99 por endpoint. Test de caracterización con `MeterListener` (histograma por ruta + health separable), determinista (no-paralelización + poll). Doc de observabilidad ampliada. Sin código de producción (FR-26 ya cubierto por la instrumentación OTel de E1). 437 tests verdes. Status → review. |
+| 2026-07-10 | Code-review adversarial (3 capas): 2 patch aplicados vía agent-dev (test de salud reforzado por presencia de la serie `/health` + diagnóstico de timeout; honestidad de checkbox de la captura diferida), 4 dismiss. Determinista 3/3, format limpio. Status → done. |
