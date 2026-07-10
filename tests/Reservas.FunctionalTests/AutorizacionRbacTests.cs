@@ -19,11 +19,16 @@ public class AutorizacionRbacTests(ReservasApiFactory factory) : IClassFixture<R
         "/api/v1/habitaciones/disponibles?ciudad=Bogota&entrada=2026-08-01&salida=2026-08-03&huespedes=2";
 
     [Fact]
-    public async Task Viajero_en_endpoint_SoloAgente_responde_403()
+    public async Task Viajero_en_endpoint_SoloAgente_responde_403_con_problem_details()
     {
         var respuesta = await Get(RutaSoloAgente, TokenDePrueba.RolViajero);
 
         Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
+        // AC-E6.2.1: el cuerpo del 403 es Problem Details RFC 7807 (no vacío).
+        Assert.Equal("application/problem+json", respuesta.Content.Headers.ContentType?.MediaType);
+        var cuerpo = await respuesta.Content.ReadAsStringAsync();
+        Assert.Contains("\"status\":403", cuerpo);
+        Assert.Contains("traceId", cuerpo);
     }
 
     [Fact]
@@ -48,6 +53,23 @@ public class AutorizacionRbacTests(ReservasApiFactory factory) : IClassFixture<R
     public async Task Viajero_en_endpoint_AgenteOViajero_no_es_rechazado_por_autorizacion()
     {
         var respuesta = await Get(RutaAgenteOViajero, TokenDePrueba.RolViajero);
+
+        Assert.NotEqual(HttpStatusCode.Unauthorized, respuesta.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Forbidden, respuesta.StatusCode);
+    }
+
+    [Fact]
+    public async Task Agente_en_endpoint_SoloAgente_pasa_la_autorizacion()
+    {
+        // Rol correcto (Agente) en un endpoint SoloAgente. Se envía X-Agente para pasar el fail-closed del
+        // aislamiento (Story 3.3, aún vía header hasta 6.3) y aislar así la señal del RBAC: si el RBAC
+        // rechazara, sería 403 aquí; como pasa, el handler llega a la BD ficticia → 5xx (NO 401/403).
+        var cliente = factory.CreateClient();
+        cliente.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", TokenDePrueba.Emitir(rol: TokenDePrueba.RolAgente));
+        cliente.DefaultRequestHeaders.Add("X-Agente", "agente@ejemplo.com");
+
+        var respuesta = await cliente.GetAsync(RutaSoloAgente);
 
         Assert.NotEqual(HttpStatusCode.Unauthorized, respuesta.StatusCode);
         Assert.NotEqual(HttpStatusCode.Forbidden, respuesta.StatusCode);

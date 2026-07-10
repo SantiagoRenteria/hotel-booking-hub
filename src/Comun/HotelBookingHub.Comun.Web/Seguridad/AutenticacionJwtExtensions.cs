@@ -112,11 +112,26 @@ public static class AutenticacionJwtExtensions
                 // para que el contrato de errores sea uniforme con el resto del sistema.
                 bearer.Events = new JwtBearerEvents
                 {
+                    // 401 (no autenticado): el reto por defecto trae cuerpo vacío → Problem Details RFC 7807.
                     OnChallenge = async contexto =>
                     {
                         contexto.HandleResponse();
-                        await EscribirProblemDetails401(contexto.HttpContext);
+                        await EscribirProblemDetails(
+                            contexto.HttpContext,
+                            StatusCodes.Status401Unauthorized,
+                            "No autenticado",
+                            "Se requiere un token JWT válido (issuer, audience, expiración y firma).",
+                            retoBearer: true);
                     },
+                    // 403 (autenticado, sin permiso): el forbid por defecto también trae cuerpo vacío. Simétrico
+                    // al 401 para que el RBAC (Story 6.2) responda el mismo contrato de error uniforme.
+                    OnForbidden = async contexto =>
+                        await EscribirProblemDetails(
+                            contexto.HttpContext,
+                            StatusCodes.Status403Forbidden,
+                            "Prohibido",
+                            "No tiene permiso para realizar esta operación con su rol actual.",
+                            retoBearer: false),
                 };
             });
 
@@ -124,7 +139,7 @@ public static class AutenticacionJwtExtensions
         return servicios;
     }
 
-    private static async Task EscribirProblemDetails401(HttpContext contexto)
+    private static async Task EscribirProblemDetails(HttpContext contexto, int status, string title, string detail, bool retoBearer)
     {
         var respuesta = contexto.Response;
         // Si otro middleware ya inició la respuesta, no podemos reescribir StatusCode/headers.
@@ -133,16 +148,20 @@ public static class AutenticacionJwtExtensions
             return;
         }
 
-        respuesta.StatusCode = StatusCodes.Status401Unauthorized;
-        respuesta.Headers.WWWAuthenticate = "Bearer";
+        respuesta.StatusCode = status;
+        if (retoBearer)
+        {
+            respuesta.Headers.WWWAuthenticate = "Bearer";
+        }
+
         respuesta.ContentType = "application/problem+json";
 
         var problema = new
         {
             type = "https://datatracker.ietf.org/doc/html/rfc7807",
-            title = "No autenticado",
-            status = StatusCodes.Status401Unauthorized,
-            detail = "Se requiere un token JWT válido (issuer, audience, expiración y firma).",
+            title,
+            status,
+            detail,
             instance = contexto.Request.Path.Value,
             // Correlación con el resto del contrato de errores del sistema (W3C Trace Context).
             traceId = Activity.Current?.Id ?? contexto.TraceIdentifier,

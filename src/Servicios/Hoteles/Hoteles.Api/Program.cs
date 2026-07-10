@@ -11,6 +11,7 @@ using Hoteles.Application.Hoteles.EliminarHotel;
 using Hoteles.Domain.Habitaciones;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Infrastructure;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -78,7 +79,7 @@ app.MapPut("/api/v1/hoteles/{id:guid}", async (Guid id, EditarHotelCommand coman
 
 // CAP-1 · Eliminar hotel — baja lógica (AC-E2.2.2). El rowVersion (cuerpo) arbitra la concurrencia. 204 al
 // eliminar; 404 si no existe o ya estaba eliminado; 409 si pierde una carrera contra otra edición/baja.
-app.MapDelete("/api/v1/hoteles/{id:guid}", async (Guid id, EliminarHotelCommand comando, ISender sender, CancellationToken ct) =>
+app.MapDelete("/api/v1/hoteles/{id:guid}", async (Guid id, [FromBody] EliminarHotelCommand comando, ISender sender, CancellationToken ct) =>
     {
         var resultado = await sender.Send(comando with { Id = id }, ct);
         return resultado.ToNoContentResult();
@@ -147,3 +148,6 @@ app.MapPost("/api/v1/habitaciones/{id:guid}/deshabilitar", async (Guid id, Cambi
     .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
 
 app.Run();
+
+// Expone la clase Program para WebApplicationFactory (test de cobertura RBAC, Story 6.2).
+public partial class Program;
