@@ -4,7 +4,7 @@
 baseline_commit: 1c3e3a5adb6ee55930e10c7786f24e9c2d44577d
 ---
 
-Status: review
+Status: in-progress
 
 <!-- Generado por bmad-create-story (modo autónomo, Épica 6). Complejidad NORMAL-ALTA en superficie pero
 mayormente CONFIGURACIÓN + DOCUMENTACIÓN (varias prácticas ya existen del trabajo previo). Diferenciador ·
@@ -61,6 +61,19 @@ para **demostrar seguridad proporcional y verificable**.
 - [x] **Task 8 — Verificar gate de CI (AC: 2)**
   - [x] gitleaks + SAST en verde con `0` secretos y `0` críticos; añadir cualquier práctica testeable al pipeline.
 - [x] **Task 9 — Commits en rama `feature/6-4-endurecimiento-owasp` + PR a `develop`** (autor Santiago Renteria; sin trailers; `dotnet format`).
+
+### Review Findings
+
+_Code review 2026-07-10 (3 capas). Auditor: CUMPLE (checkboxes honestos). Blind+Edge: hallazgos operativos del rate limiter. 6 patch · 0 defer. Aplicados vía `/bmad-agent-dev` (Paso 4)._
+
+- [ ] **[Review][Patch] Partición del rate limiter por IP colapsa tras el ingress** (ALTA, `blind+edge`) — `Connection.RemoteIpAddress` es la IP del ingress (ACA), no del cliente; sin `UseForwardedHeaders` todos comparten una partición → cupo global + brute-force no mitigado por cliente. Fix: `UseForwardedHeaders` (XForwardedFor|XForwardedProto) antes de `UseRateLimiter` (también hace que `Request.IsHttps` sea real → HSTS efectivo). `[ApiGateway/Program.cs]`
+- [ ] **[Review][Patch] `/health`/`/alive` bajo el limitador global → sondas 429 → reinicios** (BAJA/operativo ALTA, `blind+edge`) — el `GlobalLimiter` cubre los health checks. Fix: `GetNoLimiter` para `/health` y `/alive` en la función de partición. `[ApiGateway/Program.cs]`
+- [ ] **[Review][Patch] 429 sin cuerpo Problem Details ni `Retry-After`** (MEDIA, `blind+edge`) — solo se fija `RejectionStatusCode`; cuerpo vacío, incoherente con el 401/403 del sistema. Fix: `OnRejected` escribe `application/problem+json` (status 429) + `Retry-After`. `[ApiGateway/Program.cs]`
+- [ ] **[Review][Patch] `PermitLimit`/`WindowSeconds` ≤ 0 no validados** (MEDIA, `blind+edge`) — el `?? default` no cubre 0/negativo; `SlidingWindowRateLimiterOptions` lanza en la 1ª petición → 500. Fix: validar > 0 al arrancar (fail-fast). `[ApiGateway/Program.cs]`
+- [ ] **[Review][Patch] Endurecer HSTS + aserción de test débil** (BAJA, `blind`) — HSTS por defecto (30d, sin subdominios); el test solo asevera `!=429`. Fix: `HstsOptions` (IncludeSubDomains + max-age más largo); el test asevera 2xx en las peticiones que pasan. `[ApiGateway/Program.cs, RateLimitGatewayTests.cs]`
+- [ ] **[Review][Patch] Precisión documental** (BAJA, `auditor`) — 14 (no 12) `AbstractValidator`; "0 `FromSqlRaw`/`ExecuteSql` **en producción**" (hay 3 en tests de limpieza, SQL estático); dejar explícito que `Cors:AllowedOrigins: []` vacío es intencional (se puebla por entorno). `[security-and-quality.md]`
+
+_Verificados y DESESTIMADOS por los revisores: sin flakiness entre factories, smoke de CI intacto (retry-on-failure), no se añadió `UseHttpsRedirection` (HTTP local OK), orden CORS/auth válido, allowlist vacía = secure default._
 
 ## Dev Notes
 
