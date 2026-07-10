@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AppHost\ServiceDefaults\ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Comun\HotelBookingHub.Comun.Web\HotelBookingHub.Comun.Web.csproj" />
   </ItemGroup>
 
   <ItemGroup>
