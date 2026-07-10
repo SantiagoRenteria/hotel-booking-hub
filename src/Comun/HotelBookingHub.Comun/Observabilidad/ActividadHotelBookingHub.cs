@@ -16,7 +16,46 @@ public static class ActividadHotelBookingHub
 
     /// <summary>
     /// Inicia el span del consumidor de un evento correlacionándolo con la traza originante mediante el
-    /// <c>trace-id</c> de negocio del envelope (STUB — se implementa en la fase verde).
+    /// <c>trace-id</c> de negocio del envelope: el span cuelga de la MISMA traza (mismo <c>TraceId</c> en el
+    /// dashboard). El transporte Dapr está diferido, así que el traceparent completo (con el span-id padre real)
+    /// no viaja; se reconstruye un padre con el trace-id conocido y un span-id sintético. Cuando se cablee Dapr,
+    /// el sidecar propaga el traceparent completo y esta correlación manual es innecesaria.
     /// </summary>
-    public static Activity? IniciarConsumo(string nombre, string? traceIdNegocio) => null;
+    public static Activity? IniciarConsumo(string nombre, string? traceIdNegocio)
+    {
+        var contexto = ContextoDesde(traceIdNegocio);
+        return contexto is { } padre
+            ? Source.StartActivity(nombre, ActivityKind.Consumer, padre)
+            : Source.StartActivity(nombre, ActivityKind.Consumer);
+    }
+
+    /// <summary>
+    /// Reconstruye un <see cref="ActivityContext"/> a partir del valor de correlación del envelope. Acepta tanto
+    /// un <c>traceparent</c> W3C completo (<c>00-&lt;trace&gt;-&lt;span&gt;-&lt;flags&gt;</c>) como un trace-id
+    /// de 32 hex (formato de <c>Activity.TraceId.ToString()</c>). Devuelve <c>null</c> si el valor es vacío o inválido.
+    /// </summary>
+    internal static ActivityContext? ContextoDesde(string? traceIdNegocio)
+    {
+        if (string.IsNullOrWhiteSpace(traceIdNegocio))
+        {
+            return null;
+        }
+
+        // Traceparent W3C completo → se respeta tal cual (trace-id + span-id + flags).
+        if (ActivityContext.TryParse(traceIdNegocio, traceState: null, out var contextoCompleto))
+        {
+            return contextoCompleto;
+        }
+
+        // Trace-id de 32 hex → padre sintético (span-id aleatorio) con flag Recorded para que se muestree.
+        try
+        {
+            var traceId = ActivityTraceId.CreateFromString(traceIdNegocio.AsSpan());
+            return new ActivityContext(traceId, ActivitySpanId.CreateRandom(), ActivityTraceFlags.Recorded);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null; // Ni traceparent ni trace-id de 32 hex → sin correlación (span raíz).
+        }
+    }
 }

@@ -2,6 +2,11 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: Story 7.1 (traza distribuida, 2026-07-10)
+
+- **Salto físico por sidecar Dapr no cableado (propagación de `traceparent` en el CloudEvent)** (alcance, informativo) — el transporte Dapr pub/sub sigue diferido en todo el sistema (E1/E5): el publicador es `PublicadorEventosLog` (placeholder) y el `Worker` no tiene suscripción de transporte real. La correlación asíncrona de 7.1 se hace **Dapr-ready** por el `trace-id` de negocio del envelope (span de consumidor bajo la misma traza), pero el `traceparent` completo (con el span-id padre real) no viaja hasta que se cablee Dapr. Al cablear Dapr, el sidecar propaga el `traceparent` en el CloudEvent y la correlación manual de `DespachadorNotificaciones`/`ActividadHotelBookingHub.IniciarConsumo` se puede retirar. `[Notificaciones.Worker/Notificaciones/DespachadorNotificaciones.cs, Comun/Observabilidad/ActividadHotelBookingHub.cs]`
+- **Evidencia del dashboard de Aspire capturada manualmente, no en CI** (alcance, informativo) — AC-E7.1.1 (propagación HTTP Gateway→servicio) y AC-E7.1.5 (health fuera de la traza) se satisfacen por la instrumentación OTel por defecto (AspNetCore+HttpClient) y el filtro de health ya existente en `ServiceDefaults`; la prueba en CI cubre emisión del span de negocio y correlación asíncrona con `ActivityListener`. La visualización del waterfall multi-servicio requiere levantar el `AppHost` (Docker) y abrir el dashboard — documentada en `docs/observabilidad.md`, no automatizada. `[docs/observabilidad.md]`
+
 ## Deferred from: code review of story-6.2 (2026-07-10)
 
 - **Detalle de reserva `SoloAgente` mientras el Viajero puede crear/solicitar** (blind, MED) — un Viajero que crea una reserva (`AgenteOViajero`) recibe 403 al releerla por `GET /api/v1/reservas/{id}` (`SoloAgente`). Es **per-spec** (FR-13: listado/detalle es capacidad del agente para conciliar comisiones; no hay FR de "viajero consulta su reserva por id" — la recibe en el 201). Sobre-restricción segura, no escalada. Si producto pide una vista de reserva para el viajero, historia propia. `[Reservas.Api/Program.cs]`

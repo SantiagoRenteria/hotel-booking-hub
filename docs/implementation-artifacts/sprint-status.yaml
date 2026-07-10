@@ -95,7 +95,7 @@ development_status:
 
   # ---- Epic 7: Observabilidad de extremo a extremo ----
   epic-7: in-progress
-  7-1-traza-distribuida-propagada-extremo-a-extremo: ready-for-dev
+  7-1-traza-distribuida-propagada-extremo-a-extremo: review
   7-2-metricas-p95-p99-por-endpoint: ready-for-dev
   epic-7-retrospective: optional
 
