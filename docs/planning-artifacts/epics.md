@@ -45,7 +45,7 @@ Este documento fragmenta los requisitos del [PRD](prds/prd-hotel-booking-hub-202
 - **FR-13** — El agente lista las reservas de **sus** hoteles y consulta el detalle completo de cada una; no ve reservas de otros agentes.
 - **FR-14** — **Solicitud de cancelación.** El viajero solicita la cancelación de su propia reserva `Confirmada` con estancia no iniciada; el **agente puede iniciarla en su nombre**. Se registra el **motivo** (categoría + texto libre) y su origen (viajero/agente), la reserva pasa a `CancelacionSolicitada` y se **congela la penalidad sugerida**. Segunda solicitud sobre reserva con solicitud en curso → **409**.
 - **FR-15** — **Política sugerida (default).** Con la fecha de solicitud como referencia: **≥30 días** → **0 %**; **<30 días** → **100 %**. Es sugerencia calculada, no imposición; sin cobro real (monto adeudado).
-- **FR-16** — **Resolución por el agente (discreción, auditada).** Aprobar aplicando la penalidad sugerida, aprobar condonándola, o rechazar. Aprobar → `Cancelada`, **libera slots**, registra **penalidad decidida** (flag default/override) y quién decidió. Rechazar → vuelve a `Confirmada` con motivo, sin liberar slots. Segunda resolución concurrente → **409** (guard + `rowversion`); agente ajeno al hotel → **403**.
+- **FR-16** — **Resolución por el agente (discreción, auditada).** Aprobar aplicando la penalidad sugerida, aprobar condonándola, o rechazar. Aprobar → `Cancelada`, **libera slots**, registra **penalidad decidida** (flag default/override) y quién decidió. Rechazar → vuelve a `Confirmada` con motivo, sin liberar slots. Segunda resolución concurrente → **409** (guard + `rowversion`); agente ajeno al hotel → **403/404** (E6.3 unifica a **404** para no filtrar existencia entre agentes).
 - **FR-17** — **Atajo, ciclo de vida y visibilidad.** El agente puede **solicitar y resolver en una sola operación** (viajero por teléfono), registrando ambos eventos. Ciclo `Confirmada → CancelacionSolicitada → {Cancelada | Confirmada}` con **guards**; solicitudes pendientes exponen su **antigüedad ("días en espera")**, sin expiración automática.
 
 **F4 — Garantía anti-overbooking · CAP-6**
@@ -724,7 +724,7 @@ para **aplicar la penalidad, condonarla o rechazar, liberando inventario cuando 
 **AC-E4.2.4 — Agente ajeno (AC negativo)**
 **Dado** un agente que no es dueño del hotel de la reserva
 **Cuando** intenta resolver
-**Entonces** responde `403`.
+**Entonces** responde `403/404` (Story 6.3 unifica a **404** para no filtrar existencia entre agentes).
 
 ### Story 4.3: Atajo de un paso, ciclo de vida y visibilidad
 
@@ -889,7 +889,7 @@ para **proteger mi operación**.
 **AC-E6.3.2 — Escritura ajena (AC negativo)**
 **Dado** un recurso de otro agente
 **Cuando** intento modificarlo
-**Entonces** responde `403`; el recurso no cambia.
+**Entonces** responde `403/404` (Story 6.3: **404**, no filtra existencia); el recurso no cambia.
 
 ### Story 6.4: Endurecimiento OWASP (8 prácticas)
 

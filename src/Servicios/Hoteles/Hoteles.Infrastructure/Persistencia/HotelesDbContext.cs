@@ -17,6 +17,10 @@ namespace Hoteles.Infrastructure.Persistencia;
 /// </summary>
 public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options, IContextoAgente? contextoAgente = null) : DbContext(options)
 {
+    // ¿Hay costura de identidad inyectada? En el flujo HTTP siempre la hay (registrada en Hoteles.Api) → el
+    // aislamiento está ACTIVO y una identidad ausente NO desactiva el filtro (fail-closed: no casa nada → 404).
+    // El bypass del filtro por propietario aplica SOLO cuando NO hay costura (migraciones/design-time/siembra).
+    private readonly bool _aislamientoActivo = contextoAgente is not null;
     private readonly string? _agenteActual = contextoAgente?.AgenteActual;
 
     public DbSet<Hotel> Hoteles => Set<Hotel>();
@@ -35,10 +39,11 @@ public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options,
             b.Property<byte[]>("RowVersion").IsRowVersion();
 
             // Soft delete (2.2) + aislamiento por propietario (6.3) en el MISMO query filter global. El hotel
-            // eliminado deja de aparecer; el de otro agente es invisible (carga-para-mutar → 404). El guard
-            // `_agenteActual == null` desactiva SOLO el filtro por propietario en contextos sin identidad
-            // (migraciones/design-time/siembra); en el flujo HTTP real el RBAC (6.2) garantiza que hay agente.
-            b.HasQueryFilter(h => !h.Eliminado && (_agenteActual == null || h.AgentePropietario == _agenteActual));
+            // eliminado deja de aparecer; el de otro agente es invisible (carga-para-mutar → 404). Cuando el
+            // aislamiento está ACTIVO (hay costura), una identidad ausente hace fail-closed: `AgentePropietario`
+            // (NOT NULL) nunca es null, así que `== _agenteActual` (null) no casa NADA → no se ve ningún hotel.
+            // El filtro por propietario solo se omite cuando NO hay costura (migraciones/design-time/siembra).
+            b.HasQueryFilter(h => !h.Eliminado && (!_aislamientoActivo || h.AgentePropietario == _agenteActual));
 
             b.Property(h => h.AgentePropietario).IsRequired().HasMaxLength(LongitudesHotel.AgentePropietario);
             b.Property(h => h.Nombre).HasMaxLength(LongitudesHotel.Nombre);

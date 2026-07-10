@@ -4,7 +4,7 @@
 baseline_commit: ed9cfdd18d45713956bc51d67dc0e47ccf3f9b2a
 ---
 
-Status: in-progress
+Status: done
 
 <!-- Generado por bmad-create-story (modo autónomo, Épica 6). Complejidad ALTA → candidata a BDD
 (Given/When/Then) además de TDD: cruza frontera BC (Reservas ya aísla por AgenteEmail; Hoteles NO tiene
@@ -75,8 +75,11 @@ para **proteger mi operación (control de acceso a nivel de DATOS, no solo de ro
   - [x] `SolicitarCancelacion`, `ResolverCancelacion`, `CancelarEnUnPaso`: cargar/filtrar la reserva por
     `IContextoAgente` (reserva ajena → 403/404, sin filtrar existencia). `ResolverCancelacion` ya tiene el guard
     de agente ajeno (AC-E4.2.4) — verificar que ahora la identidad viene del token; extender a solicitar/atajo.
-  - [x] `Iniciador`: derivarlo/validarlo contra el principal autenticado (rol del claim), no aceptarlo del cliente
-    en contradicción con quién está autenticado.
+  - [x] `Iniciador`: **cerrado por análisis (no por código) — corregido en review.** El guard de aislamiento
+    (`reserva.AgenteEmail == agente`) impide que un no-dueño alcance el endpoint (un Viajero cae en 404), así que
+    solo el agente **dueño** llega. Forzar `Iniciador == rol` **rompería FR-14** ("el agente puede iniciar en
+    nombre del viajero" → `Iniciador=Viajero` legítimo con principal Agente). El IDOR (control de acceso) queda
+    cerrado; `Iniciador` es metadato de auditoría declarado por el agente autorizado — no hay contradicción posible.
 - [x] **Task 3 — Aislamiento de Hoteles (AC: 1, 2)** *(según Task 0; si (A))*
   - [x] `AgentePropietario` en `Hotel` + migración EF. `CrearHotel` lo setea desde el claim.
   - [x] Todas las operaciones de Hoteles (editar/eliminar/habilitar/deshabilitar hotel y habitación) filtran/
@@ -91,14 +94,14 @@ para **proteger mi operación (control de acceso a nivel de DATOS, no solo de ro
 
 ### Review Findings
 
-_Code review 2026-07-10 (3 capas). Convergencia fuerte en un fail-open. 6 patch · 4 defer · varios dismiss. Aplicados vía `/bmad-agent-dev` (Paso 4)._
+_Code review 2026-07-10 (3 capas). Convergencia fuerte en un fail-open. 6 patch · 4 defer · varios dismiss. **Los 6 patch aplicados vía `/bmad-agent-dev` — suite 426 tests en verde, `dotnet format` limpio.** Fix clave: query filter fail-**closed** (flag "aislamiento activo"); claim `email` único; honestidad del checkbox `Iniciador` (cerrado por análisis); reconciliación 403/404 en epics.md + deferred-work; test de aislamiento a nivel handler._
 
-- [ ] **[Review][Patch] Query filter de Hoteles falla ABIERTO sin identidad** (ALTA, `blind+edge+auditor` — los 3) — `_agenteActual == null` desactivaba el filtro por propietario; un token con rol `Agente` pero SIN claim `email` (RBAC valida rol, no email) vería/mutaría los hoteles de todos (fail-open, contradice AC-E6.3.3 fail-closed). Fix: filtro **fail-closed** — flag "aislamiento activo" = ¿hay `IContextoAgente` inyectado? En el flujo HTTP (contexto presente) identidad null → `AgentePropietario == null` → no casa nada (404); el bypass queda SOLO para contextos sin costura (migración/design-time/siembra). `[HotelesDbContext.cs]`
-- [ ] **[Review][Patch] Claim `email` ambiguo → toma el primero** (BAJA, `blind+edge`) — el `HttpContextoAgente` retirado trataba multi-valor como ambiguo→null (fail-closed); `ClaimContextoAgente` perdió esa propiedad. Fix: si hay ≠1 claim `email` → null (fail-closed). `[Reservas.Api/ClaimContextoAgente.cs, Hoteles.Api/ClaimContextoAgente.cs]`
-- [ ] **[Review][Patch] Subtask `Iniciador` marcada hecha sin implementar** (ALTA-honestidad, `auditor`) — la Task 2 afirmaba "derivar/validar `Iniciador` contra el principal" pero no se hizo. **Resolución por análisis:** el guard de aislamiento (`reserva.AgenteEmail == agente`) impide que un no-dueño alcance el endpoint, y forzar `Iniciador==rol` **rompería FR-14** ("el agente inicia en nombre del viajero" → `Iniciador=Viajero` legítimo con principal Agente). El IDOR (control de acceso) está cerrado; `Iniciador` es metadato de auditoría declarado por el agente dueño autorizado. Fix: corregir el texto/checkbox de la subtask + `deferred-work.md` (no dejar un `[x]` falso). `[docs]`
-- [ ] **[Review][Patch] Spec auto-contradictoria: 403 vs 404** (MEDIA, `auditor`) — Task 0 (party-mode) eligió 404 para recurso ajeno, pero AC-E4.2.4/AC-E6.3.2/FR-16 en `epics.md` siguen diciendo 403. Fix: reconciliar esos AC/FR a "403/404 (404 elegido en 6.3)". `[epics.md]`
-- [ ] **[Review][Patch] `deferred-work.md` desactualizado** (BAJA, `auditor`) — la entrada "IDOR + Iniciador → Épica 6" no refleja que el IDOR ya se cerró. Fix: re-encuadrar. `[deferred-work.md]`
-- [ ] **[Review][Patch] Tests de aislamiento a nivel repo, no handler** (BAJA, `auditor`) — `AislamientoHotelesTests` verifica `ObtenerAsync`→null, no el 404 vía handler ni la no-mutación tras escritura ajena. Fix: añadir un test a nivel handler (agente B → EditarHotel → 404; hotel de A intacto). `[tests/Hoteles.IntegrationTests]`
+- [x] **[Review][Patch] Query filter de Hoteles falla ABIERTO sin identidad** (ALTA, `blind+edge+auditor` — los 3) — `_agenteActual == null` desactivaba el filtro por propietario; un token con rol `Agente` pero SIN claim `email` (RBAC valida rol, no email) vería/mutaría los hoteles de todos (fail-open, contradice AC-E6.3.3 fail-closed). Fix: filtro **fail-closed** — flag "aislamiento activo" = ¿hay `IContextoAgente` inyectado? En el flujo HTTP (contexto presente) identidad null → `AgentePropietario == null` → no casa nada (404); el bypass queda SOLO para contextos sin costura (migración/design-time/siembra). `[HotelesDbContext.cs]`
+- [x] **[Review][Patch] Claim `email` ambiguo → toma el primero** (BAJA, `blind+edge`) — el `HttpContextoAgente` retirado trataba multi-valor como ambiguo→null (fail-closed); `ClaimContextoAgente` perdió esa propiedad. Fix: si hay ≠1 claim `email` → null (fail-closed). `[Reservas.Api/ClaimContextoAgente.cs, Hoteles.Api/ClaimContextoAgente.cs]`
+- [x] **[Review][Patch] Subtask `Iniciador` marcada hecha sin implementar** (ALTA-honestidad, `auditor`) — la Task 2 afirmaba "derivar/validar `Iniciador` contra el principal" pero no se hizo. **Resolución por análisis:** el guard de aislamiento (`reserva.AgenteEmail == agente`) impide que un no-dueño alcance el endpoint, y forzar `Iniciador==rol` **rompería FR-14** ("el agente inicia en nombre del viajero" → `Iniciador=Viajero` legítimo con principal Agente). El IDOR (control de acceso) está cerrado; `Iniciador` es metadato de auditoría declarado por el agente dueño autorizado. Fix: corregir el texto/checkbox de la subtask + `deferred-work.md` (no dejar un `[x]` falso). `[docs]`
+- [x] **[Review][Patch] Spec auto-contradictoria: 403 vs 404** (MEDIA, `auditor`) — Task 0 (party-mode) eligió 404 para recurso ajeno, pero AC-E4.2.4/AC-E6.3.2/FR-16 en `epics.md` siguen diciendo 403. Fix: reconciliar esos AC/FR a "403/404 (404 elegido en 6.3)". `[epics.md]`
+- [x] **[Review][Patch] `deferred-work.md` desactualizado** (BAJA, `auditor`) — la entrada "IDOR + Iniciador → Épica 6" no refleja que el IDOR ya se cerró. Fix: re-encuadrar. `[deferred-work.md]`
+- [x] **[Review][Patch] Tests de aislamiento a nivel repo, no handler** (BAJA, `auditor`) — `AislamientoHotelesTests` verifica `ObtenerAsync`→null, no el 404 vía handler ni la no-mutación tras escritura ajena. Fix: añadir un test a nivel handler (agente B → EditarHotel → 404; hotel de A intacto). `[tests/Hoteles.IntegrationTests]`
 - [x] **[Review][Defer] Backfill de hoteles legados** (MEDIA, `blind+edge`) — `AgentePropietario=''` en filas previas → invisibles para todo agente (fail-closed, correcto). Greenfield: inocuo. Al desplegar sobre datos existentes: backfill del propietario. Diferido (documentado en `deferred-work.md`).
 - [x] **[Review][Defer] Dependencia del nombre/forma del claim `email` del IdP** (BAJA, `edge`) — un IdP externo (F2) podría emitir `emails`/URI/`preferred_username`. Hoy el emisor propio usa `email`. Al integrar IdP real: mapeo de claims configurable. Diferido.
 - [x] **[Review][Defer] `_agenteActual` capturado en el ctor del DbContext** (BAJA, `blind+edge`) — verificado seguro hoy (DbContext scoped, sin pooling; se resuelve tras `UseAuthentication`). Latente si el pipeline cambiara. Diferido.
@@ -212,4 +215,5 @@ claude-opus-4-8 (bmad-dev-story, modo autónomo). Decisión de diseño vía `/bm
 
 ### Change Log
 
-- 2026-07-10 — Story 6.3 implementada (Opción A, party-mode). Aislamiento entre agentes: identidad desde el claim del token (retira X-Agente); IDOR de cancelación cerrado (404 ajeno); propiedad de Hoteles (`AgentePropietario` + query filter centralizado + migración). Booking cross-BC fuera de alcance. Suite 424 tests en verde. TDD Red→Green visible.
+- 2026-07-10 — Story 6.3 implementada (Opción A, party-mode). Aislamiento entre agentes: identidad desde el claim del token (retira X-Agente); IDOR de cancelación cerrado (404 ajeno); propiedad de Hoteles (`AgentePropietario` + query filter centralizado + migración). Booking cross-BC fuera de alcance. TDD Red→Green visible.
+- 2026-07-10 — Code review (3 capas): convergencia en un fail-open del query filter. 6 patch aplicados vía agent-dev (fail-closed con flag de aislamiento activo; claim `email` único; `Iniciador` cerrado por análisis + honestidad del checkbox; reconciliación 403/404 en epics.md/deferred-work; test de aislamiento a nivel handler). 4 defer (backfill greenfield, dependencia del claim del IdP F2, captura en ctor verificada segura, timing BAJA). Suite 426 tests en verde, `dotnet format` limpio.
