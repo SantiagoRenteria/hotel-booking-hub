@@ -79,6 +79,9 @@ public static class AutenticacionJwtExtensions
             // Allow-list explícita: solo HMAC-SHA256 (defensa contra confusión de algoritmos si el día de
             // mañana se introduce una clave asimétrica; hoy la clave simétrica ya lo acota).
             ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+            // Claim de rol CANÓNICO "role" (corto), coherente con el README y el emisor. Así RequireRole (RBAC,
+            // Story 6.2) lee el claim corto del token en vez de esperar la URI larga de ClaimTypes.Role.
+            RoleClaimType = RolesAplicacion.ClaimRol,
             // Acota la tolerancia de reloj (el default de la librería es 5 min); no la relajamos por encima.
             ClockSkew = TimeSpan.FromMinutes(1),
         };
