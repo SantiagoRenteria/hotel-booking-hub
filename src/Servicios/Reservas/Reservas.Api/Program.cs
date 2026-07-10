@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
+using HotelBookingHub.Comun.Web.Seguridad;
 using Reservas.Api;
 using Reservas.Application.Abstracciones;
 using Reservas.Application.Reservas.BuscarDisponibilidad;
@@ -27,6 +28,10 @@ builder.Services.AddOpenApi();
 // el validator (IsInEnum → 400).
 builder.Services.ConfigureHttpJsonOptions(opciones =>
     opciones.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+// Autenticación JWT (Story 6.1, defensa en profundidad): el servicio valida el token además del Gateway
+// (no confía en un header inyectado como auth). La identidad/rol del claim se usan en 6.2 (RBAC) y 6.3 (aislamiento).
+builder.Services.AddAutenticacionJwt(builder.Configuration);
 
 // Excepciones de negocio → Problem Details RFC 7807 (handler transversal en Comun.Web; overbooking → 409).
 builder.Services.AddManejoExcepcionesNegocio();
@@ -65,6 +70,10 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 
+// Autenticación/autorización (Story 6.1). Va antes de los endpoints de negocio; /health y /alive quedan anónimos.
+app.UseAuthentication();
+app.UseAuthorization();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -82,7 +91,8 @@ app.MapPost("/api/v1/reservas", async (CrearReservaCommand comando, ISender send
         return resultado.ToCreatedResult(dto => $"/api/v1/reservas/{dto.Id}");
     })
     .WithName("CrearReserva")
-    .WithTags("Reservas");
+    .WithTags("Reservas")
+    .RequireAuthorization();
 
 // CAP · Solicitar cancelación con política sugerida (Story 4.1). Transición Confirmada→CancelacionSolicitada:
 // guards de dominio (no elegible/duplicada/estancia iniciada) → 409; la respuesta incluye la penalidad SUGERIDA
@@ -95,7 +105,8 @@ app.MapPost("/api/v1/reservas/{id:guid}/solicitud-cancelacion", async (
         return resultado.ToOkResult();
     })
     .WithName("SolicitarCancelacion")
-    .WithTags("Reservas");
+    .WithTags("Reservas")
+    .RequireAuthorization();
 
 // CAP · Resolver cancelación (Story 4.2): el agente aprueba (aplicando/condonando la penalidad congelada) o
 // rechaza (con motivo). Aprobar libera el inventario. Identidad del agente server-side (aislamiento → 403 ajeno);
@@ -108,7 +119,8 @@ app.MapPost("/api/v1/reservas/{id:guid}/cancelacion/resolucion", async (
         return resultado.ToOkResult();
     })
     .WithName("ResolverCancelacion")
-    .WithTags("Reservas");
+    .WithTags("Reservas")
+    .RequireAuthorization();
 
 // CAP · Atajo de cancelación en un paso (Story 4.3): solicita + resuelve en una tx, con auditoría de AMBOS
 // eventos. Identidad del agente server-side; Result→HTTP.
@@ -121,7 +133,8 @@ app.MapPost("/api/v1/reservas/{id:guid}/cancelaciones/atajo", async (
         return resultado.ToOkResult();
     })
     .WithName("CancelarEnUnPaso")
-    .WithTags("Reservas");
+    .WithTags("Reservas")
+    .RequireAuthorization();
 
 // CAP · Visibilidad de cancelaciones pendientes con antigüedad (Story 4.3, AC-E4.3.3). Aislada por agente.
 app.MapGet("/api/v1/reservas/cancelaciones-pendientes", async (ISender sender, CancellationToken ct) =>
@@ -130,7 +143,8 @@ app.MapGet("/api/v1/reservas/cancelaciones-pendientes", async (ISender sender, C
         return resultado.ToOkResult();
     })
     .WithName("ListarCancelacionesPendientes")
-    .WithTags("Reservas");
+    .WithTags("Reservas")
+    .RequireAuthorization();
 
 // CAP-4 · Búsqueda de habitaciones disponibles (FR-8). Query CQRS servida desde la proyección + caché Redis.
 app.MapGet("/api/v1/habitaciones/disponibles", async (
@@ -140,7 +154,8 @@ app.MapGet("/api/v1/habitaciones/disponibles", async (
         return resultado.ToOkResult();
     })
     .WithName("BuscarDisponibilidad")
-    .WithTags("Habitaciones");
+    .WithTags("Habitaciones")
+    .RequireAuthorization();
 
 // CAP-4 · Listado de reservas del agente (FR-12) y su detalle. Aislamiento server-side por identidad del agente
 // (IContextoAgente); el cliente NO elige a qué agente ve. Result→HTTP centralizado.
@@ -150,7 +165,8 @@ app.MapGet("/api/v1/reservas", async (ISender sender, CancellationToken ct) =>
         return resultado.ToOkResult();
     })
     .WithName("ListarReservasDelAgente")
-    .WithTags("Reservas");
+    .WithTags("Reservas")
+    .RequireAuthorization();
 
 app.MapGet("/api/v1/reservas/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
     {
@@ -158,6 +174,7 @@ app.MapGet("/api/v1/reservas/{id:guid}", async (Guid id, ISender sender, Cancell
         return resultado.ToOkResult();
     })
     .WithName("ObtenerReservaDetalle")
-    .WithTags("Reservas");
+    .WithTags("Reservas")
+    .RequireAuthorization();
 
 app.Run();
