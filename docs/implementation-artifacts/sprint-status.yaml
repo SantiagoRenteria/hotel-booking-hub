@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-07-08
-last_updated: 2026-07-10T12:00
+last_updated: 2026-07-10T18:00
 project: hotel-booking-hub
 project_key: NOKEY
 tracking_system: file-system
@@ -94,7 +94,7 @@ development_status:
   epic-6-retrospective: done
 
   # ---- Epic 7: Observabilidad de extremo a extremo ----
-  epic-7: in-progress
+  epic-7: done
   7-1-traza-distribuida-propagada-extremo-a-extremo: done
   7-2-metricas-p95-p99-por-endpoint: done
   epic-7-retrospective: optional
