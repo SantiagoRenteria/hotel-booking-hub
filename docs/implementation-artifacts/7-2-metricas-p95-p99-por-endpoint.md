@@ -3,7 +3,7 @@ baseline_commit: e51eb2c1d4720aa3e46de69554445e71f8fcb01c
 ---
 # Story 7.2: Métricas p95/p99 por endpoint
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -54,7 +54,8 @@ para **detectar degradación de latencia**.
   - [x] `MeterListener` en memoria sobre `http.server.request.duration`: tras ejercer ≥2 endpoints hay mediciones **etiquetadas por ruta** (≥2 rutas de negocio distintas, una `reservas`). Determinista (poll acotado + no-paralelización del ensamblado), sin dashboard. *(Se usó `MeterListener` del runtime en vez de `MetricCollector<T>` para no añadir un paquete NuGet.)*
   - [x] Test negativo: peticiones a `/health` no se mezclan en las series de negocio.
 - [x] **Task 6 — Evidencia y documentación** (AC: 7.2.1)
-  - [x] 📄 `docs/observabilidad.md` ampliado con la sección de métricas p95/p99: histograma por ruta, alcance (sin k6), health separable, test de CI y pasos para reproducir p95/p99 en el dashboard. Captura del dashboard = evidencia manual (requiere `AppHost` + Docker), documentada no adjuntada.
+  - [x] `docs/observabilidad.md` ampliado con la sección de métricas p95/p99: histograma por ruta, alcance (sin k6), health separable, test de CI y pasos para reproducir p95/p99 en el dashboard.
+  - [📄] **Captura del dashboard DIFERIDA (no hecha):** la subtarea original pedía "guardar la captura en `docs/`"; requiere levantar el `AppHost` (multi-contenedor Aspire) + navegador, fuera del entorno de CI. En su lugar se dejaron **pasos de reproducción** en `docs/observabilidad.md`. Registrado en `deferred-work.md`. (Honestidad de checkbox, lección retro E6: no marcar `[x]` un entregable no producido.)
   - [x] Alcance honesto documentado: instrumentado + observable; validación bajo carga con k6 **explícitamente fuera de alcance** (decisión Winston), no una omisión.
 
 ## Dev Notes
@@ -104,8 +105,8 @@ para **detectar degradación de latencia**.
 
 _Code review adversarial de 3 capas (Blind · Edge · Auditor), 2026-07-10. 2 patch, 4 dismiss._
 
-- [ ] [Review][Patch] El test `Las_sondas_de_salud_no_contaminan_las_series_de_negocio` no afirma **positivamente** que exista la serie de `/health` (una medición con `http.route` nula satisface `Count>=1` + `no api/v1`); además la aserción de ausencia global de `api/v1` sería vulnerable a contaminación si un runner cargara varias DLLs en un mismo proceso (cross-assembly). Reforzar: afirmar la presencia de una medición con ruta de salud propia, **distinta** de las de negocio (prueba "separable" de forma robusta e inmune a contaminación) + mensaje de timeout descriptivo. [tests/Reservas.FunctionalTests/MetricasDuracionTests.cs]
-- [ ] [Review][Patch] Honestidad de checkbox (Task 6): la subtarea "capturar del dashboard y **guardar en docs/**" está `[x]`, pero solo se entregaron pasos de reproducción (la captura manual requiere AppHost+Docker). Recalificar a 📄 documentado/diferido, no "hecho" (lección de honestidad de checkbox, retro E6). [docs/implementation-artifacts/7-2-metricas-p95-p99-por-endpoint.md]
+- [x] [Review][Patch] El test `Las_sondas_de_salud_no_contaminan_las_series_de_negocio` no afirmaba positivamente la serie de `/health` y la ausencia global de `api/v1` era vulnerable a contaminación cross-assembly. ✅ Resuelto: ahora afirma por **presencia** que existe la serie con ruta `"/health"` (verificado empíricamente el valor del tag), distinta de las de negocio → separable e inmune a contaminación; `EsperarMedidas` falla con diagnóstico de rutas observadas en timeout. Determinista en 3 corridas. [tests/Reservas.FunctionalTests/MetricasDuracionTests.cs]
+- [x] [Review][Patch] Honestidad de checkbox (Task 6). ✅ Resuelto: la subtarea de **captura** del dashboard se recalificó a `[📄]` DIFERIDA (no hecha) con pasos de reproducción en su lugar; registrado en `deferred-work.md`. [docs/implementation-artifacts/7-2-metricas-p95-p99-por-endpoint.md, docs/implementation-artifacts/deferred-work.md]
 
 **Dismiss (no accionables):** dependencia de que `GET /api/v1/reservas` esté mapeado (verificado: los endpoints existen en `Reservas.Api/Program.cs` y `http.route` se emite aun con 401/5xx); `DisableTestParallelization` a nivel de ensamblado (es el alcance correcto — una colección dedicada no evitaría que otra clase HTTP del mismo ensamblado corra en paralelo y contamine el `MeterListener` process-wide); AC-E7.2.2 solo verifica `http.route` y no método/código (el núcleo "por endpoint" está probado; método/código son dimensiones OTel por defecto); diseño del poll (margen 3s + mensaje en el positivo, defendible).
 
@@ -141,3 +142,4 @@ claude-opus-4-8 (Amelia / dev-story, modo autónomo)
 | Fecha | Cambio |
 |---|---|
 | 2026-07-10 | Story 7.2: verificación + evidencia de las métricas p95/p99 por endpoint. Test de caracterización con `MeterListener` (histograma por ruta + health separable), determinista (no-paralelización + poll). Doc de observabilidad ampliada. Sin código de producción (FR-26 ya cubierto por la instrumentación OTel de E1). 437 tests verdes. Status → review. |
+| 2026-07-10 | Code-review adversarial (3 capas): 2 patch aplicados vía agent-dev (test de salud reforzado por presencia de la serie `/health` + diagnóstico de timeout; honestidad de checkbox de la captura diferida), 4 dismiss. Determinista 3/3, format limpio. Status → done. |

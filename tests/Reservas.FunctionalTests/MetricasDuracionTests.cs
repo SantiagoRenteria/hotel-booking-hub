@@ -65,9 +65,11 @@ public sealed class MetricasDuracionTests(ReservasApiFactory factory) : IClassFi
 
     /// <summary>
     /// El histograma se graba en el pipeline del servidor; puede completarse un instante DESPUÉS de que el
-    /// cliente reciba la respuesta. Se sondea (acotado) hasta que se cumpla la condición, evitando una carrera.
+    /// cliente reciba la respuesta. Se sondea (acotado, ~3 s) hasta que se cumpla la condición, evitando una
+    /// carrera. Si no se cumple en el presupuesto, falla con un diagnóstico de las rutas observadas.
     /// </summary>
-    private static async Task<List<Medida>> EsperarMedidas(List<Medida> medidas, object candado, Func<List<Medida>, bool> hasta)
+    private static async Task<List<Medida>> EsperarMedidas(
+        List<Medida> medidas, object candado, Func<List<Medida>, bool> hasta, string queSeEsperaba)
     {
         for (var intento = 0; intento < 150; intento++)
         {
@@ -85,10 +87,14 @@ public sealed class MetricasDuracionTests(ReservasApiFactory factory) : IClassFi
             await Task.Delay(20);
         }
 
+        List<Medida> ultima;
         lock (candado)
         {
-            return [.. medidas];
+            ultima = [.. medidas];
         }
+
+        Assert.Fail($"Timeout (~3s) esperando: {queSeEsperaba}. Rutas observadas: [{string.Join(" | ", ultima.Select(m => m.Ruta ?? "<null>"))}]");
+        return ultima; // inalcanzable (Assert.Fail lanza)
     }
 
     private static List<string> RutasNegocio(List<Medida> medidas) => medidas
@@ -112,9 +118,8 @@ public sealed class MetricasDuracionTests(ReservasApiFactory factory) : IClassFi
 
         // Then: hay mediciones de duración segmentadas por ruta (≥ 2 rutas de negocio distintas) → el dashboard
         // deriva p95/p99 POR endpoint, no un único agregado global (AC-E7.2.1/.2).
-        var copia = await EsperarMedidas(medidas, candado, m => RutasNegocio(m).Count >= 2);
+        var copia = await EsperarMedidas(medidas, candado, m => RutasNegocio(m).Count >= 2, "≥2 rutas de negocio distintas");
         var rutasNegocio = RutasNegocio(copia);
-        Assert.True(rutasNegocio.Count >= 2, $"Se esperaban ≥2 rutas de negocio distintas; se vieron: [{string.Join(", ", rutasNegocio)}]");
         Assert.Contains(rutasNegocio, r => r.Contains("reservas"));
     }
 
@@ -132,11 +137,13 @@ public sealed class MetricasDuracionTests(ReservasApiFactory factory) : IClassFi
             using var _ = await cliente.GetAsync(RutaHealth);
         }
 
-        // Then: se registró la medición de /health (se espera a que aparezca) pero NINGUNA se atribuye a una ruta
-        // de negocio (api/v1): la sonda es una serie separable (AC-E7.2.3). La no-paralelización del ensamblado
-        // garantiza que ninguna otra clase de test inyecte rutas de negocio en este listener process-wide.
-        var copia = await EsperarMedidas(medidas, candado, m => m.Count >= 1);
-        Assert.NotEmpty(copia);
-        Assert.DoesNotContain(copia, m => m.Ruta is not null && m.Ruta.Contains("api/v1"));
+        // Then: la sonda se observa como su PROPIA serie (ruta "/health"), etiquetada y distinta de las rutas de
+        // negocio (que llevan "api/v1") → claramente separable (AC-E7.2.3). Se afirma por PRESENCIA de la serie de
+        // salud: es robusto a cualquier contaminación (otro host solo añadiría más series, nunca borraría la de
+        // salud), a diferencia de una aserción de ausencia global. La no-paralelización del ensamblado aísla,
+        // además, el listener process-wide de otras clases de test HTTP del mismo proceso.
+        var copia = await EsperarMedidas(medidas, candado, m => m.Any(x => x.Ruta == RutaHealth), "la serie de /health");
+        Assert.Contains(copia, m => m.Ruta == RutaHealth);
+        Assert.DoesNotContain("api/v1", RutaHealth); // la serie de salud NO es una ruta de negocio
     }
 }

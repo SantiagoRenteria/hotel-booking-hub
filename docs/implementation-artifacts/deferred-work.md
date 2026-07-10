@@ -2,6 +2,10 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: code review of story-7.2 (2026-07-10)
+
+- **Captura del dashboard de Aspire (histograma p95/p99 por endpoint) no adjuntada** (auditor, MED-honestidad) — la Task 6 pedía guardar una captura del waterfall/histograma en `docs/`; requiere levantar el `AppHost` (multi-contenedor Aspire) + navegador, fuera del entorno de CI. Se entregaron **pasos de reproducción** en `docs/observabilidad.md`. Al ejecutar el `AppHost` en un entorno con Docker/escritorio, capturar el histograma `http.server.request.duration` con p95/p99 por ruta (bajo tráfico del money test G1) y adjuntarla. `[docs/observabilidad.md]`
+
 ## Deferred from: code review of story-7.1 (2026-07-10)
 
 - **Parent con span-id sintético → posible nodo huérfano en el waterfall** (blind, BAJA) — cuando la correlación se hace desde un trace-id de 32 hex (caso real de todos los emisores actuales), `ActividadHotelBookingHub.ContextoDesde` fabrica un `ActivityContext` con un `SpanId` **aleatorio**. El span del consumidor agrupa por `TraceId` correctamente, pero su `ParentSpanId` apunta a un span inexistente → algunos backends (Jaeger/Tempo/Aspire) pueden renderizarlo como nodo huérfano en vez de colgarlo del span originante. Consecuencia directa del transporte Dapr diferido: al cablear Dapr, el sidecar propaga el `traceparent` completo (con el span-id padre real) y el nodo cuelga limpiamente. `[Comun/Observabilidad/ActividadHotelBookingHub.cs]`
