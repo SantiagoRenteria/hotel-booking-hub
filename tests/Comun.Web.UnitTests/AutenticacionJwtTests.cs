@@ -14,7 +14,7 @@ public class AutenticacionJwtTests
     {
         Issuer = "hotel-booking-hub",
         Audience = "hotel-booking-hub-api",
-        SigningKey = "clave-de-prueba-suficientemente-larga-para-hmac-sha256-256bits",
+        SigningKey = "clave-de-prueba-suficientemente-larga-para-hmac-sha256-256bits", // gitleaks:allow (constante de test, no es un secreto)
     };
 
     [Fact]
@@ -62,7 +62,7 @@ public class AutenticacionJwtTests
     public void ConstruirParametrosValidacion_con_clave_corta_falla()
     {
         // 16 bytes < 32 bytes (256 bits) requeridos por HMAC-SHA256.
-        var opciones = OpcionesValidas() with { SigningKey = "clave-corta-1234" };
+        var opciones = OpcionesValidas() with { SigningKey = "clave-corta-1234" }; // gitleaks:allow (constante de test)
 
         Assert.Throws<InvalidOperationException>(
             () => AutenticacionJwtExtensions.ConstruirParametrosValidacion(opciones));

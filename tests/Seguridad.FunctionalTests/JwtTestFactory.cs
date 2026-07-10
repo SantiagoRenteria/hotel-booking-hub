@@ -19,7 +19,7 @@ public sealed class JwtTestFactory : WebApplicationFactory<Program>
     public const string Audience = "hotel-booking-hub-api-test";
 
     // Clave de PRUEBA (≥256 bits para HMAC-SHA256). Solo vive en el proceso de test.
-    public const string SigningKey = "clave-de-prueba-solo-para-tests-funcionales-256bits-hmacsha256";
+    public const string SigningKey = "clave-de-prueba-solo-para-tests-funcionales-256bits-hmacsha256"; // gitleaks:allow (constante de test, no es un secreto)
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
