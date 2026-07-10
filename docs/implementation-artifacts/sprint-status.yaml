@@ -104,6 +104,11 @@ development_status:
   8-1-aprovisionar-azure-por-terraform: backlog
   epic-8-retrospective: optional
 
+  # ---- Epic 9: Transporte real de eventos entre BCs (cierre de brecha, correct-course 2026-07-10) ----
+  epic-9: backlog
+  9-1-transporte-real-de-eventos-rabbitmq: backlog
+  epic-9-retrospective: optional
+
   # ---- Epic T: Entrega y requisitos transversales (DoD de entrega) ----
   epic-t: backlog
   t-1-cerrar-los-entregables-del-enunciado: backlog
