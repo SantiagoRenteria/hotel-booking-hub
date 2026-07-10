@@ -228,7 +228,22 @@ Toda operación de negocio exige un **JWT Bearer** válido: el **Gateway** lo va
   # Compose:  echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" >> deploy/.env
   ```
 - **Contrato del token.** `iss = hotel-booking-hub`, `aud = hotel-booking-hub-api`, y claims `sub`/`email` (identidad del agente) + `role` (`Agente` | `Viajero`). El `role` habilita el RBAC (6.2) y la identidad, el aislamiento entre agentes (6.3).
-- **Obtener un token de dev para Postman/Newman.** Como el emisor es propio y la clave es simétrica compartida, un *pre-request script* de Postman lo firma en el sandbox (CryptoJS), sin secretos en la colección (la clave se lee de una variable de entorno de Postman). La lógica de emisión de referencia está en `tests/Seguridad.FunctionalTests/JwtTestFactory.EmitirToken`.
+- **Obtener un token de dev para Postman/Newman.** Como el emisor es propio y la clave es simétrica compartida, un *pre-request script* de Postman lo firma en el sandbox (CryptoJS), sin secretos en la colección (la clave se lee de una variable de entorno de Postman). La lógica de emisión de referencia está en `tests/TestKit.Auth/TokenDePrueba.Emitir`.
+
+### Autorización por rol — RBAC (Story 6.2)
+
+El claim `role` (`Agente` | `Viajero`) se resuelve **server-side** en cada servicio con policies nativas de .NET. Un rol sin permiso recibe **403** (distinto del 401 de autenticación). Mapa rol→endpoint:
+
+| Endpoint | Policy | Rol |
+|----------|--------|-----|
+| `POST /api/v1/hoteles`, y todo `hoteles/*` y `habitaciones/*` (gestión) | `SoloAgente` | **Agente** |
+| `GET /api/v1/reservas`, `GET /api/v1/reservas/{id}` (listado/detalle del agente) | `SoloAgente` | **Agente** |
+| `POST .../cancelacion/resolucion`, `.../cancelaciones/atajo`, `GET .../cancelaciones-pendientes` | `SoloAgente` | **Agente** |
+| `GET /api/v1/habitaciones/disponibles` (búsqueda) | `AgenteOViajero` | Viajero **y** Agente |
+| `POST /api/v1/reservas` (crear-confirmar) | `AgenteOViajero` | Viajero **y** Agente |
+| `POST .../solicitud-cancelacion` (solicitar) | `AgenteOViajero` | Viajero **y** Agente |
+
+Un test estructural en CI verifica que **ningún** endpoint de negocio quede sin policy (secure-by-default). El **aislamiento por datos** entre agentes (un agente no toca lo de otro) es la Story 6.3 — ortogonal al rol.
 
 ## Pruebas
 

@@ -1,6 +1,10 @@
 # Story 6.2: Autorización por rol (RBAC)
 
-Status: ready-for-dev
+---
+baseline_commit: 07319f08cb67cc248f4a57aad5623d58918e1a63
+---
+
+Status: done
 
 <!-- Generado por bmad-create-story (modo autónomo, Épica 6). Complejidad NORMAL (policies .NET sobre los
 claims que 6.1 dejó en HttpContext.User). TDD con Red→Green visible en el AC negativo (403). Depende de 6.1
@@ -42,22 +46,33 @@ para **que cada actor solo ejecute las operaciones de su rol (403 si no le corre
 >
 > Casos "Agente puede hacer lo del Viajero en su nombre" → policy que admite ambos roles, NO abrir el endpoint.
 
-- [ ] **Task 1 — Policies de autorización (AC: 1, 2)** *(TDD: test de 403 primero)*
-  - [ ] Definir policies nombradas en el helper compartido de `Comun.Web` (junto al de 6.1):
-    `SoloAgente`, `SoloViajero`, `AgenteOViajero` (o `RequireRole`) — server-side, basadas en el claim `role`.
-  - [ ] Registrar con `AddAuthorization(...)`; nombres de rol canónicos y en un único lugar (constantes) para
-    evitar drift entre servicios (Gateway no decide RBAC de negocio; lo deciden los servicios).
-- [ ] **Task 2 — Aplicar policy por endpoint (AC: 1, 2, 3)**
-  - [ ] `RequireAuthorization("SoloAgente")` / etc. en cada `Map*` de `Hoteles.Api` y `Reservas.Api` según el mapa.
-  - [ ] Verificar que **ningún** endpoint de negocio queda sin policy (auditar la lista completa de `Map*`).
-- [ ] **Task 3 — 403 como Problem Details (AC: 1)**
-  - [ ] El forbidden emite RFC 7807 coherente con el resto del sistema (no la respuesta vacía por defecto).
-- [ ] **Task 4 — Tests (AC: 1, 2, 3)**
-  - [ ] Por endpoint representativo de cada rol: token con rol incorrecto → `403`; token con rol correcto → NO 403.
-  - [ ] Test de "cobertura del mapa": aserción de que cada endpoint de negocio tiene metadata de autorización
-    (evita el endpoint olvidado sin policy). Puede ser un test que enumere `EndpointDataSource`.
-- [ ] **Task 5 — Documentar el mapa rol→endpoint** en el README/AGENTS (tabla de Task 0 final).
-- [ ] **Task 6 — Commits en rama `feature/6-2-autorizacion-por-rol-rbac` + PR a `develop`** (autor Santiago Renteria; sin trailers; `dotnet format`).
+- [x] **Task 1 — Policies de autorización (AC: 1, 2)** *(TDD: test de 403 primero — RED→GREEN)*
+  - [x] `RolesAplicacion` (Agente/Viajero, claim canónico `role`) + `PoliticasAutorizacion` (`SoloAgente`, `AgenteOViajero`) + `AddAutorizacionPorRol` en `Comun.Web/Seguridad/AutorizacionPorRolExtensions.cs` (`RequireRole`).
+  - [x] `SoloViajero` NO se creó: ningún endpoint es exclusivo del viajero (todos los suyos los puede hacer el agente en su nombre → `AgenteOViajero`). Nombres/roles canónicos en un único lugar (constantes).
+  - [x] `RoleClaimType="role"` + `MapInboundClaims=false` en la validación JWT (cierra la deuda de naming de 6.1; evita el remapeo legacy `role`→URI que rompía `RequireRole`).
+- [x] **Task 2 — Aplicar policy por endpoint (AC: 1, 2, 3)**
+  - [x] `RequireAuthorization(PoliticasAutorizacion.*)` en cada `Map*`: Hoteles ×9 = `SoloAgente`; Reservas = `SoloAgente` (listado/detalle/resolución/atajo/pendientes) y `AgenteOViajero` (crear/solicitar/buscar).
+  - [x] Ningún endpoint de negocio queda sin policy (verificado por el test estructural de cobertura).
+- [x] **Task 3 — 403 como Problem Details (AC: 1)**
+  - [x] El 403 lo emite `JwtBearerEvents.OnForbidden` (simétrico al `OnChallenge` del 401) con Problem Details RFC 7807 + `traceId`. *(Corrección del review: `AddProblemDetails`/status-code-pages NO cubría el 403 del AuthorizationMiddleware → cuerpo vacío; se añadió el handler explícito.)*
+- [x] **Task 4 — Tests (AC: 1, 2, 3)**
+  - [x] Funcional HTTP (`Reservas.FunctionalTests`, WebApplicationFactory sin DB): Viajero→`SoloAgente`→403; token sin rol→403; Agente/Viajero→`AgenteOViajero`→NO 403. Unit de las policies (`IAuthorizationService`) en `Comun.Web.UnitTests`.
+  - [x] Test estructural de cobertura del mapa: enumera `EndpointDataSource` y falla si un endpoint `/api/**` no lleva `IAuthorizeData` (secure-by-default verificado en CI).
+- [x] **Task 5 — Documentar el mapa rol→endpoint** en el README (sección "Autorización por rol — RBAC").
+- [x] **Task 6 — Commits en rama `feature/6-2-autorizacion-por-rol-rbac` + PR a `develop`** (autor Santiago Renteria; sin trailers; `dotnet format` verde).
+
+### Review Findings
+
+_Code review 2026-07-10 (3 capas: Blind Hunter + Edge Case Hunter + Acceptance Auditor). **Veredicto: mapa rol→endpoint CORRECTO** (sin swaps, coincide con Task 0/FRs); TDD visible; docs presentes. 3 patch · 2 defer · 1 dismiss. **Los 3 patch se aplicaron vía `/bmad-agent-dev` (Amelia) — suite 419 tests en verde, `dotnet format` limpio.**_
+
+> **Incidental (bug latente de Story 2.2 destapado por el gate de Hoteles):** `MapDelete(EliminarHotel)` recibía `EliminarHotelCommand` **inferido como body**, inválido en DELETE ("Body was inferred but the method does not allow inferred body parameters") → el primer `DELETE /api/v1/hoteles/{id}` habría dado 500. Fix: `[FromBody]` explícito. El bug solo se materializa al hospedar el servicio (por eso los tests-vía-ISender de 2.2 no lo vieron); el gate de cobertura HTTP de 6.2 lo obligó a bootear y lo destapó. **Corregido aquí** (no queda deuda abierta).
+
+- [x] **[Review][Patch] Test de cobertura solo verifica presencia de metadata, no la policy correcta** (ALTA, `blind+edge`) — `GetMetadata<IAuthorizeData>() is null` deja pasar un endpoint degradado a `RequireAuthorization()` sin policy, o con la policy equivocada (`AgenteOViajero` donde debía `SoloAgente`) → escalada de privilegios indetectable. Fix: verificar la **policy exacta** por endpoint contra un mapa esperado + guard anti-vacuo (contar endpoints inspeccionados > 0) + normalizar el prefijo (`TrimStart('/')`) para no depender del formato de `RawText`. `[tests/Reservas.FunctionalTests/CoberturaAutorizacionTests.cs]`
+- [x] **[Review][Patch] El 403 no se emite como Problem Details RFC 7807** (ALTA, `auditor`) — AC-E6.2.1 exige cuerpo RFC 7807, pero no hay `OnForbidden` (simétrico al `OnChallenge` del 401) ni `UseStatusCodePages` → el 403 del `AuthorizationMiddleware` sale con cuerpo vacío. Fix: `OnForbidden` que escriba Problem Details 403 (refactor de `EscribirProblemDetails401` a método parametrizado por status) + reforzar el test para verificar `Content-Type: application/problem+json` y `status:403`. `[AutenticacionJwtExtensions.cs, tests/Reservas.FunctionalTests/AutorizacionRbacTests.cs]`
+- [x] **[Review][Patch] Hoteles.Api sin gate de cobertura ni tests RBAC** (MEDIA, `blind+edge+auditor`) — el test estructural y los 403 solo cubren Reservas; Hoteles (9 endpoints `SoloAgente`) no tiene `public partial class Program` ni `Hoteles.FunctionalTests` → un endpoint futuro sin policy quedaría anónimo sin que CI lo cace (el README afirma que CI lo verifica). Fix: `public partial class Program` en Hoteles.Api + `Hoteles.FunctionalTests` con el mismo gate de cobertura (todos `SoloAgente`). `[Hoteles.Api/Program.cs]`
+- [x] **[Review][Defer] Detalle de reserva `SoloAgente` mientras Viajero puede crear/solicitar** (MEDIA, `blind`) — un Viajero que crea una reserva (`AgenteOViajero`) no puede releerla por `GET /api/v1/reservas/{id}` (`SoloAgente`) → 403. Es **per-spec**: FR-13 hace el listado/detalle una capacidad del **agente** (conciliar comisiones); no hay FR de "viajero consulta su reserva por id" (la recibe en el 201 del alta). Sobre-restricción (segura), no escalada. Diferido: si producto pide una vista de reserva para el viajero, es historia propia.
+- [x] **[Review][Defer] `RequireRole` sin normalización de caso ni soporte de rol CSV/array** (BAJA, `edge`) — `IsInRole` compara ordinal/case-sensitive; un IdP OIDC externo (alcance F2) que emita `"agente"` o `"Agente,Viajero"` en un solo claim caería en 403. Fail-closed hoy (emisor propio consistente con `Agente`/`Viajero`). Diferido a cuando se integre un IdP real: normalizar/expandir el claim de rol.
+- [x] **[Review][Dismiss] Test de cobertura "vacuo" por `StartsWith("api/")`** (ALTA propuesto por `blind`, REFUTADO por `edge`) — Edge verificó contra el código real que `RoutePatternFactory.Parse` recorta la barra inicial → `RawText="api/v1/..."` (sin `/`), así que el filtro SÍ empareja; el test no es un pase vacío. Desestimado; aun así la reescritura del patch A elimina la dependencia del prefijo.
 
 ## Dev Notes
 
@@ -111,10 +126,49 @@ para **que cada actor solo ejecute las operaciones de su rol (403 si no le corre
 
 ### Agent Model Used
 
+claude-opus-4-8 (bmad-dev-story, modo autónomo).
+
 ### Debug Log References
+
+- TDD Red→Green visible: `test(6.2)` rojo (policies) → `feat(6.2)` verde. Suite completa **416 tests en verde**; `dotnet format` limpio; build 0 warnings.
+- Bug atrapado por el test funcional (no por el unit): el rol correcto daba 403 porque `JwtSecurityTokenHandler` remapea el claim `role`→URI larga (inbound claim mapping legacy) y `RoleClaimType="role"` no lo hallaba. Fix: `MapInboundClaims=false`. El unit test no lo detectó (construye el `ClaimsIdentity` con el claim ya en "role"); el funcional sí.
 
 ### Completion Notes List
 
+- **Task 0 (mapa rol→endpoint):** confirmado sin party-mode (decisión de mapeo directa desde el actor de cada FR). `SoloViajero` innecesaria (todo lo del viajero lo hace el agente en su nombre → `AgenteOViajero`).
+- **AC-E6.2.1** (rol sin permiso → 403): Viajero en endpoint `SoloAgente` → 403; token autenticado SIN rol → 403 (no 401). Verificado a nivel HTTP.
+- **AC-E6.2.2** (rol correcto pasa): Agente y Viajero en `AgenteOViajero` → NO 401/403.
+- **AC-E6.2.3** (mapa completo): test estructural sobre `EndpointDataSource` asegura que ningún `/api/**` queda sin `IAuthorizeData`.
+- **Deudas de 6.1 cerradas aquí:** naming del claim de rol (`role` canónico + `RoleClaimType`) y secure-by-default (el test de cobertura hace de gate en CI, en vez de un `FallbackPolicy` que obligaría a tocar `MapDefaultEndpoints` compartido).
+- **Frontera con 6.3:** el aislamiento por datos NO se toca aquí; sigue vía `IContextoAgente`/`X-Agente` hasta 6.3.
+
 ### File List
 
+**Producción (nuevos):**
+- `src/Comun/HotelBookingHub.Comun.Web/Seguridad/AutorizacionPorRolExtensions.cs` (RolesAplicacion + PoliticasAutorizacion + AddAutorizacionPorRol)
+
+**Producción (modificados):**
+- `src/Comun/HotelBookingHub.Comun.Web/Seguridad/AutenticacionJwtExtensions.cs` (`RoleClaimType="role"` + `MapInboundClaims=false`)
+- `src/Servicios/Hoteles/Hoteles.Api/Program.cs` (AddAutorizacionPorRol + `SoloAgente` ×9)
+- `src/Servicios/Reservas/Reservas.Api/Program.cs` (AddAutorizacionPorRol + policies por endpoint + `public partial class Program`)
+- `README.md` (sección "Autorización por rol — RBAC")
+
+**Tests (nuevos):**
+- `tests/TestKit.Auth/` (proyecto: `TokenDePrueba` compartido, sin refs a servicios)
+- `tests/Reservas.FunctionalTests/` (proyecto: `ReservasApiFactory` + `AutorizacionRbacTests` + `CoberturaAutorizacionTests`)
+- `tests/Comun.Web.UnitTests/AutorizacionPorRolTests.cs`
+
+**Tests (modificados):**
+- `tests/Seguridad.FunctionalTests/` (`JwtTestFactory` y `AutenticacionGatewayTests` migrados a `TestKit.Auth`; csproj referencia TestKit.Auth)
+- `HotelBookingHub.slnx` (alta de TestKit.Auth + Reservas.FunctionalTests + Hoteles.FunctionalTests)
+
+**Review (Paso 4 — agent-dev):**
+- `AutenticacionJwtExtensions.cs` (`OnForbidden` → 403 Problem Details; `EscribirProblemDetails` parametrizado)
+- `tests/Reservas.FunctionalTests/CoberturaAutorizacionTests.cs` (policy exacta por endpoint + guard anti-vacuo), `AutorizacionRbacTests.cs` (cuerpo del 403 + positivo Agente→SoloAgente)
+- `src/Servicios/Hoteles/Hoteles.Api/Program.cs` (`public partial class Program` + `[FromBody]` en `MapDelete` EliminarHotel — fix incidental de 2.2)
+- `tests/Hoteles.FunctionalTests/` (proyecto nuevo: factory + cobertura SoloAgente ×9 + 403)
+
 ### Change Log
+
+- 2026-07-10 — Story 6.2 implementada. RBAC server-side: policies `SoloAgente`/`AgenteOViajero` (`Comun.Web`), aplicadas por endpoint en Hoteles (×9) y Reservas según el actor. Claim de rol canónico `role` + `MapInboundClaims=false` (cierra deuda de naming de 6.1). Tests HTTP (403/no-403) + cobertura estructural del mapa + unit de policies; nuevo `TestKit.Auth` compartido. TDD Red→Green visible.
+- 2026-07-10 — Code review (3 capas): mapa CORRECTO. 3 patch aplicados vía agent-dev (cobertura por policy exacta, 403 Problem Details vía `OnForbidden`, gate de cobertura para Hoteles) + fix incidental del `MapDelete` de Hoteles (`[FromBody]`, bug latente de 2.2). 2 defer (detalle SoloAgente per-spec, `RequireRole` sin normalización → IdP externo). 1 dismiss (test "vacuo" refutado por Edge). Suite completa 419 tests en verde, `dotnet format` limpio.
