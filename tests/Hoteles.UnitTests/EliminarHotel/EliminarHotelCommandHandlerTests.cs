@@ -10,7 +10,7 @@ public sealed class EliminarHotelCommandHandlerTests
     private static readonly byte[] _rowVersion = [1, 2, 3, 4, 5, 6, 7, 8];
 
     private static Hotel HotelExistente() =>
-        Hotel.Crear("Hotel Central", "Medellín", "Calle 1 # 2-3", "Boutique", EstadoHotel.Habilitado);
+        Hotel.Crear("Hotel Central", "Medellín", "Calle 1 # 2-3", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
 
     // AC-E2.2.2 — baja lógica: Result.Ok (→ 204) y el hotel queda marcado como eliminado (sin borrado físico).
     [Fact]

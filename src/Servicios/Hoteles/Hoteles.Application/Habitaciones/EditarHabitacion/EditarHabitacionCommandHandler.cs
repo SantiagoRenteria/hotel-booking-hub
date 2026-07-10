@@ -12,13 +12,21 @@ namespace Hoteles.Application.Habitaciones.EditarHabitacion;
 /// guarda con concurrencia optimista (409 en conflicto). NO toca el hotel. Emite <c>PrecioHabitacionCambiado</c>
 /// SOLO si cambió el precio (AC-E2.5.3), encolado en la misma transacción del guardado (Opción U).
 /// </summary>
-public sealed class EditarHabitacionCommandHandler(IHabitacionRepository repositorio, IColaOutbox outbox)
+public sealed class EditarHabitacionCommandHandler(
+    IHabitacionRepository repositorio, IHotelRepository hoteles, IColaOutbox outbox)
     : IRequestHandler<EditarHabitacionCommand, Result<HabitacionResponseDto>>
 {
     public async Task<Result<HabitacionResponseDto>> Handle(EditarHabitacionCommand request, CancellationToken ct)
     {
         var habitacion = await repositorio.ObtenerAsync(request.Id, ct);
         if (habitacion is null)
+        {
+            return Result<HabitacionResponseDto>.NoEncontrado($"No existe una habitación con id {request.Id}.");
+        }
+
+        // Aislamiento (Story 6.3): la habitación se aísla por el propietario de su hotel. Cargar el hotel padre
+        // aplica el query filter por propietario → si es de otro agente (o eliminado) es invisible → 404.
+        if (await hoteles.ObtenerAsync(habitacion.HotelId, ct) is null)
         {
             return Result<HabitacionResponseDto>.NoEncontrado($"No existe una habitación con id {request.Id}.");
         }

@@ -28,6 +28,10 @@ builder.Services.AddAutenticacionJwt(builder.Configuration);
 // Autorización por rol (Story 6.2): toda la gestión de catálogo es exclusiva del rol Agente (SoloAgente → 403).
 builder.Services.AddAutorizacionPorRol();
 
+// Identidad del agente (Story 6.3): claim del token → aislamiento por propietario (query filter en el DbContext).
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<Hoteles.Application.Abstracciones.IContextoAgente, Hoteles.Api.ClaimContextoAgente>();
+
 // Excepciones de negocio → Problem Details RFC 7807 (handler transversal en Comun.Web; concurrencia → 409).
 builder.Services.AddManejoExcepcionesNegocio();
 

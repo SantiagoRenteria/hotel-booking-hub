@@ -12,7 +12,7 @@ public sealed class CambiarEstadoHotelCommandHandlerTests
 
     private static Hotel HotelEn(EstadoHotel estado)
     {
-        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado);
+        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
         if (estado == EstadoHotel.Deshabilitado)
         {
             hotel.Deshabilitar();

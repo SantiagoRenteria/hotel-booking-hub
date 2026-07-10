@@ -166,7 +166,7 @@ public sealed class ResolverCancelacionTests(SqlServerFixture fixture)
         var sender = scope.ServiceProvider.GetRequiredService<ISender>();
         var r = await sender.Send(new ResolverCancelacionCommand(id, DecisionCancelacion.AprobarAplicandoPenalidad, null), CancellationToken.None);
 
-        Assert.Equal(EstadoResultado.Prohibido, r.Estado);
+        Assert.Equal(EstadoResultado.NoEncontrado, r.Estado); // Story 6.3: ajena → 404 (no filtra existencia)
         Assert.Equal(1, await ContarNochesAsync(habitacion)); // intacto
         await using var db = fixture.CrearContexto();
         Assert.Equal(EstadoReserva.CancelacionSolicitada, (await db.Reservas.SingleAsync(x => x.Id == id)).Estado);

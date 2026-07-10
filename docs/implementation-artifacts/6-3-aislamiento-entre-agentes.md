@@ -1,6 +1,10 @@
 # Story 6.3: Aislamiento entre agentes
 
-Status: ready-for-dev
+---
+baseline_commit: ed9cfdd18d45713956bc51d67dc0e47ccf3f9b2a
+---
+
+Status: done
 
 <!-- Generado por bmad-create-story (modo autónomo, Épica 6). Complejidad ALTA → candidata a BDD
 (Given/When/Then) además de TDD: cruza frontera BC (Reservas ya aísla por AgenteEmail; Hoteles NO tiene
@@ -31,47 +35,78 @@ para **proteger mi operación (control de acceso a nivel de DATOS, no solo de ro
 
 ## Tasks / Subtasks
 
-> **⚠️ Task 0 (party-mode OBLIGATORIA ANTES de codificar) — modelo de propiedad de Hoteles.**
-> Resolver con `/bmad-party-mode` (Winston + John + Amelia) y documentar aquí. El problema: **Reservas ya aísla
-> por `AgenteEmail`** persistido en la reserva (Story 3.3, decisión "mis reservas"), pero **Hoteles NO tiene
-> ninguna noción de agente propietario** — `Hotel`/`Habitacion` no guardan owner y sus endpoints no filtran.
-> FR-24 dice explícitamente "hoteles **o** reservas de otro agente", así que el aislamiento de **hoteles** está
-> en alcance. Opciones:
-> - **(A) Añadir `AgentePropietario` al agregado `Hotel` (+ migración) y filtrar/autorizar toda operación de
->   Hoteles por él (RECOMENDADA).** Coherente con el eje "mis recursos". Impacto: migración EF, `CrearHotel`
->   setea el owner desde el claim, todas las queries/commands de Hoteles filtran server-side. Es la deuda que
->   Hoteles arrastra desde E2 (nunca modeló propiedad).
-> - **(B) Acotar el aislamiento a Reservas** (donde ya existe) y **documentar** el de Hoteles como no-implementado
->   en el alcance. Riesgo: incumple FR-24 en su mitad de "hoteles". Solo si el timebox obliga — decisión de Santiago.
-> - **(C) Derivar propiedad de hotel vía eventos hacia una proyección** — más caro, cruza BC; probablemente
->   gold-plating frente a (A).
+> **✅ Task 0 RESUELTA (party-mode Winston/John/Amelia + decisión de Santiago, 2026-07-10) — Opción A.**
+> Consenso unánime en **Opción A** (aprobada por Santiago). Decisiones:
+> - **`AgentePropietario` en el agregado `Hotel` (dominio, no proyección)** — una proyección de solo-lectura no
+>   puede autorizar *escrituras*; el caso duro de FR-24 (editar/eliminar hotel ajeno) se valida en el write model.
+>   Es **aditivo** (no cambia invariantes; se fija una vez en `CrearHotel`, inmutable después).
+> - **Autorización centralizada** — un único punto de aplicación (guard/spec) que atraviesen los 9 endpoints de
+>   Hoteles, NO nueve `if` copiados (ahí es donde se colaría el bug). "Un solo lugar decide."
+> - **Eje = email** (consistencia con `AgenteEmail` ya persistido en Reservas; documentado como decisión).
+> - **Recurso ajeno → 404, no 403** (preserva el aislamiento a nivel de existencia; no filtra info entre inquilinos).
+> - **Greenfield** (decisión de Santiago): columna **`NOT NULL`** desde el día uno; el dev-seed se re-siembra
+>   asignando dueño. Sin backfill (no hay datos productivos).
+> - **Dueño = el agente que crea el hotel.** Sin rol Admin (6.2 solo definió `Agente`/`Viajero`).
+> - **Booking cross-BC FUERA de alcance (decisión de Santiago):** 6.3 cierra el aislamiento *dentro* de cada
+>   contexto (gestión de Hoteles + listado/detalle/cancelación de Reservas). NO se restringe el booking a hoteles
+>   propios (FR-24 no lo exige; rompería el modelo de agencia y el flujo del viajero). Pregunta de negocio futura.
+> - **Secuencia TDD (Amelia), Red→Green visible:** (1) **IDOR Reservas PRIMERO** (P1 de seguridad: filtrar
+>   cancelaciones por `IContextoAgente` → 404, derivar `Iniciador` del claim, quitar el campo autodeclarado del
+>   request); (2) `X-Agente`→claim (nueva impl. de `IContextoAgente` desde `HttpContext.User`, migrar tests a
+>   `TestKit.Auth`, sin tocar handlers/queries); (3) aislamiento Hoteles + `AgentePropietario` + guard centralizado;
+>   (4) migración EF + seed con dueño; (5) re-verde suite E2.
 >
-> **Decisión de Santiago requerida** porque (A) toca un agregado ya cerrado (E2) y añade migración. Si surge un
-> bloqueo de alcance aquí, **detener y activar party-mode** (condición de parada del protocolo autónomo).
+> <details><summary>Contexto original de la decisión (opciones evaluadas)</summary>
+>
+> El problema: **Reservas ya aísla por `AgenteEmail`** (Story 3.3), pero **Hoteles NO modela propietario**.
+> Opciones: **(A)** owner en `Hotel` + migración (RECOMENDADA/elegida); **(B)** acotar a Reservas + documentar
+> (descartada: incumple la mitad "hoteles" de FR-24 dentro de la épica de seguridad); **(C)** proyección vía
+> eventos (descartada: no autoriza escrituras, cruza BC, gold-plating).
+>
+> </details>
 
-- [ ] **Task 1 — Costura de identidad: header → claim (AC: 3)** *(refactor sin romper handlers)*
-  - [ ] Nueva impl. de `IContextoAgente` que lee el claim de identidad de `HttpContext.User` (email/sub) en vez de
+- [x] **Task 1 — Costura de identidad: header → claim (AC: 3)** *(refactor sin romper handlers)*
+  - [x] Nueva impl. de `IContextoAgente` que lee el claim de identidad de `HttpContext.User` (email/sub) en vez de
     `X-Agente`. `HttpContextoAgente` (header) se retira o queda solo para tests/dev explícitamente marcado.
-  - [ ] Normalización canónica de la identidad idéntica a la existente (`Trim().ToLowerInvariant()`) para que el
+  - [x] Normalización canónica de la identidad idéntica a la existente (`Trim().ToLowerInvariant()`) para que el
     filtro por `AgenteEmail` siga siendo determinista e independiente del collation (patrón ya establecido en 3.3).
-  - [ ] Fail-closed: sin claim → `AgenteActual == null` → los handlers cortan con 403 (comportamiento ya presente).
-- [ ] **Task 2 — Cerrar IDOR en cancelaciones (AC: 4)** *(TDD: test de agente ajeno → 403/404 primero)*
-  - [ ] `SolicitarCancelacion`, `ResolverCancelacion`, `CancelarEnUnPaso`: cargar/filtrar la reserva por
+  - [x] Fail-closed: sin claim → `AgenteActual == null` → los handlers cortan con 403 (comportamiento ya presente).
+- [x] **Task 2 — Cerrar IDOR en cancelaciones (AC: 4)** *(TDD: test de agente ajeno → 403/404 primero)*
+  - [x] `SolicitarCancelacion`, `ResolverCancelacion`, `CancelarEnUnPaso`: cargar/filtrar la reserva por
     `IContextoAgente` (reserva ajena → 403/404, sin filtrar existencia). `ResolverCancelacion` ya tiene el guard
     de agente ajeno (AC-E4.2.4) — verificar que ahora la identidad viene del token; extender a solicitar/atajo.
-  - [ ] `Iniciador`: derivarlo/validarlo contra el principal autenticado (rol del claim), no aceptarlo del cliente
-    en contradicción con quién está autenticado.
-- [ ] **Task 3 — Aislamiento de Hoteles (AC: 1, 2)** *(según Task 0; si (A))*
-  - [ ] `AgentePropietario` en `Hotel` + migración EF. `CrearHotel` lo setea desde el claim.
-  - [ ] Todas las operaciones de Hoteles (editar/eliminar/habilitar/deshabilitar hotel y habitación) filtran/
+  - [x] `Iniciador`: **cerrado por análisis (no por código) — corregido en review.** El guard de aislamiento
+    (`reserva.AgenteEmail == agente`) impide que un no-dueño alcance el endpoint (un Viajero cae en 404), así que
+    solo el agente **dueño** llega. Forzar `Iniciador == rol` **rompería FR-14** ("el agente puede iniciar en
+    nombre del viajero" → `Iniciador=Viajero` legítimo con principal Agente). El IDOR (control de acceso) queda
+    cerrado; `Iniciador` es metadato de auditoría declarado por el agente autorizado — no hay contradicción posible.
+- [x] **Task 3 — Aislamiento de Hoteles (AC: 1, 2)** *(según Task 0; si (A))*
+  - [x] `AgentePropietario` en `Hotel` + migración EF. `CrearHotel` lo setea desde el claim.
+  - [x] Todas las operaciones de Hoteles (editar/eliminar/habilitar/deshabilitar hotel y habitación) filtran/
     autorizan por propietario server-side: recurso ajeno → 403/404 sin filtrar existencia; el recurso no cambia.
-  - [ ] Consultas por hotel/habitación respetan el mismo aislamiento.
-- [ ] **Task 4 — Tests (AC: 1, 2, 3, 4)** *(BDD si Task 0 lo confirma)*
-  - [ ] Dos agentes (A y B): B no ve ni edita recursos de A → 403/404; el recurso de A no cambia tras el intento de B.
-  - [ ] Identidad desde token (no header): petición con claim de A ve solo lo de A; sin claim → 403.
-  - [ ] IDOR de cancelación: agente ajeno sobre reserva de otro → 403/404 en los tres endpoints.
-  - [ ] Regresión: el aislamiento existente de listado/detalle/resolución (3.3, 4.2) sigue verde con la nueva fuente.
-- [ ] **Task 5 — Commits en rama `feature/6-3-aislamiento-entre-agentes` + PR a `develop`** (autor Santiago Renteria; sin trailers; `dotnet format`).
+  - [x] Consultas por hotel/habitación respetan el mismo aislamiento.
+- [x] **Task 4 — Tests (AC: 1, 2, 3, 4)** *(BDD si Task 0 lo confirma)*
+  - [x] Dos agentes (A y B): B no ve ni edita recursos de A → 403/404; el recurso de A no cambia tras el intento de B.
+  - [x] Identidad desde token (no header): petición con claim de A ve solo lo de A; sin claim → 403.
+  - [x] IDOR de cancelación: agente ajeno sobre reserva de otro → 403/404 en los tres endpoints.
+  - [x] Regresión: el aislamiento existente de listado/detalle/resolución (3.3, 4.2) sigue verde con la nueva fuente.
+- [x] **Task 5 — Commits en rama `feature/6-3-aislamiento-entre-agentes` + PR a `develop`** (autor Santiago Renteria; sin trailers; `dotnet format`).
+
+### Review Findings
+
+_Code review 2026-07-10 (3 capas). Convergencia fuerte en un fail-open. 6 patch · 4 defer · varios dismiss. **Los 6 patch aplicados vía `/bmad-agent-dev` — suite 426 tests en verde, `dotnet format` limpio.** Fix clave: query filter fail-**closed** (flag "aislamiento activo"); claim `email` único; honestidad del checkbox `Iniciador` (cerrado por análisis); reconciliación 403/404 en epics.md + deferred-work; test de aislamiento a nivel handler._
+
+- [x] **[Review][Patch] Query filter de Hoteles falla ABIERTO sin identidad** (ALTA, `blind+edge+auditor` — los 3) — `_agenteActual == null` desactivaba el filtro por propietario; un token con rol `Agente` pero SIN claim `email` (RBAC valida rol, no email) vería/mutaría los hoteles de todos (fail-open, contradice AC-E6.3.3 fail-closed). Fix: filtro **fail-closed** — flag "aislamiento activo" = ¿hay `IContextoAgente` inyectado? En el flujo HTTP (contexto presente) identidad null → `AgentePropietario == null` → no casa nada (404); el bypass queda SOLO para contextos sin costura (migración/design-time/siembra). `[HotelesDbContext.cs]`
+- [x] **[Review][Patch] Claim `email` ambiguo → toma el primero** (BAJA, `blind+edge`) — el `HttpContextoAgente` retirado trataba multi-valor como ambiguo→null (fail-closed); `ClaimContextoAgente` perdió esa propiedad. Fix: si hay ≠1 claim `email` → null (fail-closed). `[Reservas.Api/ClaimContextoAgente.cs, Hoteles.Api/ClaimContextoAgente.cs]`
+- [x] **[Review][Patch] Subtask `Iniciador` marcada hecha sin implementar** (ALTA-honestidad, `auditor`) — la Task 2 afirmaba "derivar/validar `Iniciador` contra el principal" pero no se hizo. **Resolución por análisis:** el guard de aislamiento (`reserva.AgenteEmail == agente`) impide que un no-dueño alcance el endpoint, y forzar `Iniciador==rol` **rompería FR-14** ("el agente inicia en nombre del viajero" → `Iniciador=Viajero` legítimo con principal Agente). El IDOR (control de acceso) está cerrado; `Iniciador` es metadato de auditoría declarado por el agente dueño autorizado. Fix: corregir el texto/checkbox de la subtask + `deferred-work.md` (no dejar un `[x]` falso). `[docs]`
+- [x] **[Review][Patch] Spec auto-contradictoria: 403 vs 404** (MEDIA, `auditor`) — Task 0 (party-mode) eligió 404 para recurso ajeno, pero AC-E4.2.4/AC-E6.3.2/FR-16 en `epics.md` siguen diciendo 403. Fix: reconciliar esos AC/FR a "403/404 (404 elegido en 6.3)". `[epics.md]`
+- [x] **[Review][Patch] `deferred-work.md` desactualizado** (BAJA, `auditor`) — la entrada "IDOR + Iniciador → Épica 6" no refleja que el IDOR ya se cerró. Fix: re-encuadrar. `[deferred-work.md]`
+- [x] **[Review][Patch] Tests de aislamiento a nivel repo, no handler** (BAJA, `auditor`) — `AislamientoHotelesTests` verifica `ObtenerAsync`→null, no el 404 vía handler ni la no-mutación tras escritura ajena. Fix: añadir un test a nivel handler (agente B → EditarHotel → 404; hotel de A intacto). `[tests/Hoteles.IntegrationTests]`
+- [x] **[Review][Defer] Backfill de hoteles legados** (MEDIA, `blind+edge`) — `AgentePropietario=''` en filas previas → invisibles para todo agente (fail-closed, correcto). Greenfield: inocuo. Al desplegar sobre datos existentes: backfill del propietario. Diferido (documentado en `deferred-work.md`).
+- [x] **[Review][Defer] Dependencia del nombre/forma del claim `email` del IdP** (BAJA, `edge`) — un IdP externo (F2) podría emitir `emails`/URI/`preferred_username`. Hoy el emisor propio usa `email`. Al integrar IdP real: mapeo de claims configurable. Diferido.
+- [x] **[Review][Defer] `_agenteActual` capturado en el ctor del DbContext** (BAJA, `blind+edge`) — verificado seguro hoy (DbContext scoped, sin pooling; se resuelve tras `UseAuthentication`). Latente si el pipeline cambiara. Diferido.
+- [x] **[Review][Defer] Canal lateral de timing en el 404** (BAJA, `blind`) — "ajena" carga la reserva antes del 404; "inexistente" retorna inmediato. Micro-timing. Diferido.
+- [x] **[Review][Dismiss] Filtro en todas las lecturas / IgnoreQueryFilters** (`blind`) — Hoteles no expone endpoints GET (Edge confirmó: sin queries); el único `IgnoreQueryFilters` es una aserción de test (cuenta filas físicas). Desestimado.
 
 ## Dev Notes
 
@@ -138,10 +173,47 @@ para **proteger mi operación (control de acceso a nivel de DATOS, no solo de ro
 
 ### Agent Model Used
 
+claude-opus-4-8 (bmad-dev-story, modo autónomo). Decisión de diseño vía `/bmad-party-mode` (Winston/John/Amelia) + aprobación de Santiago.
+
 ### Debug Log References
+
+- Secuencia TDD Red→Green visible (Task 0): (1) seam swap `X-Agente`→claim, (2) IDOR, (3) aislamiento Hoteles.
+- Suite completa **424 tests en verde**; `dotnet format` limpio; build 0 warnings. Hoteles.IntegrationTests 22 (19 + 3 de aislamiento real sobre Testcontainers).
+- Churn de firmas (predicho por Amelia): `Hotel.Crear` +owner y los 2 handlers de habitación +`IHotelRepository` rompieron ~9 archivos de test de Hoteles → reparados (subagente) sin cambiar aserciones.
 
 ### Completion Notes List
 
+- **Task 0 (party-mode):** Opción A — `AgentePropietario` en el agregado `Hotel`. Ver la resolución completa en Task 0 (arriba) y `[[e6-hotel-ownership-decision]]`.
+- **Task 1 (AC-E6.3.3):** identidad desde el claim `email` del token (`ClaimContextoAgente`), retira `X-Agente`/`HttpContextoAgente`. Handlers/queries intactos (costura `IContextoAgente`).
+- **Task 2 (AC-E6.3.4, IDOR):** `SolicitarCancelacion` gana guard de aislamiento; los 3 endpoints de cancelación unifican recurso ajeno a **404** (antes 403 en Resolver/Atajo), sin filtrar existencia.
+- **Task 3 (AC-E6.3.1/.2):** aislamiento de Hoteles por query filter global de `AgentePropietario` (centralizado — "un solo lugar decide"); habitaciones por su hotel padre. Migración EF greenfield NOT NULL.
+- **Booking cross-BC:** fuera de alcance (decisión de Santiago); documentado.
+
 ### File List
 
+**Producción (nuevos):**
+- `src/Servicios/Reservas/Reservas.Api/ClaimContextoAgente.cs`
+- `src/Servicios/Hoteles/Hoteles.Application/Abstracciones/IContextoAgente.cs`
+- `src/Servicios/Hoteles/Hoteles.Api/ClaimContextoAgente.cs`
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/Migraciones/*_AislamientoAgentePropietarioHotel.cs` (+Designer, +snapshot)
+
+**Producción (modificados):**
+- `Reservas.Api/Program.cs` (registra ClaimContextoAgente), `Reservas.Application/Abstracciones/IContextoAgente.cs` (doc), `SolicitarCancelacion/ResolverCancelacion/CancelarEnUnPaso` handlers (guard + 404)
+- `Reservas.Api/HttpContextoAgente.cs` (ELIMINADO)
+- `Hoteles.Domain/Hoteles/Hotel.cs` (+AgentePropietario), `LongitudesHotel.cs` (+constante)
+- `Hoteles.Infrastructure/Persistencia/HotelesDbContext.cs` (query filter por propietario + IContextoAgente)
+- `Hoteles.Api/Program.cs` (registra IContextoAgente/ClaimContextoAgente)
+- `Hoteles.Application/Hoteles/CrearHotel/...Handler.cs` (setea owner desde claim), `Habitaciones/{Editar,CambiarEstado}...Handler.cs` (visibilidad del hotel padre)
+
+**Tests (nuevos):**
+- `tests/Reservas.UnitTests/Reservas/ListarReservas/ClaimContextoAgenteTests.cs`
+- `tests/Hoteles.IntegrationTests/AislamientoHotelesTests.cs`
+
+**Tests (modificados):**
+- `tests/Reservas.UnitTests/Reservas/ListarReservas/HttpContextoAgenteTests.cs` (ELIMINADO)
+- Reparación de firmas + IDOR: SolicitarCancelacion (unit+int), Resolver/CancelarEnUnPaso (unit), ResolverCancelacion (int), ~9 archivos de Hoteles.UnitTests/IntegrationTests, `SqlServerFixture` (overload con agente), `AutorizacionRbacTests` (sin X-Agente)
+
 ### Change Log
+
+- 2026-07-10 — Story 6.3 implementada (Opción A, party-mode). Aislamiento entre agentes: identidad desde el claim del token (retira X-Agente); IDOR de cancelación cerrado (404 ajeno); propiedad de Hoteles (`AgentePropietario` + query filter centralizado + migración). Booking cross-BC fuera de alcance. TDD Red→Green visible.
+- 2026-07-10 — Code review (3 capas): convergencia en un fail-open del query filter. 6 patch aplicados vía agent-dev (fail-closed con flag de aislamiento activo; claim `email` único; `Iniciador` cerrado por análisis + honestidad del checkbox; reconciliación 403/404 en epics.md/deferred-work; test de aislamiento a nivel handler). 4 defer (backfill greenfield, dependencia del claim del IdP F2, captura en ctor verificada segura, timing BAJA). Suite 426 tests en verde, `dotnet format` limpio.
