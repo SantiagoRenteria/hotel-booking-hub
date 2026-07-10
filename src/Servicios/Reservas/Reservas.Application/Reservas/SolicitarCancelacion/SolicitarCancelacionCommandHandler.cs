@@ -18,6 +18,7 @@ namespace Reservas.Application.Reservas.SolicitarCancelacion;
 /// </summary>
 public sealed class SolicitarCancelacionCommandHandler(
     IReservaRepository repositorio,
+    IContextoAgente contexto,
     CalculadorPenalidad calculadorPenalidad,
     IColaOutbox outbox,
     TimeProvider reloj)
@@ -27,8 +28,24 @@ public sealed class SolicitarCancelacionCommandHandler(
 
     public async Task<Result<SolicitudCancelacionResponseDto>> Handle(SolicitarCancelacionCommand request, CancellationToken ct)
     {
+        // Identidad server-side, fail-closed (403 sin identidad). Cierra la deuda IDOR (AC-E6.3.4): antes se
+        // cargaba la reserva por id SIN filtrar por agente → un agente podía solicitar la cancelación de otro.
+        var agente = contexto.AgenteActual;
+        if (string.IsNullOrWhiteSpace(agente))
+        {
+            return Result<SolicitudCancelacionResponseDto>.Prohibido("Se requiere la identidad del agente.");
+        }
+
+        agente = agente.Trim().ToLowerInvariant();
+
         var reserva = await repositorio.ObtenerAsync(request.ReservaId, ct);
         if (reserva is null)
+        {
+            return Result<SolicitudCancelacionResponseDto>.NoEncontrado("La reserva no existe.");
+        }
+
+        // Aislamiento (AC-E6.3.1/.4): reserva ajena → 404 (no 403; no filtra existencia entre agentes).
+        if (!string.Equals(reserva.AgenteEmail, agente, StringComparison.Ordinal))
         {
             return Result<SolicitudCancelacionResponseDto>.NoEncontrado("La reserva no existe.");
         }

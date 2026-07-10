@@ -13,7 +13,7 @@ namespace Reservas.Application.Reservas.CancelarEnUnPaso;
 /// <summary>
 /// Compone solicitar (4.1) + resolver (4.2) en UNA transacción y emite AMBOS eventos por el outbox multi-evento
 /// (Task 0): <c>SolicitudCancelacionRegistrada.v1</c> ANTES que la resolución, ambos con <c>AggregateId=ReservaId</c>.
-/// Identidad server-side (403 sin identidad); aislamiento por <c>AgenteEmail</c> (ajeno → 403); guards de dominio
+/// Identidad server-side (403 sin identidad); aislamiento por <c>AgenteEmail</c> (ajeno → 404); guards de dominio
 /// → 409. NO recalcula la penalidad. No duplica lógica de transición: llama a los métodos del agregado existentes.
 /// </summary>
 public sealed class CancelarEnUnPasoCommandHandler(
@@ -42,9 +42,10 @@ public sealed class CancelarEnUnPasoCommandHandler(
             return Result<ResolucionCancelacionResponseDto>.NoEncontrado("La reserva no existe.");
         }
 
+        // Aislamiento (AC-E6.3.1): reserva ajena → 404 (unificado en 6.3; no filtra existencia entre agentes).
         if (!string.Equals(reserva.AgenteEmail, agente, StringComparison.Ordinal))
         {
-            return Result<ResolucionCancelacionResponseDto>.Prohibido("La reserva pertenece a otro agente.");
+            return Result<ResolucionCancelacionResponseDto>.NoEncontrado("La reserva no existe.");
         }
 
         var fecha = DateOnly.FromDateTime(reloj.GetUtcNow().UtcDateTime);
