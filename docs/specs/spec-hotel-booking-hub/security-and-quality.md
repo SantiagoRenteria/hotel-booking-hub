@@ -19,6 +19,23 @@ El enunciado pide JWT/OAuth2 + ≥3 prácticas; se implementan **8**:
 
 **Diseño seguro (A04 Insecure Design):** el invariante anti-overbooking y la idempotencia son controles de diseño, no parches.
 
+### Estado de implementación y evidencia (Story 6.4)
+
+Alcance (party-mode Winston): el mapeo completo al Top 10 se **documenta**; lo aplicable se **ejercita con código**. Estado:
+
+| # Práctica | Estado | Evidencia |
+|-----------|--------|-----------|
+| 1. AuthN JWT/OIDC | ✅ Código | `Comun.Web/Seguridad/AutenticacionJwtExtensions.cs`; Story 6.1; `Seguridad.FunctionalTests` (401 en el borde) |
+| 2. AuthZ RBAC + aislamiento | ✅ Código | `AutorizacionPorRolExtensions.cs` (6.2, 403 por rol) + aislamiento por propietario/agente (6.3, 404 ajeno); `Reservas/Hoteles.FunctionalTests` + `AislamientoHotelesTests` |
+| 3. Rate limiting | ✅ Código | `ApiGateway/Program.cs` (`AddRateLimiter` sliding window → 429); `RateLimitGatewayTests` |
+| 4. Validación / anti-inyección | ✅ Código (existente) | 12 `AbstractValidator` (FluentValidation → 400); EF Core parametrizado (0 `FromSqlRaw`/`ExecuteSql`); `Regex` con `matchTimeout=200ms` (`ExpresionesValidacion.cs`) |
+| 5. Manejo de secretos | ✅ Código + CI | Clave JWT por env/user-secrets/Key Vault (nunca en repo); `appsettings` solo no-sensibles; gitleaks en CI (0 hallazgos); `.gitleaks.toml` |
+| 6. HTTPS/HSTS + CORS | ✅ Código (HSTS+CORS) · 📄 TLS en ingress | `ApiGateway/Program.cs` (`UseHsts` no-dev; CORS allowlist explícita, nunca `AllowAnyOrigin`); redirección/terminación TLS en el ingress (ACA, ADR-008) |
+| 7. Logging de eventos de seguridad sin PII | 📄 Documentado + parcial | 401/403/429 no exponen PII (Problem Details sin datos sensibles); trazas OTel con `trace-id`. Un logger dedicado de eventos (login ok/fallido) se activa al cablear el IdP real (F2) |
+| 8. Protección de PII + integridad | 📄 Documentado | PII de huéspedes no se loguea; cifrado de columnas sensibles + dependency scanning = readiness (F2/nube). El pin de CVE (`Microsoft.OpenApi`) evidencia gestión de vulnerabilidades |
+
+**Leyenda:** ✅ ejercitado con código/tests · 📄 documentado (readiness / F2 / ingress). El subconjunto ejercitado (authz/aislamiento, rate limiting, HSTS/CORS, anti-inyección, secretos) cubre el núcleo aplicable; un barrido exhaustivo del Top 10 sería gold-plating para la prueba.
+
 ## Observabilidad
 
 - **OpenTelemetry** (traces + metrics + logs) en todos los servicios (OTLP).
