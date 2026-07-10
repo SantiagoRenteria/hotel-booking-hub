@@ -1,7 +1,9 @@
 using HotelBookingHub.Comun.Eventos;
 using HotelBookingHub.Comun.Mensajeria;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Reservas.Application.Abstracciones;
 using Reservas.Domain.Puertos;
 using Reservas.Infrastructure.Cache;
@@ -53,9 +55,18 @@ public static class RegistroInfraestructura
         servicios.AddSingleton<ProcesadorOutbox>();
         servicios.AddHostedService<RelayOutbox>();
 
-        // Placeholders de 1.6a (reemplazados en E3 y por Dapr pub/sub respectivamente).
         servicios.AddSingleton<IDisponibilidadHabitacion, DisponibilidadHabitacionSembrada>();
-        servicios.AddSingleton<IPublicadorEventos, PublicadorEventosLog>();
+
+        // Transporte de eventos por entorno (Story 9.1, ADR-019): si hay cadena de RabbitMQ (local/compose),
+        // se publica de verdad al broker; si no (tests unit sin broker), se cae al placeholder que solo loguea.
+        // El adaptador Dapr→Service Bus de nube se enchufa por este mismo seam en la Épica 8, sin tocar el dominio.
+        servicios.AddSingleton<IPublicadorEventos>(sp =>
+        {
+            var cadenaRabbit = sp.GetRequiredService<IConfiguration>().GetConnectionString("rabbitmq");
+            return string.IsNullOrWhiteSpace(cadenaRabbit)
+                ? new PublicadorEventosLog(sp.GetRequiredService<ILogger<PublicadorEventosLog>>())
+                : new PublicadorEventosRabbitMq(cadenaRabbit, sp.GetRequiredService<ILogger<PublicadorEventosRabbitMq>>());
+        });
 
         return servicios;
     }

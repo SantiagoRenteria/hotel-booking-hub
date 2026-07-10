@@ -2,6 +2,12 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: Story 9.1 (transporte real de eventos RabbitMQ, 2026-07-10)
+
+- **Data-plane funcional del `docker-compose` (cadenas SQL/Redis + migraciones al arranque)** (alcance, MED — Epic T) — el `docker-compose.yml` nunca cableó cadenas de conexión de SQL/Redis ni aplica migraciones EF al arrancar; fue un smoke de `/health`, no un compose funcional de datos. Con el transporte RabbitMQ ya cableado (9.1), aún falta esto para que `docker compose up` + crear reserva fluya end-to-end. El transporte se valida por Testcontainers (CI). Al cerrar la entrega (Epic T "docker compose up funciona"): pasar `ConnectionStrings__reservasdb`/`__hotelesdb`/`__redis` a los servicios y aplicar `Database.Migrate()` (o un init) al arranque. `[deploy/docker-compose.yml, src/Servicios/*/*.Api/Program.cs]`
+- **Ruta `hoteles → Reservas` (proyección de disponibilidad) por transporte real** (alcance, MED — candidato Story 9.2) — 9.1 cableó la ruta de notificaciones (topic `reservas`→worker). El servicio Reservas consume el topic `hoteles` para alimentar `ProyeccionHabitacion` (`ProyectorCatalogo`/`IConsumidorEventosCatalogo`), hoy solo ejercitado en tests. Aplicar el MISMO patrón (consumidor RabbitMQ `BackgroundService` en Reservas) para que la búsqueda refleje el catálogo en runtime. `[Reservas.Infrastructure/Proyeccion, Reservas.Api/Program.cs]`
+- **Adaptador de transporte de NUBE (Dapr pub/sub → Service Bus) + Dapr Secrets/Key Vault** (alcance — Épica 8, ADR-019/020) — el puerto `IPublicadorEventos` ya deja enchufar `PublicadorEventosDapr` por entorno sin tocar el dominio; se implementa al ejecutar E8 (ACA con Dapr gestionado). `[deploy/dapr/*, deploy/terraform/]`
+
 ## Deferred from: code review of story-7.2 (2026-07-10)
 
 - **Captura del dashboard de Aspire (histograma p95/p99 por endpoint) no adjuntada** (auditor, MED-honestidad) — la Task 6 pedía guardar una captura del waterfall/histograma en `docs/`; requiere levantar el `AppHost` (multi-contenedor Aspire) + navegador, fuera del entorno de CI. Se entregaron **pasos de reproducción** en `docs/observabilidad.md`. Al ejecutar el `AppHost` en un entorno con Docker/escritorio, capturar el histograma `http.server.request.duration` con p95/p99 por ruta (bajo tráfico del money test G1) y adjuntarla. `[docs/observabilidad.md]`
