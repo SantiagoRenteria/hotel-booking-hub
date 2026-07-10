@@ -4,6 +4,7 @@ using HotelBookingHub.Comun.Eventos;
 using HotelBookingHub.Comun.Mensajeria;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Reservas.Application.Abstracciones;
 using Reservas.Application.Reservas.SolicitarCancelacion;
 using Reservas.Domain.Reservas;
 using Reservas.Domain.Servicios;
@@ -23,6 +24,12 @@ namespace Reservas.IntegrationTests;
 public sealed class SolicitudCancelacionTests(SqlServerFixture fixture)
 {
     private static readonly DateOnly _hoy = new(2026, 7, 1);
+    private const string Dueno = "agente@hotel.com";
+
+    private sealed class ContextoAgenteFijo(string? agente) : IContextoAgente
+    {
+        public string? AgenteActual => agente;
+    }
 
     private ServiceProvider Contenedor()
     {
@@ -31,6 +38,8 @@ public sealed class SolicitudCancelacionTests(SqlServerFixture fixture)
         servicios.AddSingleton<CalculadorPrecio>();
         servicios.AddSingleton<CalculadorPenalidad>();
         servicios.AddSingleton<TimeProvider>(new RelojFijoIntegracion(_hoy));
+        // Identidad del agente dueño (Story 6.3): el handler filtra por ella; la reserva se siembra con el mismo email.
+        servicios.AddSingleton<IContextoAgente>(new ContextoAgenteFijo(Dueno));
         servicios.AddMediatorPipeline(typeof(SolicitarCancelacionCommand).Assembly);
         servicios.AddReservasInfrastructure(fixture.CadenaConexion);
         return servicios.BuildServiceProvider();
@@ -38,7 +47,7 @@ public sealed class SolicitudCancelacionTests(SqlServerFixture fixture)
 
     private async Task<Guid> SembrarConfirmadaAsync(DateOnly entrada, decimal precio = 500m)
     {
-        var reserva = Reserva.Crear(Guid.NewGuid(), Estancia.Crear(entrada, entrada.AddDays(2)), precioTotal: precio);
+        var reserva = Reserva.Crear(Guid.NewGuid(), Estancia.Crear(entrada, entrada.AddDays(2)), agenteEmail: Dueno, precioTotal: precio);
         await using var db = fixture.CrearContexto();
         db.Reservas.Add(reserva);
         await db.SaveChangesAsync();

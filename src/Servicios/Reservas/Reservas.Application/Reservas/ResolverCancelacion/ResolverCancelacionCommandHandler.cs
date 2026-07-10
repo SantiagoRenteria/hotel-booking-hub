@@ -10,7 +10,7 @@ namespace Reservas.Application.Reservas.ResolverCancelacion;
 
 /// <summary>
 /// Orquesta la resolución (AC-E4.2.1/.2/.3/.4): resuelve la identidad del agente server-side (fail-closed → 403),
-/// carga la reserva CON sus slots (para liberarlos en la misma tx), aplica el aislamiento por agente (ajeno → 403),
+/// carga la reserva CON sus slots (para liberarlos en la misma tx), aplica el aislamiento por agente (ajeno → 404),
 /// delega en el agregado (guards por excepción → 409; la concurrencia optimista la arbitra el
 /// <c>EjecutorTransaccional</c> traduciendo <c>DbUpdateConcurrencyException</c> → 409) y ENCOLA el evento según el
 /// desenlace (<c>ReservaCancelada.v1</c> al aprobar, <c>SolicitudCancelacionRechazada.v1</c> al rechazar) en la
@@ -42,10 +42,11 @@ public sealed class ResolverCancelacionCommandHandler(
             return Result<ResolucionCancelacionResponseDto>.NoEncontrado("La reserva no existe.");
         }
 
-        // Aislamiento (AC-E4.2.4): un agente solo resuelve las cancelaciones de las reservas que intermedió.
+        // Aislamiento (AC-E4.2.4 / AC-E6.3.1): reserva ajena → 404 (Story 6.3 unifica a 404 para no filtrar
+        // existencia entre agentes; antes 403).
         if (!string.Equals(reserva.AgenteEmail, agente, StringComparison.Ordinal))
         {
-            return Result<ResolucionCancelacionResponseDto>.Prohibido("La reserva pertenece a otro agente.");
+            return Result<ResolucionCancelacionResponseDto>.NoEncontrado("La reserva no existe.");
         }
 
         var fechaResolucion = DateOnly.FromDateTime(reloj.GetUtcNow().UtcDateTime);
