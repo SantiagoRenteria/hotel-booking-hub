@@ -96,7 +96,7 @@ development_status:
   # ---- Epic 7: Observabilidad de extremo a extremo ----
   epic-7: in-progress
   7-1-traza-distribuida-propagada-extremo-a-extremo: done
-  7-2-metricas-p95-p99-por-endpoint: review
+  7-2-metricas-p95-p99-por-endpoint: in-progress
   epic-7-retrospective: optional
 
   # ---- Epic 8: Nube por IaC (con compuerta) ----

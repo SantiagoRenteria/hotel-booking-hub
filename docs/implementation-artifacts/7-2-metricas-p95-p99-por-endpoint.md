@@ -3,7 +3,7 @@ baseline_commit: e51eb2c1d4720aa3e46de69554445e71f8fcb01c
 ---
 # Story 7.2: Métricas p95/p99 por endpoint
 
-Status: review
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -99,6 +99,15 @@ para **detectar degradación de latencia**.
 - [Source: docs/planning-artifacts/architecture.md#tabla CAP↔ubicación] — CAP-9 · FR-25/26 → `AppHost/ServiceDefaults`.
 - [Source: src/AppHost/ServiceDefaults/Extensions.cs] — `WithMetrics` con `AddAspNetCoreInstrumentation` (histograma ya emitido).
 - [Source: docs/implementation-artifacts/epic-6-retro-2026-07-10.md] — E7 no bloqueada por 6.x.
+
+### Review Findings
+
+_Code review adversarial de 3 capas (Blind · Edge · Auditor), 2026-07-10. 2 patch, 4 dismiss._
+
+- [ ] [Review][Patch] El test `Las_sondas_de_salud_no_contaminan_las_series_de_negocio` no afirma **positivamente** que exista la serie de `/health` (una medición con `http.route` nula satisface `Count>=1` + `no api/v1`); además la aserción de ausencia global de `api/v1` sería vulnerable a contaminación si un runner cargara varias DLLs en un mismo proceso (cross-assembly). Reforzar: afirmar la presencia de una medición con ruta de salud propia, **distinta** de las de negocio (prueba "separable" de forma robusta e inmune a contaminación) + mensaje de timeout descriptivo. [tests/Reservas.FunctionalTests/MetricasDuracionTests.cs]
+- [ ] [Review][Patch] Honestidad de checkbox (Task 6): la subtarea "capturar del dashboard y **guardar en docs/**" está `[x]`, pero solo se entregaron pasos de reproducción (la captura manual requiere AppHost+Docker). Recalificar a 📄 documentado/diferido, no "hecho" (lección de honestidad de checkbox, retro E6). [docs/implementation-artifacts/7-2-metricas-p95-p99-por-endpoint.md]
+
+**Dismiss (no accionables):** dependencia de que `GET /api/v1/reservas` esté mapeado (verificado: los endpoints existen en `Reservas.Api/Program.cs` y `http.route` se emite aun con 401/5xx); `DisableTestParallelization` a nivel de ensamblado (es el alcance correcto — una colección dedicada no evitaría que otra clase HTTP del mismo ensamblado corra en paralelo y contamine el `MeterListener` process-wide); AC-E7.2.2 solo verifica `http.route` y no método/código (el núcleo "por endpoint" está probado; método/código son dimensiones OTel por defecto); diseño del poll (margen 3s + mensaje en el positivo, defendible).
 
 ## Dev Agent Record
 
