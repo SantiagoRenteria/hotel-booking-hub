@@ -31,23 +31,35 @@ para **proteger mi operación (control de acceso a nivel de DATOS, no solo de ro
 
 ## Tasks / Subtasks
 
-> **⚠️ Task 0 (party-mode OBLIGATORIA ANTES de codificar) — modelo de propiedad de Hoteles.**
-> Resolver con `/bmad-party-mode` (Winston + John + Amelia) y documentar aquí. El problema: **Reservas ya aísla
-> por `AgenteEmail`** persistido en la reserva (Story 3.3, decisión "mis reservas"), pero **Hoteles NO tiene
-> ninguna noción de agente propietario** — `Hotel`/`Habitacion` no guardan owner y sus endpoints no filtran.
-> FR-24 dice explícitamente "hoteles **o** reservas de otro agente", así que el aislamiento de **hoteles** está
-> en alcance. Opciones:
-> - **(A) Añadir `AgentePropietario` al agregado `Hotel` (+ migración) y filtrar/autorizar toda operación de
->   Hoteles por él (RECOMENDADA).** Coherente con el eje "mis recursos". Impacto: migración EF, `CrearHotel`
->   setea el owner desde el claim, todas las queries/commands de Hoteles filtran server-side. Es la deuda que
->   Hoteles arrastra desde E2 (nunca modeló propiedad).
-> - **(B) Acotar el aislamiento a Reservas** (donde ya existe) y **documentar** el de Hoteles como no-implementado
->   en el alcance. Riesgo: incumple FR-24 en su mitad de "hoteles". Solo si el timebox obliga — decisión de Santiago.
-> - **(C) Derivar propiedad de hotel vía eventos hacia una proyección** — más caro, cruza BC; probablemente
->   gold-plating frente a (A).
+> **✅ Task 0 RESUELTA (party-mode Winston/John/Amelia + decisión de Santiago, 2026-07-10) — Opción A.**
+> Consenso unánime en **Opción A** (aprobada por Santiago). Decisiones:
+> - **`AgentePropietario` en el agregado `Hotel` (dominio, no proyección)** — una proyección de solo-lectura no
+>   puede autorizar *escrituras*; el caso duro de FR-24 (editar/eliminar hotel ajeno) se valida en el write model.
+>   Es **aditivo** (no cambia invariantes; se fija una vez en `CrearHotel`, inmutable después).
+> - **Autorización centralizada** — un único punto de aplicación (guard/spec) que atraviesen los 9 endpoints de
+>   Hoteles, NO nueve `if` copiados (ahí es donde se colaría el bug). "Un solo lugar decide."
+> - **Eje = email** (consistencia con `AgenteEmail` ya persistido en Reservas; documentado como decisión).
+> - **Recurso ajeno → 404, no 403** (preserva el aislamiento a nivel de existencia; no filtra info entre inquilinos).
+> - **Greenfield** (decisión de Santiago): columna **`NOT NULL`** desde el día uno; el dev-seed se re-siembra
+>   asignando dueño. Sin backfill (no hay datos productivos).
+> - **Dueño = el agente que crea el hotel.** Sin rol Admin (6.2 solo definió `Agente`/`Viajero`).
+> - **Booking cross-BC FUERA de alcance (decisión de Santiago):** 6.3 cierra el aislamiento *dentro* de cada
+>   contexto (gestión de Hoteles + listado/detalle/cancelación de Reservas). NO se restringe el booking a hoteles
+>   propios (FR-24 no lo exige; rompería el modelo de agencia y el flujo del viajero). Pregunta de negocio futura.
+> - **Secuencia TDD (Amelia), Red→Green visible:** (1) **IDOR Reservas PRIMERO** (P1 de seguridad: filtrar
+>   cancelaciones por `IContextoAgente` → 404, derivar `Iniciador` del claim, quitar el campo autodeclarado del
+>   request); (2) `X-Agente`→claim (nueva impl. de `IContextoAgente` desde `HttpContext.User`, migrar tests a
+>   `TestKit.Auth`, sin tocar handlers/queries); (3) aislamiento Hoteles + `AgentePropietario` + guard centralizado;
+>   (4) migración EF + seed con dueño; (5) re-verde suite E2.
 >
-> **Decisión de Santiago requerida** porque (A) toca un agregado ya cerrado (E2) y añade migración. Si surge un
-> bloqueo de alcance aquí, **detener y activar party-mode** (condición de parada del protocolo autónomo).
+> <details><summary>Contexto original de la decisión (opciones evaluadas)</summary>
+>
+> El problema: **Reservas ya aísla por `AgenteEmail`** (Story 3.3), pero **Hoteles NO modela propietario**.
+> Opciones: **(A)** owner en `Hotel` + migración (RECOMENDADA/elegida); **(B)** acotar a Reservas + documentar
+> (descartada: incumple la mitad "hoteles" de FR-24 dentro de la épica de seguridad); **(C)** proyección vía
+> eventos (descartada: no autoriza escrituras, cruza BC, gold-plating).
+>
+> </details>
 
 - [ ] **Task 1 — Costura de identidad: header → claim (AC: 3)** *(refactor sin romper handlers)*
   - [ ] Nueva impl. de `IContextoAgente` que lee el claim de identidad de `HttpContext.User` (email/sub) en vez de
