@@ -64,10 +64,10 @@ else
     builder.Services.AddDistributedMemoryCache();
 }
 
-// Identidad del agente (Story 3.3, Task 0): resuelta server-side desde la cabecera X-Agente (puente hasta la
-// Épica 6, donde pasa a ser un claim de auth). NO es autenticación; el filtro de aislamiento vive en los handlers.
+// Identidad del agente resuelta server-side desde el claim 'email' del token JWT validado (Story 6.3, cierra
+// el puente X-Agente de 3.3). El filtro de aislamiento vive en los handlers/queries (dependen de la interfaz).
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<IContextoAgente, HttpContextoAgente>();
+builder.Services.AddScoped<IContextoAgente, ClaimContextoAgente>();
 
 var app = builder.Build();
 
