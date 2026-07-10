@@ -41,17 +41,25 @@ public static class ActividadHotelBookingHub
             return null;
         }
 
-        // Traceparent W3C completo → se respeta tal cual (trace-id + span-id + flags).
+        // El padre "vino por el cable": se marca Recorded (para que el span del consumidor SIEMPRE se muestree,
+        // incluso si el productor mandó un traceparent con flag 00) e isRemote (semántica de contexto remoto).
+        // Normalizar la flag evita que la rama traceparent y la de 32-hex se comporten distinto bajo un sampler
+        // ParentBased en producción (asimetría que perdía el span en silencio).
+        const ActivityTraceFlags flagsCorrelacion = ActivityTraceFlags.Recorded;
+
+        // Traceparent W3C completo → se respeta el trace-id + span-id reales; solo se normaliza la flag.
         if (ActivityContext.TryParse(traceIdNegocio, traceState: null, out var contextoCompleto))
         {
-            return contextoCompleto;
+            return new ActivityContext(
+                contextoCompleto.TraceId, contextoCompleto.SpanId, flagsCorrelacion,
+                contextoCompleto.TraceState, isRemote: true);
         }
 
-        // Trace-id de 32 hex → padre sintético (span-id aleatorio) con flag Recorded para que se muestree.
+        // Trace-id de 32 hex → padre sintético (span-id aleatorio; el traceparent completo lo aportaría Dapr).
         try
         {
             var traceId = ActivityTraceId.CreateFromString(traceIdNegocio.AsSpan());
-            return new ActivityContext(traceId, ActivitySpanId.CreateRandom(), ActivityTraceFlags.Recorded);
+            return new ActivityContext(traceId, ActivitySpanId.CreateRandom(), flagsCorrelacion, isRemote: true);
         }
         catch (ArgumentOutOfRangeException)
         {

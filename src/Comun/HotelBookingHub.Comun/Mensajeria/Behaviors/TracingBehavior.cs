@@ -19,8 +19,10 @@ public sealed class TracingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
         {
             return await siguiente(ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // Solo los fallos reales del servidor marcan Error; una cancelación (aborto de cliente/shutdown) NO
+            // es un fallo del span (coherente con DespachadorNotificaciones, que también excluye la cancelación).
             actividad?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
             actividad?.AddException(ex);
             throw;
