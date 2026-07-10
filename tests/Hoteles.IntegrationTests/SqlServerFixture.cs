@@ -38,6 +38,23 @@ public sealed class SqlServerFixture : IAsyncLifetime
 
         return new HotelesDbContext(builder.Options);
     }
+
+    /// <summary>
+    /// Contexto CON identidad de agente (Story 6.3): activa el query filter por propietario, de modo que un
+    /// hotel de otro agente queda invisible. Sin argumento equivale al contexto sin identidad (filtro inactivo).
+    /// </summary>
+    public HotelesDbContext CrearContextoConAgente(string? agente)
+    {
+        var builder = new DbContextOptionsBuilder<HotelesDbContext>()
+            .UseSqlServer(_sql.GetConnectionString());
+
+        return new HotelesDbContext(builder.Options, new ContextoAgenteFijo(agente));
+    }
+
+    private sealed class ContextoAgenteFijo(string? agente) : Hoteles.Application.Abstracciones.IContextoAgente
+    {
+        public string? AgenteActual => agente;
+    }
 }
 
 [CollectionDefinition("sqlserver-hoteles")]

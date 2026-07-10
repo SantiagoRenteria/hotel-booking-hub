@@ -131,12 +131,13 @@ public sealed class CancelarEnUnPasoCommandHandlerTests
     }
 
     [Fact]
-    public async Task Agente_ajeno_devuelve_prohibido_sin_mutar()
+    public async Task Agente_ajeno_devuelve_no_encontrado_sin_mutar()
     {
+        // Story 6.3: reserva ajena → 404 (no 403; no filtra existencia entre agentes).
         var reserva = SembrarConfirmada(dueno: Dueno);
         var resultado = await Handler("otro@agencia.com").Handle(Comando(reserva.Id, DecisionCancelacion.AprobarAplicandoPenalidad), CancellationToken.None);
 
-        Assert.Equal(EstadoResultado.Prohibido, resultado.Estado);
+        Assert.Equal(EstadoResultado.NoEncontrado, resultado.Estado);
         Assert.Equal(EstadoReserva.Confirmada, reserva.Estado);
         Assert.Empty(_outbox.Encolados);
     }

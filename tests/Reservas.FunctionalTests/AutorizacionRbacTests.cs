@@ -61,15 +61,10 @@ public class AutorizacionRbacTests(ReservasApiFactory factory) : IClassFixture<R
     [Fact]
     public async Task Agente_en_endpoint_SoloAgente_pasa_la_autorizacion()
     {
-        // Rol correcto (Agente) en un endpoint SoloAgente. Se envía X-Agente para pasar el fail-closed del
-        // aislamiento (Story 3.3, aún vía header hasta 6.3) y aislar así la señal del RBAC: si el RBAC
-        // rechazara, sería 403 aquí; como pasa, el handler llega a la BD ficticia → 5xx (NO 401/403).
-        var cliente = factory.CreateClient();
-        cliente.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", TokenDePrueba.Emitir(rol: TokenDePrueba.RolAgente));
-        cliente.DefaultRequestHeaders.Add("X-Agente", "agente@ejemplo.com");
-
-        var respuesta = await cliente.GetAsync(RutaSoloAgente);
+        // Rol correcto (Agente) en un endpoint SoloAgente. La identidad la provee el claim 'email' del token
+        // (Story 6.3, ya no hay X-Agente): RBAC pasa y el aislamiento tiene identidad → el handler llega a la
+        // BD ficticia → 5xx (NO 401/403).
+        var respuesta = await Get(RutaSoloAgente, TokenDePrueba.RolAgente);
 
         Assert.NotEqual(HttpStatusCode.Unauthorized, respuesta.StatusCode);
         Assert.NotEqual(HttpStatusCode.Forbidden, respuesta.StatusCode);

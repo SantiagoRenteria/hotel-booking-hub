@@ -10,7 +10,7 @@ public sealed class EditarHotelCommandHandlerTests
     private static readonly byte[] _rowVersion = [1, 2, 3, 4, 5, 6, 7, 8];
 
     private static Hotel HotelExistente() =>
-        Hotel.Crear("Hotel Central", "Medellín", "Calle 1 # 2-3", "Boutique", EstadoHotel.Habilitado);
+        Hotel.Crear("Hotel Central", "Medellín", "Calle 1 # 2-3", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
 
     private static EditarHotelCommand Comando(Guid id) =>
         new(id, _rowVersion, "Hotel Renovado", "Cali", "Av 3", "Actualizado");

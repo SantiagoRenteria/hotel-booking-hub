@@ -1,3 +1,4 @@
+using Hoteles.Application.Abstracciones;
 using Hoteles.Domain.Habitaciones;
 using Hoteles.Domain.Hoteles;
 using Microsoft.EntityFrameworkCore;
@@ -8,9 +9,20 @@ namespace Hoteles.Infrastructure.Persistencia;
 /// DbContext del BC de Hoteles (BD por servicio, independiente de Reservas — los BC solo hablan por eventos).
 /// Claves ADR-017: PK UUID v7 no-clustered + <c>Seq bigint IDENTITY</c> shadow clustered + <c>rowversion</c>
 /// (habilita la concurrencia optimista de 2.2). El outbox de catálogo se añade en 2.5.
+/// <para><b>Aislamiento entre agentes (Story 6.3):</b> un query filter global por <c>AgentePropietario</c> hace
+/// invisible el hotel de otro agente → toda carga-para-mutar devuelve 404 sin guard por handler ("un solo lugar
+/// decide"). La identidad viene del <see cref="IContextoAgente"/> (claim del token). En contextos SIN identidad
+/// (migraciones/design-time/siembra de tests) el filtro por propietario NO aplica; en el flujo HTTP real el
+/// agente SIEMPRE está presente (lo garantiza el RBAC de 6.2, que exige rol Agente con su claim).</para>
 /// </summary>
-public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options) : DbContext(options)
+public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options, IContextoAgente? contextoAgente = null) : DbContext(options)
 {
+    // ¿Hay costura de identidad inyectada? En el flujo HTTP siempre la hay (registrada en Hoteles.Api) → el
+    // aislamiento está ACTIVO y una identidad ausente NO desactiva el filtro (fail-closed: no casa nada → 404).
+    // El bypass del filtro por propietario aplica SOLO cuando NO hay costura (migraciones/design-time/siembra).
+    private readonly bool _aislamientoActivo = contextoAgente is not null;
+    private readonly string? _agenteActual = contextoAgente?.AgenteActual;
+
     public DbSet<Hotel> Hoteles => Set<Hotel>();
     public DbSet<Habitacion> Habitaciones => Set<Habitacion>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
@@ -26,11 +38,14 @@ public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options)
             b.HasIndex("Seq").IsUnique().IsClustered();
             b.Property<byte[]>("RowVersion").IsRowVersion();
 
-            // Soft delete (2.2): baja lógica + query filter global → un hotel eliminado deja de aparecer en
-            // consultas y de ofertar. Marcar Eliminado=true es un UPDATE, así que el rowversion cambia y una
-            // edición concurrente que pierda contra el borrado obtiene 409 (no un last-write-wins silencioso).
-            b.HasQueryFilter(h => !h.Eliminado);
+            // Soft delete (2.2) + aislamiento por propietario (6.3) en el MISMO query filter global. El hotel
+            // eliminado deja de aparecer; el de otro agente es invisible (carga-para-mutar → 404). Cuando el
+            // aislamiento está ACTIVO (hay costura), una identidad ausente hace fail-closed: `AgentePropietario`
+            // (NOT NULL) nunca es null, así que `== _agenteActual` (null) no casa NADA → no se ve ningún hotel.
+            // El filtro por propietario solo se omite cuando NO hay costura (migraciones/design-time/siembra).
+            b.HasQueryFilter(h => !h.Eliminado && (!_aislamientoActivo || h.AgentePropietario == _agenteActual));
 
+            b.Property(h => h.AgentePropietario).IsRequired().HasMaxLength(LongitudesHotel.AgentePropietario);
             b.Property(h => h.Nombre).HasMaxLength(LongitudesHotel.Nombre);
             b.Property(h => h.Ciudad).HasMaxLength(LongitudesHotel.Ciudad);
             b.Property(h => h.Direccion).HasMaxLength(LongitudesHotel.Direccion);
