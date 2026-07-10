@@ -29,7 +29,7 @@ public sealed class CambiarEstadoHabitacionCommandHandlerTests
         var habitacion = UnaHabitacion(EstadoHabitacion.Habilitada);
         var repo = new HabitacionRepositoryFake { Existente = habitacion };
 
-        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo, new ColaOutboxFake())
+        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), new ColaOutboxFake())
             .Handle(Comando(habitacion.Id, EstadoHabitacion.Deshabilitada), CancellationToken.None);
 
         Assert.True(resultado.EsExitoso);
@@ -44,7 +44,7 @@ public sealed class CambiarEstadoHabitacionCommandHandlerTests
         var habitacion = UnaHabitacion(EstadoHabitacion.Deshabilitada);
         var repo = new HabitacionRepositoryFake { Existente = habitacion };
 
-        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo, new ColaOutboxFake())
+        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), new ColaOutboxFake())
             .Handle(Comando(habitacion.Id, EstadoHabitacion.Habilitada), CancellationToken.None);
 
         Assert.True(resultado.EsExitoso);
@@ -59,7 +59,7 @@ public sealed class CambiarEstadoHabitacionCommandHandlerTests
         var habitacion = UnaHabitacion(EstadoHabitacion.Deshabilitada);
         var repo = new HabitacionRepositoryFake { Existente = habitacion };
 
-        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo, new ColaOutboxFake())
+        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), new ColaOutboxFake())
             .Handle(Comando(habitacion.Id, EstadoHabitacion.Deshabilitada), CancellationToken.None);
 
         Assert.True(resultado.EsExitoso);
@@ -79,7 +79,7 @@ public sealed class CambiarEstadoHabitacionCommandHandlerTests
         var habitacion = UnaHabitacion(origen);
         var repo = new HabitacionRepositoryFake { Existente = habitacion };
 
-        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo, new ColaOutboxFake())
+        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), new ColaOutboxFake())
             .Handle(Comando(habitacion.Id, objetivo), CancellationToken.None);
 
         Assert.True(resultado.EsExitoso);
@@ -93,7 +93,7 @@ public sealed class CambiarEstadoHabitacionCommandHandlerTests
     {
         var repo = new HabitacionRepositoryFake { Existente = null };
 
-        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo, new ColaOutboxFake())
+        var resultado = await new CambiarEstadoHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), new ColaOutboxFake())
             .Handle(Comando(Guid.NewGuid(), EstadoHabitacion.Habilitada), CancellationToken.None);
 
         Assert.Equal(EstadoResultado.NoEncontrado, resultado.Estado);
@@ -111,6 +111,6 @@ public sealed class CambiarEstadoHabitacionCommandHandlerTests
         };
 
         await Assert.ThrowsAsync<ConflictoConcurrenciaException>(
-            () => new CambiarEstadoHabitacionCommandHandler(repo, new ColaOutboxFake()).Handle(Comando(habitacion.Id, EstadoHabitacion.Deshabilitada), CancellationToken.None));
+            () => new CambiarEstadoHabitacionCommandHandler(repo, HotelesVisiblesFake.ConHotelVisible(), new ColaOutboxFake()).Handle(Comando(habitacion.Id, EstadoHabitacion.Deshabilitada), CancellationToken.None));
     }
 }

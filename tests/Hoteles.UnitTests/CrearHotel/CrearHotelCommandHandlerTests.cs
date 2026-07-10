@@ -12,7 +12,7 @@ public sealed class CrearHotelCommandHandlerTests
         var repo = new HotelRepositoryFake { RowVersionResultante = [1, 2, 3, 4] };
         var comando = new CrearHotelCommand("Hotel Central", "Medellín", "Calle 1 # 2-3", "Boutique", EstadoHotel.Habilitado);
 
-        var resultado = await new CrearHotelCommandHandler(repo).Handle(comando, CancellationToken.None);
+        var resultado = await new CrearHotelCommandHandler(repo, new ContextoAgenteFake()).Handle(comando, CancellationToken.None);
 
         Assert.True(resultado.EsExitoso);
         Assert.NotNull(resultado.Valor);
@@ -33,7 +33,7 @@ public sealed class CrearHotelCommandHandlerTests
         var repo = new HotelRepositoryFake();
         var comando = new CrearHotelCommand("Hotel Norte", "Cali", "Av 2", "", EstadoHotel.Deshabilitado);
 
-        var resultado = await new CrearHotelCommandHandler(repo).Handle(comando, CancellationToken.None);
+        var resultado = await new CrearHotelCommandHandler(repo, new ContextoAgenteFake()).Handle(comando, CancellationToken.None);
 
         Assert.Equal("Deshabilitado", resultado.Valor!.Estado);
     }

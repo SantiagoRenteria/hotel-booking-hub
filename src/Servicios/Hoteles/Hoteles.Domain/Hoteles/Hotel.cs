@@ -10,6 +10,15 @@ namespace Hoteles.Domain.Hoteles;
 public sealed class Hotel
 {
     public Guid Id { get; private set; }
+
+    /// <summary>
+    /// Agente propietario del hotel (Story 6.3, aislamiento entre agentes): el agente que lo creó, en forma
+    /// canónica (minúsculas + trim). Es identidad, <b>inmutable</b> tras el alta (se fija en <see cref="Crear"/>;
+    /// ni <see cref="Editar"/> ni el ciclo de vida lo tocan). El aislamiento se aplica de forma centralizada por
+    /// query filter en <c>HotelesDbContext</c>: un hotel de otro agente es invisible → carga-para-mutar → 404.
+    /// </summary>
+    public string AgentePropietario { get; private set; } = string.Empty;
+
     public string Nombre { get; private set; } = string.Empty;
     public string Ciudad { get; private set; } = string.Empty;
     public string Direccion { get; private set; } = string.Empty;
@@ -29,14 +38,17 @@ public sealed class Hotel
 
     private Hotel() { } // EF Core
 
-    public static Hotel Crear(string nombre, string ciudad, string direccion, string descripcion, EstadoHotel estado)
+    public static Hotel Crear(string nombre, string ciudad, string direccion, string descripcion, EstadoHotel estado, string agentePropietario)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(nombre);
         ArgumentException.ThrowIfNullOrWhiteSpace(ciudad);
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentePropietario);
 
         return new Hotel
         {
             Id = Guid.CreateVersion7(),
+            // Canónico (minúsculas + trim): el aislamiento no depende del collation de SQL (patrón de Reservas 3.3).
+            AgentePropietario = agentePropietario.Trim().ToLowerInvariant(),
             Nombre = nombre.Trim(),
             Ciudad = ciudad.Trim(),
             Direccion = (direccion ?? string.Empty).Trim(),

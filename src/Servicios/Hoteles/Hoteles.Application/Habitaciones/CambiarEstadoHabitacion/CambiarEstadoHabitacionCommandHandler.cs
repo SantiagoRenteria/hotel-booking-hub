@@ -14,13 +14,21 @@ namespace Hoteles.Application.Habitaciones.CambiarEstadoHabitacion;
 /// concurrencia optimista (409 en conflicto). Emite <c>HabitacionDeshabilitada</c> SOLO cuando la habitación
 /// pasa realmente a deshabilitada (AC-E2.5.3: habilitar e idempotentes NO emiten), en la misma transacción.
 /// </summary>
-public sealed class CambiarEstadoHabitacionCommandHandler(IHabitacionRepository repositorio, IColaOutbox outbox)
+public sealed class CambiarEstadoHabitacionCommandHandler(
+    IHabitacionRepository repositorio, IHotelRepository hoteles, IColaOutbox outbox)
     : IRequestHandler<CambiarEstadoHabitacionCommand, Result<HabitacionResponseDto>>
 {
     public async Task<Result<HabitacionResponseDto>> Handle(CambiarEstadoHabitacionCommand request, CancellationToken ct)
     {
         var habitacion = await repositorio.ObtenerAsync(request.Id, ct);
         if (habitacion is null)
+        {
+            return Result<HabitacionResponseDto>.NoEncontrado($"No existe una habitación con id {request.Id}.");
+        }
+
+        // Aislamiento (Story 6.3): la habitación se aísla por el propietario de su hotel (query filter por
+        // propietario al cargar el hotel padre → ajeno/eliminado invisible → 404).
+        if (await hoteles.ObtenerAsync(habitacion.HotelId, ct) is null)
         {
             return Result<HabitacionResponseDto>.NoEncontrado($"No existe una habitación con id {request.Id}.");
         }
