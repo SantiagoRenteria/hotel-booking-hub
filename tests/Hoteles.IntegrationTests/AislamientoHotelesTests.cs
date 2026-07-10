@@ -1,3 +1,5 @@
+using HotelBookingHub.Comun.Resultados;
+using Hoteles.Application.Hoteles.EditarHotel;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Infrastructure.Persistencia;
 using Microsoft.EntityFrameworkCore;
@@ -55,6 +57,26 @@ public sealed class AislamientoHotelesTests(SqlServerFixture fixture)
             var propio = await new HotelRepository(dbA).ObtenerAsync(id, CancellationToken.None);
             Assert.Equal("Hotel A", propio!.Nombre);
         }
+    }
+
+    [Fact]
+    public async Task Agente_ajeno_al_editar_via_handler_recibe_404_y_el_hotel_no_cambia()
+    {
+        // A nivel handler (AC-E6.3.2): agente B intenta editar el hotel de A → 404 (invisible por el filtro) y
+        // el recurso NO cambia (verificado por su dueño). Cierra el gap "solo a nivel repo" del review.
+        var id = await SembrarHotelDeAsync(AgenteA);
+
+        await using var dbB = fixture.CrearContextoConAgente(AgenteB);
+        var handler = new EditarHotelCommandHandler(new HotelRepository(dbB));
+        var comando = new EditarHotelCommand(id, RowVersion: [0, 0, 0, 0, 0, 0, 0, 1], "Secuestrado", "Cali", "X", "Y");
+
+        var resultado = await handler.Handle(comando, CancellationToken.None);
+
+        Assert.Equal(EstadoResultado.NoEncontrado, resultado.Estado);
+
+        await using var dbA = fixture.CrearContextoConAgente(AgenteA);
+        var propio = await new HotelRepository(dbA).ObtenerAsync(id, CancellationToken.None);
+        Assert.Equal("Hotel A", propio!.Nombre); // intacto
     }
 
     [Fact]

@@ -17,7 +17,14 @@ public sealed class ClaimContextoAgente(IHttpContextAccessor accessor) : IContex
     {
         get
         {
-            var valor = accessor.HttpContext?.User.FindFirst(ClaimEmail)?.Value;
+            var emails = accessor.HttpContext?.User.FindAll(ClaimEmail).ToList();
+            // Ausente o AMBIGUO (varios claims `email`) → sin identidad (fail-closed): no adivinamos cuál es.
+            if (emails is not { Count: 1 })
+            {
+                return null;
+            }
+
+            var valor = emails[0].Value;
             return string.IsNullOrWhiteSpace(valor) ? null : valor.Trim().ToLowerInvariant();
         }
     }

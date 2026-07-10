@@ -49,4 +49,13 @@ public sealed class ClaimContextoAgenteTests
     {
         Assert.Null(Resolver((ClaimContextoAgente.ClaimEmail, valor)));
     }
+
+    [Fact]
+    public void Dos_claims_email_es_ambiguo_y_null_fail_closed()
+    {
+        // Un token con múltiples claims `email` es ambiguo: no adivinamos la identidad → fail-closed (review 6.3).
+        Assert.Null(Resolver(
+            (ClaimContextoAgente.ClaimEmail, "a@test.com"),
+            (ClaimContextoAgente.ClaimEmail, "b@test.com")));
+    }
 }
