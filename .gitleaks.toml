@@ -20,3 +20,10 @@ paths = [
     '''^\.claude/''',
     '''^_bmad/''',
 ]
+# Claves JWT de PRUEBA (Story 6.1): constantes de test con prefijo explícito 'clave-de-prueba'/'clave-corta',
+# usadas por los tests para firmar/validar tokens en memoria. NO son secretos reales. El allowlist por regex
+# aplica a TODOS los commits escaneados (a diferencia de 'gitleaks:allow' inline, que solo cubre la versión con
+# el comentario). tests/ sigue escaneado para secretos reales.
+regexes = [
+    '''clave-(de-prueba|corta)[a-z0-9-]*''',
+]

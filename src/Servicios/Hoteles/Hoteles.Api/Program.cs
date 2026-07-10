@@ -1,5 +1,6 @@
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
+using HotelBookingHub.Comun.Web.Seguridad;
 using Hoteles.Application.Habitaciones.CambiarEstadoHabitacion;
 using Hoteles.Application.Habitaciones.CrearHabitacion;
 using Hoteles.Application.Habitaciones.EditarHabitacion;
@@ -19,6 +20,10 @@ builder.AddServiceDefaults();
 // OpenAPI nativo de .NET 10 (sin Swashbuckle). La UI Scalar se añade cuando haya endpoints de negocio.
 builder.Services.AddOpenApi();
 
+// Autenticación JWT (Story 6.1, defensa en profundidad): el servicio valida el token además del Gateway.
+// El rol del claim habilita el RBAC de 6.2; la identidad, el aislamiento de propiedad de 6.3.
+builder.Services.AddAutenticacionJwt(builder.Configuration);
+
 // Excepciones de negocio → Problem Details RFC 7807 (handler transversal en Comun.Web; concurrencia → 409).
 builder.Services.AddManejoExcepcionesNegocio();
 
@@ -31,6 +36,10 @@ builder.Services.AddHotelesInfrastructure(builder.Configuration.GetConnectionStr
 var app = builder.Build();
 
 app.UseExceptionHandler();
+
+// Autenticación/autorización (Story 6.1). Antes de los endpoints de negocio; /health y /alive quedan anónimos.
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
@@ -49,7 +58,8 @@ app.MapPost("/api/v1/hoteles", async (CrearHotelCommand comando, ISender sender,
         return resultado.ToCreatedResult(dto => $"/api/v1/hoteles/{dto.Id}");
     })
     .WithName("CrearHotel")
-    .WithTags("Hoteles");
+    .WithTags("Hoteles")
+    .RequireAuthorization();
 
 // CAP-1 · Editar hotel (AC-E2.2.1). El id de la ruta manda sobre el del cuerpo (evita discrepancias). El
 // rowVersion del cuerpo arbitra la concurrencia optimista (409 si pierde la carrera; el handler transversal
@@ -60,7 +70,8 @@ app.MapPut("/api/v1/hoteles/{id:guid}", async (Guid id, EditarHotelCommand coman
         return resultado.ToOkResult();
     })
     .WithName("EditarHotel")
-    .WithTags("Hoteles");
+    .WithTags("Hoteles")
+    .RequireAuthorization();
 
 // CAP-1 · Eliminar hotel — baja lógica (AC-E2.2.2). El rowVersion (cuerpo) arbitra la concurrencia. 204 al
 // eliminar; 404 si no existe o ya estaba eliminado; 409 si pierde una carrera contra otra edición/baja.
@@ -70,7 +81,8 @@ app.MapDelete("/api/v1/hoteles/{id:guid}", async (Guid id, EliminarHotelCommand 
         return resultado.ToNoContentResult();
     })
     .WithName("EliminarHotel")
-    .WithTags("Hoteles");
+    .WithTags("Hoteles")
+    .RequireAuthorization();
 
 // CAP-1 · Habilitar / deshabilitar hotel (AC-E2.3.1) — operaciones dedicadas del ciclo de vida. El estado
 // objetivo lo fija la RUTA (no el cliente); el rowVersion (cuerpo) arbitra la concurrencia. 200 con el estado
@@ -81,7 +93,8 @@ app.MapPost("/api/v1/hoteles/{id:guid}/habilitar", async (Guid id, CambiarEstado
         return resultado.ToOkResult();
     })
     .WithName("HabilitarHotel")
-    .WithTags("Hoteles");
+    .WithTags("Hoteles")
+    .RequireAuthorization();
 
 app.MapPost("/api/v1/hoteles/{id:guid}/deshabilitar", async (Guid id, CambiarEstadoHotelCommand comando, ISender sender, CancellationToken ct) =>
     {
@@ -89,7 +102,8 @@ app.MapPost("/api/v1/hoteles/{id:guid}/deshabilitar", async (Guid id, CambiarEst
         return resultado.ToOkResult();
     })
     .WithName("DeshabilitarHotel")
-    .WithTags("Hoteles");
+    .WithTags("Hoteles")
+    .RequireAuthorization();
 
 // CAP-1 · Habitaciones (FR-5/6/7). El hotel de la ruta manda; el rowVersion (cuerpo) arbitra la concurrencia.
 app.MapPost("/api/v1/hoteles/{hotelId:guid}/habitaciones", async (Guid hotelId, CrearHabitacionCommand comando, ISender sender, CancellationToken ct) =>
@@ -98,7 +112,8 @@ app.MapPost("/api/v1/hoteles/{hotelId:guid}/habitaciones", async (Guid hotelId, 
         return resultado.ToCreatedResult(dto => $"/api/v1/habitaciones/{dto.Id}");
     })
     .WithName("CrearHabitacion")
-    .WithTags("Habitaciones");
+    .WithTags("Habitaciones")
+    .RequireAuthorization();
 
 app.MapPut("/api/v1/habitaciones/{id:guid}", async (Guid id, EditarHabitacionCommand comando, ISender sender, CancellationToken ct) =>
     {
@@ -106,7 +121,8 @@ app.MapPut("/api/v1/habitaciones/{id:guid}", async (Guid id, EditarHabitacionCom
         return resultado.ToOkResult();
     })
     .WithName("EditarHabitacion")
-    .WithTags("Habitaciones");
+    .WithTags("Habitaciones")
+    .RequireAuthorization();
 
 // Estado objetivo fijado por la RUTA (operaciones dedicadas); 200 con el estado nuevo, 404, 409.
 app.MapPost("/api/v1/habitaciones/{id:guid}/habilitar", async (Guid id, CambiarEstadoHabitacionCommand comando, ISender sender, CancellationToken ct) =>
@@ -115,7 +131,8 @@ app.MapPost("/api/v1/habitaciones/{id:guid}/habilitar", async (Guid id, CambiarE
         return resultado.ToOkResult();
     })
     .WithName("HabilitarHabitacion")
-    .WithTags("Habitaciones");
+    .WithTags("Habitaciones")
+    .RequireAuthorization();
 
 app.MapPost("/api/v1/habitaciones/{id:guid}/deshabilitar", async (Guid id, CambiarEstadoHabitacionCommand comando, ISender sender, CancellationToken ct) =>
     {
@@ -123,6 +140,7 @@ app.MapPost("/api/v1/habitaciones/{id:guid}/deshabilitar", async (Guid id, Cambi
         return resultado.ToOkResult();
     })
     .WithName("DeshabilitarHabitacion")
-    .WithTags("Habitaciones");
+    .WithTags("Habitaciones")
+    .RequireAuthorization();
 
 app.Run();
