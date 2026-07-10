@@ -2,6 +2,11 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: code review of story-6.2 (2026-07-10)
+
+- **Detalle de reserva `SoloAgente` mientras el Viajero puede crear/solicitar** (blind, MED) — un Viajero que crea una reserva (`AgenteOViajero`) recibe 403 al releerla por `GET /api/v1/reservas/{id}` (`SoloAgente`). Es **per-spec** (FR-13: listado/detalle es capacidad del agente para conciliar comisiones; no hay FR de "viajero consulta su reserva por id" — la recibe en el 201). Sobre-restricción segura, no escalada. Si producto pide una vista de reserva para el viajero, historia propia. `[Reservas.Api/Program.cs]`
+- **`RequireRole` sin normalización de caso ni soporte de rol CSV/array → 403 con IdP OIDC externo** (edge, BAJA) — `IsInRole` compara ordinal/case-sensitive; un IdP que emita `"agente"` o roles como un único claim `"Agente,Viajero"` caería en 403. Fail-closed hoy (emisor propio consistente). Cerrar al integrar un IdP real (F2): normalizar el caso y/o expandir un claim de rol multivaluado. `[Comun.Web/Seguridad/AutorizacionPorRolExtensions.cs]`
+
 ## Deferred from: code review of story-6.1 (2026-07-10)
 
 - **Clave HMAC simétrica compartida por Gateway + servicios** (blind, MED-diseño) — con HS256 la misma `Jwt:SigningKey` firma y valida, y los tres componentes (gateway/hoteles/reservas) la comparten. Si se filtra desde cualquiera, o un servicio se compromete, se pueden forjar tokens con cualquier rol/identidad aceptados por todos. Riesgo **aceptado** en el alcance de la prueba (JWT/OIDC propio, sin IdP externo). Producción: migrar a claves **asimétricas** (RS256/ES256) con la clave privada de firma aislada del validador, o un IdP (Keycloak/Entra) con JWKS. `[deploy/docker-compose.yml, AutenticacionJwtExtensions.cs]`

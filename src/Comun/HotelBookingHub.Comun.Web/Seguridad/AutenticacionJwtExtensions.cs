@@ -79,6 +79,9 @@ public static class AutenticacionJwtExtensions
             // Allow-list explícita: solo HMAC-SHA256 (defensa contra confusión de algoritmos si el día de
             // mañana se introduce una clave asimétrica; hoy la clave simétrica ya lo acota).
             ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+            // Claim de rol CANÓNICO "role" (corto), coherente con el README y el emisor. Así RequireRole (RBAC,
+            // Story 6.2) lee el claim corto del token en vez de esperar la URI larga de ClaimTypes.Role.
+            RoleClaimType = RolesAplicacion.ClaimRol,
             // Acota la tolerancia de reloj (el default de la librería es 5 min); no la relajamos por encima.
             ClockSkew = TimeSpan.FromMinutes(1),
         };
@@ -102,15 +105,33 @@ public static class AutenticacionJwtExtensions
             .AddJwtBearer(bearer =>
             {
                 bearer.TokenValidationParameters = parametros;
+                // Desactiva el mapeo legacy de claims (que reescribiría "role"→URI larga de ClaimTypes.Role y
+                // rompería RequireRole con RoleClaimType="role"). Así sub/email/role quedan tal cual vienen.
+                bearer.MapInboundClaims = false;
                 // El reto por defecto responde 401 con cuerpo vacío; lo reescribimos a Problem Details RFC 7807
                 // para que el contrato de errores sea uniforme con el resto del sistema.
                 bearer.Events = new JwtBearerEvents
                 {
+                    // 401 (no autenticado): el reto por defecto trae cuerpo vacío → Problem Details RFC 7807.
                     OnChallenge = async contexto =>
                     {
                         contexto.HandleResponse();
-                        await EscribirProblemDetails401(contexto.HttpContext);
+                        await EscribirProblemDetails(
+                            contexto.HttpContext,
+                            StatusCodes.Status401Unauthorized,
+                            "No autenticado",
+                            "Se requiere un token JWT válido (issuer, audience, expiración y firma).",
+                            retoBearer: true);
                     },
+                    // 403 (autenticado, sin permiso): el forbid por defecto también trae cuerpo vacío. Simétrico
+                    // al 401 para que el RBAC (Story 6.2) responda el mismo contrato de error uniforme.
+                    OnForbidden = async contexto =>
+                        await EscribirProblemDetails(
+                            contexto.HttpContext,
+                            StatusCodes.Status403Forbidden,
+                            "Prohibido",
+                            "No tiene permiso para realizar esta operación con su rol actual.",
+                            retoBearer: false),
                 };
             });
 
@@ -118,7 +139,7 @@ public static class AutenticacionJwtExtensions
         return servicios;
     }
 
-    private static async Task EscribirProblemDetails401(HttpContext contexto)
+    private static async Task EscribirProblemDetails(HttpContext contexto, int status, string title, string detail, bool retoBearer)
     {
         var respuesta = contexto.Response;
         // Si otro middleware ya inició la respuesta, no podemos reescribir StatusCode/headers.
@@ -127,16 +148,20 @@ public static class AutenticacionJwtExtensions
             return;
         }
 
-        respuesta.StatusCode = StatusCodes.Status401Unauthorized;
-        respuesta.Headers.WWWAuthenticate = "Bearer";
+        respuesta.StatusCode = status;
+        if (retoBearer)
+        {
+            respuesta.Headers.WWWAuthenticate = "Bearer";
+        }
+
         respuesta.ContentType = "application/problem+json";
 
         var problema = new
         {
             type = "https://datatracker.ietf.org/doc/html/rfc7807",
-            title = "No autenticado",
-            status = StatusCodes.Status401Unauthorized,
-            detail = "Se requiere un token JWT válido (issuer, audience, expiración y firma).",
+            title,
+            status,
+            detail,
             instance = contexto.Request.Path.Value,
             // Correlación con el resto del contrato de errores del sistema (W3C Trace Context).
             traceId = Activity.Current?.Id ?? contexto.TraceIdentifier,

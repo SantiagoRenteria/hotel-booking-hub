@@ -28,13 +28,16 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Contracts/Contracts.csproj" />
+    <Project Path="tests/Reservas.FunctionalTests/Reservas.FunctionalTests.csproj" />
     <Project Path="tests/Reservas.IntegrationTests/Reservas.IntegrationTests.csproj" />
     <Project Path="tests/Reservas.UnitTests/Reservas.UnitTests.csproj" />
     <Project Path="tests/Hoteles.UnitTests/Hoteles.UnitTests.csproj" />
+    <Project Path="tests/Hoteles.FunctionalTests/Hoteles.FunctionalTests.csproj" />
     <Project Path="tests/Hoteles.IntegrationTests/Hoteles.IntegrationTests.csproj" />
     <Project Path="tests/Comun.Web.UnitTests/Comun.Web.UnitTests.csproj" />
     <Project Path="tests/Notificaciones.UnitTests/Notificaciones.UnitTests.csproj" />
     <Project Path="tests/Notificaciones.IntegrationTests/Notificaciones.IntegrationTests.csproj" />
     <Project Path="tests/Seguridad.FunctionalTests/Seguridad.FunctionalTests.csproj" />
+    <Project Path="tests/TestKit.Auth/TestKit.Auth.csproj" />
   </Folder>
 </Solution>
