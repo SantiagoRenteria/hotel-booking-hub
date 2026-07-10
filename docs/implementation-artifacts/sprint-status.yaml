@@ -90,7 +90,7 @@ development_status:
   6-1-autenticacion-jwt-oidc: done
   6-2-autorizacion-por-rol-rbac: done
   6-3-aislamiento-entre-agentes: done
-  6-4-endurecimiento-owasp: review
+  6-4-endurecimiento-owasp: in-progress
   epic-6-retrospective: optional
 
   # ---- Epic 7: Observabilidad de extremo a extremo ----
