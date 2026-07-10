@@ -1,4 +1,5 @@
 using HotelBookingHub.Comun.Web.Seguridad;
+using Microsoft.IdentityModel.Tokens;
 
 namespace HotelBookingHub.Comun.Web.UnitTests;
 
@@ -31,18 +32,55 @@ public class AutenticacionJwtTests
     }
 
     [Fact]
-    public void ConstruirParametrosValidacion_acota_el_clock_skew_a_lo_sumo_5_min()
+    public void ConstruirParametrosValidacion_fija_el_clock_skew_en_1_min()
     {
         var parametros = AutenticacionJwtExtensions.ConstruirParametrosValidacion(OpcionesValidas());
 
-        // El default de la librería es 5 min; exigimos que NO se relaje por encima de eso.
-        Assert.True(parametros.ClockSkew <= TimeSpan.FromMinutes(5));
+        // Guarda el endurecimiento explícito (default de la librería = 5 min): revertirlo debe romper el test.
+        Assert.Equal(TimeSpan.FromMinutes(1), parametros.ClockSkew);
+    }
+
+    [Fact]
+    public void ConstruirParametrosValidacion_fija_el_algoritmo_a_HS256()
+    {
+        var parametros = AutenticacionJwtExtensions.ConstruirParametrosValidacion(OpcionesValidas());
+
+        Assert.NotNull(parametros.ValidAlgorithms);
+        Assert.Equal([SecurityAlgorithms.HmacSha256], parametros.ValidAlgorithms);
     }
 
     [Fact]
     public void ConstruirParametrosValidacion_sin_clave_de_firma_falla()
     {
         var opciones = OpcionesValidas() with { SigningKey = "" };
+
+        Assert.Throws<InvalidOperationException>(
+            () => AutenticacionJwtExtensions.ConstruirParametrosValidacion(opciones));
+    }
+
+    [Fact]
+    public void ConstruirParametrosValidacion_con_clave_corta_falla()
+    {
+        // 16 bytes < 32 bytes (256 bits) requeridos por HMAC-SHA256.
+        var opciones = OpcionesValidas() with { SigningKey = "clave-corta-1234" };
+
+        Assert.Throws<InvalidOperationException>(
+            () => AutenticacionJwtExtensions.ConstruirParametrosValidacion(opciones));
+    }
+
+    [Fact]
+    public void ConstruirParametrosValidacion_sin_issuer_falla()
+    {
+        var opciones = OpcionesValidas() with { Issuer = "" };
+
+        Assert.Throws<InvalidOperationException>(
+            () => AutenticacionJwtExtensions.ConstruirParametrosValidacion(opciones));
+    }
+
+    [Fact]
+    public void ConstruirParametrosValidacion_sin_audience_falla()
+    {
+        var opciones = OpcionesValidas() with { Audience = "" };
 
         Assert.Throws<InvalidOperationException>(
             () => AutenticacionJwtExtensions.ConstruirParametrosValidacion(opciones));
