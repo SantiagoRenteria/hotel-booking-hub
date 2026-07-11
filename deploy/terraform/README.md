@@ -88,7 +88,7 @@ Scripts (`deploy/scripts/` y `deploy/terraform/bootstrap/`):
 
 ## CD — despliegue continuo (Story 8.3)
 
-`.github/workflows/cd.yml` despliega **automáticamente al merge a `main`** (auto-apply) y permite **teardown on-demand** (`workflow_dispatch` → `accion=destroy`). Auth **100% passwordless por OIDC** (cero secretos; solo variables no-secretas). El **gate humano es la aprobación de PR en `main`** (branch protection). El workflow **reusa `deploy/scripts/deploy.sh`/`destroy.sh`**.
+`.github/workflows/cd.yml` despliega **on-demand** (`workflow_dispatch` → `accion=deploy`) y permite **teardown on-demand** (`accion=destroy`). **NO auto-aplica al merge a `main`** (ADR-021: John vetó el auto-apply por control de costos — cada apply crea infra facturable). Auth **100% passwordless por OIDC** (cero secretos; solo variables no-secretas). Gates: la aprobación de PR en `main` (branch protection) protege la rama, y `environment: production` puede exigir *required reviewers* como gate previo al apply. El workflow **reusa `deploy/scripts/deploy.sh`/`destroy.sh`**.
 
 > **El apply real requiere este setup una vez** — lo ejecuta **Santiago** (crea credenciales/identidades; el agente no lo hace por política de seguridad).
 
@@ -136,7 +136,7 @@ JSON
 
 ### 3) Flujo
 
-`develop → PR a main → (CI verde + tu aprobación) → merge → CD aplica Terraform automáticamente`. Teardown: Actions → CD → *Run workflow* → `accion=destroy`. **Aviso de costo:** cada merge a `main` crea infra facturable; `main` recibe solo merges de release, y el destroy on-demand cierra el ciclo. Endurecimiento opcional: añadir *required reviewers* al Environment `production` (gate extra antes del apply).
+`develop → PR a main → (CI verde + tu aprobación) → merge` (la rama queda protegida y sincronizada; **el merge NO despliega**). Para desplegar: Actions → CD → *Run workflow* → `accion=deploy`. Teardown: Actions → CD → *Run workflow* → `accion=destroy`. **Aviso de costo:** el `deploy` on-demand crea infra facturable; el ciclo de mínimo costo es `deploy → probar → destroy`. Endurecimiento opcional: añadir *required reviewers* al Environment `production` (gate extra antes del apply).
 
 ## Migración a AKS (documentada, no ejecutada)
 
