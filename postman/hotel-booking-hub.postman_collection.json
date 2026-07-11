@@ -266,17 +266,17 @@
           "event": [ { "listen": "test", "script": { "exec": [ "pm.test('404 Not Found (GUID válido inexistente; el 0-GUID daría 400 por validación de Id)', () => pm.response.to.have.status(404));" ] } } ]
         },
         {
-          "name": "Listar hoteles del agente (Agente) → 200",
+          "name": "Listar hoteles del agente (Agente, paginado) → 200",
           "request": {
             "method": "GET",
             "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" } ],
-            "url": "{{baseUrl}}/api/v1/hoteles"
+            "url": "{{baseUrl}}/api/v1/hoteles?page=1&pageSize=100"
           },
           "event": [ { "listen": "test", "script": { "exec": [
             "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "var arr = pm.response.json();",
-            "pm.test('cuerpo es lista', () => pm.expect(arr).to.be.an('array'));",
-            "pm.test('contiene el hotel creado', () => pm.expect(arr.map(h => h.id)).to.include(pm.collectionVariables.get('hotelId')));"
+            "var pag = pm.response.json();",
+            "pm.test('sobre de paginación (items + total)', () => { pm.expect(pag.items).to.be.an('array'); pm.expect(pag).to.have.property('total'); });",
+            "pm.test('contiene el hotel creado', () => pm.expect(pag.items.map(h => h.id)).to.include(pm.collectionVariables.get('hotelId')));"
           ] } } ]
         },
         {
@@ -294,17 +294,17 @@
           ] } } ]
         },
         {
-          "name": "Listar habitaciones del hotel (Agente) → 200",
+          "name": "Listar habitaciones del hotel (Agente, paginado) → 200",
           "request": {
             "method": "GET",
             "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" } ],
-            "url": "{{baseUrl}}/api/v1/hoteles/{{hotelId}}/habitaciones"
+            "url": "{{baseUrl}}/api/v1/hoteles/{{hotelId}}/habitaciones?page=1&pageSize=100"
           },
           "event": [ { "listen": "test", "script": { "exec": [
             "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "var arr = pm.response.json();",
-            "pm.test('cuerpo es lista', () => pm.expect(arr).to.be.an('array'));",
-            "pm.test('contiene la habitación creada', () => pm.expect(arr.map(h => h.id)).to.include(pm.collectionVariables.get('habitacionId')));"
+            "var pag = pm.response.json();",
+            "pm.test('sobre de paginación (items + total)', () => { pm.expect(pag.items).to.be.an('array'); pm.expect(pag).to.have.property('total'); });",
+            "pm.test('contiene la habitación creada', () => pm.expect(pag.items.map(h => h.id)).to.include(pm.collectionVariables.get('habitacionId')));"
           ] } } ]
         },
         {
