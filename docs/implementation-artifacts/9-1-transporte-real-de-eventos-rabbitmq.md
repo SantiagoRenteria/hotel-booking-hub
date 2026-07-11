@@ -3,7 +3,7 @@ baseline_commit: 671fb00db9effda4f33aae326a67b4902d71ad21
 ---
 # Story 9.1: Transporte real de eventos por RabbitMQ (local)
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -120,14 +120,14 @@ para **que las notificaciones se disparen de verdad al confirmar/cancelar una re
 
 _Code review adversarial de 3 capas (Blind · Edge · Auditor), 2026-07-10. 8 patch (2 ALTA), 1 defer._
 
-- [ ] [Review][Patch][ALTA] Pérdida silenciosa de eventos por carrera de topología: el productor declara solo el exchange y publica `mandatory:false`; si publica antes de que exista la cola/binding, el exchange direct descarta el mensaje y el `ProcesadorOutbox` lo marca `Enviada` → pérdida permanente. Fix: el productor declara también la **cola durable + binding** del consumidor (reservas→`notificaciones.reservas`, hoteles→`proyeccion.hoteles` como holding para 9.2) → el mensaje se retiene en la cola durable aunque el consumidor no esté listo. [src/Servicios/Reservas/Reservas.Infrastructure/Mensajeria/PublicadorEventosRabbitMq.cs, src/Servicios/Hoteles/Hoteles.Infrastructure/Mensajeria/PublicadorEventosRabbitMq.cs]
-- [ ] [Review][Patch][ALTA] `Type` null/vacío → `EnrutadorNotificaciones` hace `Dictionary.TryGetValue(null)` que lanza ANTES del despachador → el tope de intentos nunca aplica → requeue infinito. Fix: guard `string.IsNullOrEmpty(evento.Type)` → tratar como tipo desconocido (ack). [src/Servicios/Notificaciones/Notificaciones.Worker/Notificaciones/EnrutadorNotificaciones.cs]
-- [ ] [Review][Patch][MEDIA] Reconexión del productor no dispone la conexión/canal anteriores → fuga por cada caída. Fix: `DisposeAsync` de los viejos antes de recrear. [ambos PublicadorEventosRabbitMq.cs]
-- [ ] [Review][Patch][MEDIA] `BasicPublishAsync` se ejecuta fuera del gate sobre un `IChannel` singleton (no thread-safe en 7.x). Fix: serializar la publicación bajo el semáforo. [ambos PublicadorEventosRabbitMq.cs]
-- [ ] [Review][Patch][MEDIA] AC-E9.1.2: el enrutamiento por tipo no está probado para 3 de 4 tipos. Fix: test de discriminación (p. ej. `SolicitudCancelacionRegistrada.v1` va a su consumidor, no al de confirmación). [tests/Notificaciones.IntegrationTests/TransporteRabbitMqTests.cs]
-- [ ] [Review][Patch][BAJA] AC-E9.1.3: el test cuenta 2 correos pero no verifica identidad. Fix: afirmar que los destinatarios son el huésped y el agente. [tests/Notificaciones.IntegrationTests/TransporteRabbitMqTests.cs]
-- [ ] [Review][Patch][BAJA] AC-E9.1.5: sin test del adaptador. Fix: test unit/integración — `PublicadorEventosRabbitMq` con broker inalcanzable → `PublicarAsync` propaga la excepción. [tests/...]
-- [ ] [Review][Patch][BAJA] `EnrutarAsync` devuelve `bool` muerto (ignorado por el consumidor). Fix: cambiar a `Task` (el ack/nack se decide por excepción). [EnrutadorNotificaciones.cs, ConsumidorRabbitMq.cs]
+- [x] [Review][Patch][ALTA] Pérdida silenciosa por carrera de topología. ✅ Resuelto: ambos productores declaran la **cola durable + binding** del consumidor en `ObtenerCanalAsync` (reservas→`notificaciones.reservas`; hoteles→`proyeccion.hoteles` como holding para 9.2) → el mensaje se retiene en la cola durable aunque el consumidor no esté listo; ya no se descarta. [ambos PublicadorEventosRabbitMq.cs]
+- [x] [Review][Patch][ALTA] `Type` null/vacío → requeue infinito. ✅ Resuelto: guard `string.IsNullOrEmpty(evento.Type)` en `EnrutarAsync` → tipo no enrutable → ack (como tipo desconocido); nunca llega a `TryGetValue(null)`. [EnrutadorNotificaciones.cs]
+- [x] [Review][Patch][MEDIA] Fuga en reconexión. ✅ Resuelto: `CerrarAsync()` dispone conexión/canal anteriores antes de recrear. [ambos PublicadorEventosRabbitMq.cs]
+- [x] [Review][Patch][MEDIA] Publish no thread-safe. ✅ Resuelto: `BasicPublishAsync` ahora se ejecuta bajo el mismo `_gate` que la (re)conexión → publicación serializada sobre el `IChannel`. [ambos PublicadorEventosRabbitMq.cs]
+- [x] [Review][Patch][MEDIA] AC-E9.1.2 enrutamiento no probado. ✅ Resuelto: test `Enruta_por_tipo_al_consumidor_correcto` (publica `SolicitudCancelacionRegistrada.v1` con destinatarios propios → llega al consumidor de cancelación, no al de confirmación). [TransporteRabbitMqTests.cs]
+- [x] [Review][Patch][BAJA] AC-E9.1.3 identidad. ✅ Resuelto: el test afirma que los destinatarios son `ana@x.com` (huésped) y `agente@x.com` (agente), no solo el conteo. [TransporteRabbitMqTests.cs]
+- [x] [Review][Patch][BAJA] AC-E9.1.5 sin test del adaptador. ✅ Resuelto: `TransportePublicadorRabbitMqTests` — broker inalcanzable → `PublicarAsync` propaga la excepción. [tests/Reservas.IntegrationTests/TransportePublicadorRabbitMqTests.cs]
+- [x] [Review][Patch][BAJA] `bool` muerto. ✅ Resuelto: `EnrutarAsync` ahora devuelve `Task` (ack/nack se decide por excepción). [EnrutadorNotificaciones.cs]
 - [x] [Review][Defer] Requeue sin backoff (hot-loop acotado a `MaxIntentos` por corrida) + `ContadorReintentosEnMemoria` se reinicia entre reinicios del worker → un veneno podría reintentarse sin cota cross-restart. Deferred: acotado dentro de una corrida; el fix real es un contador en Redis (misma limitación documentada del inbox de 5.1b). Registrado en `deferred-work.md`.
 
 ## Dev Agent Record
@@ -173,3 +173,4 @@ claude-opus-4-8 (Amelia / dev-story, modo autónomo)
 | Fecha | Cambio |
 |---|---|
 | 2026-07-10 | Story 9.1: transporte real de eventos por RabbitMQ (local) detrás de `IPublicadorEventos` (Strategy por entorno, ADR-019). Productor+consumidor+enrutador por tipo; compose con RabbitMQ+healthcheck; test E2E Testcontainers (idempotencia). TDD Red→Green. Data-plane funcional del compose diferido (Epic T). Status → review. |
+| 2026-07-10 | Code-review adversarial (3 capas): 8 patch aplicados vía agent-dev (2 ALTA: anti-pérdida por cola durable declarada en el productor + guard de `Type` null; fuga de reconexión; publish serializado; tests de enrutamiento/identidad/propagación; `EnrutarAsync`→`Task`), 1 defer (backoff/contador Redis). 440 tests verdes, format limpio. Status → done. |
