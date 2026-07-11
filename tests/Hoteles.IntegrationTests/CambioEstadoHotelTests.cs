@@ -13,10 +13,14 @@ namespace Hoteles.IntegrationTests;
 [Collection("sqlserver-hoteles")]
 public sealed class CambioEstadoHotelTests(SqlServerFixture fixture)
 {
+    // Nombre único por test (xUnit instancia la clase por método): la BD del fixture es COMPARTIDA por la
+    // colección y el índice único (agente, nombre, ciudad) rechazaría dos siembras iguales entre tests.
+    private readonly string _nombre = $"Hotel Central {Guid.NewGuid():N}";
+
     private async Task<Guid> CrearHotelAsync()
     {
         await using var db = fixture.CrearContexto();
-        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1 # 2-3", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
+        var hotel = Hotel.Crear(_nombre, "Medellín", "Calle 1 # 2-3", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
         await new HotelRepository(db).CrearAsync(hotel, CancellationToken.None);
         return hotel.Id;
     }
