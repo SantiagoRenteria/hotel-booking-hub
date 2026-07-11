@@ -1,0 +1,128 @@
+{
+  "info": {
+    "name": "hotel-booking-hub · flujo E2E",
+    "description": "Flujo de negocio (crear hotel→habitación→reserva→cancelar) + casos negativos (401/403/404), autenticado con JWT HS256 minteado en el pre-request (CryptoJS). Ejecutable con Newman en CI contra el docker-compose. Variables: baseUrl, jwtSigningKey (se pasan con --env-var).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "jwtSigningKey", "value": "" },
+    { "key": "jwtAgente", "value": "" },
+    { "key": "jwtViajero", "value": "" },
+    { "key": "hotelId", "value": "" },
+    { "key": "habitacionId", "value": "" },
+    { "key": "reservaId", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Mintea JWT HS256 con la misma clave que valida el sistema (issuer/audience de appsettings).",
+          "function b64url(wordArray){ return CryptoJS.enc.Base64.stringify(wordArray).replace(/=+$/,'').replace(/\\+/g,'-').replace(/\\//g,'_'); }",
+          "function mint(role){",
+          "  var key = pm.variables.get('jwtSigningKey');",
+          "  var now = Math.floor(Date.now()/1000);",
+          "  var header = b64url(CryptoJS.enc.Utf8.parse(JSON.stringify({alg:'HS256',typ:'JWT'})));",
+          "  var claims = {sub:'agente@x.com', email:'agente@x.com', role:role, iss:'hotel-booking-hub', aud:'hotel-booking-hub-api', iat:now, nbf:now-60, exp:now+3600};",
+          "  var payload = b64url(CryptoJS.enc.Utf8.parse(JSON.stringify(claims)));",
+          "  var sig = b64url(CryptoJS.HmacSHA256(header+'.'+payload, key));",
+          "  return header+'.'+payload+'.'+sig;",
+          "}",
+          "pm.collectionVariables.set('jwtAgente', mint('Agente'));",
+          "pm.collectionVariables.set('jwtViajero', mint('Viajero'));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health (anónimo)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" },
+      "event": [ { "listen": "test", "script": { "exec": [ "pm.test('health 200', () => pm.response.to.have.status(200));" ] } } ]
+    },
+    {
+      "name": "Crear hotel (Agente) → 201",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": "{{baseUrl}}/api/v1/hoteles",
+        "body": { "mode": "raw", "raw": "{\"nombre\":\"Hotel Newman\",\"ciudad\":\"Bogota\",\"direccion\":\"Cll 1\",\"descripcion\":\"e2e\",\"estado\":1}" }
+      },
+      "event": [ { "listen": "test", "script": { "exec": [
+        "pm.test('201 Created', () => pm.response.to.have.status(201));",
+        "pm.collectionVariables.set('hotelId', pm.response.json().id);"
+      ] } } ]
+    },
+    {
+      "name": "Crear habitación (Agente) → 201",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": "{{baseUrl}}/api/v1/hoteles/{{hotelId}}/habitaciones",
+        "body": { "mode": "raw", "raw": "{\"tipo\":\"Doble\",\"costoBase\":100.0,\"impuestos\":19.0,\"ubicacion\":\"P2\",\"estado\":1,\"capacidad\":2}" }
+      },
+      "event": [ { "listen": "test", "script": { "exec": [
+        "pm.test('201 Created', () => pm.response.to.have.status(201));",
+        "pm.collectionVariables.set('habitacionId', pm.response.json().id);"
+      ] } } ]
+    },
+    {
+      "name": "Crear reserva (Agente) → 201",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": "{{baseUrl}}/api/v1/reservas",
+        "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-08-01\",\"salida\":\"2026-08-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"agente@x.com\"}" }
+      },
+      "event": [ { "listen": "test", "script": { "exec": [
+        "pm.test('201 Created', () => pm.response.to.have.status(201));",
+        "pm.test('Confirmada', () => pm.expect(pm.response.json().estado).to.eql('Confirmada'));",
+        "pm.collectionVariables.set('reservaId', pm.response.json().id);"
+      ] } } ]
+    },
+    {
+      "name": "Cancelar reserva (atajo, Agente) → 200",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": "{{baseUrl}}/api/v1/reservas/{{reservaId}}/cancelaciones/atajo",
+        "body": { "mode": "raw", "raw": "{\"categoriaMotivo\":\"Cliente\",\"detalleMotivo\":\"newman\",\"iniciador\":2,\"decision\":1}" }
+      },
+      "event": [ { "listen": "test", "script": { "exec": [
+        "pm.test('200 OK', () => pm.response.to.have.status(200));",
+        "pm.test('Cancelada', () => pm.expect(pm.response.json().estado).to.eql('Cancelada'));"
+      ] } } ]
+    },
+    {
+      "name": "[neg] Crear hotel sin token → 401",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "url": "{{baseUrl}}/api/v1/hoteles",
+        "body": { "mode": "raw", "raw": "{\"nombre\":\"X\",\"ciudad\":\"Y\",\"direccion\":\"z\",\"descripcion\":\"z\",\"estado\":1}" }
+      },
+      "event": [ { "listen": "test", "script": { "exec": [ "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));" ] } } ]
+    },
+    {
+      "name": "[neg] Crear hotel con rol Viajero → 403",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Authorization", "value": "Bearer {{jwtViajero}}" }, { "key": "Content-Type", "value": "application/json" } ],
+        "url": "{{baseUrl}}/api/v1/hoteles",
+        "body": { "mode": "raw", "raw": "{\"nombre\":\"X\",\"ciudad\":\"Y\",\"direccion\":\"z\",\"descripcion\":\"z\",\"estado\":1}" }
+      },
+      "event": [ { "listen": "test", "script": { "exec": [ "pm.test('403 Forbidden', () => pm.response.to.have.status(403));" ] } } ]
+    },
+    {
+      "name": "[neg] Reserva inexistente → 404",
+      "request": {
+        "method": "GET",
+        "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" } ],
+        "url": "{{baseUrl}}/api/v1/reservas/00000000-0000-0000-0000-000000000000"
+      },
+      "event": [ { "listen": "test", "script": { "exec": [ "pm.test('404 Not Found', () => pm.response.to.have.status(404));" ] } } ]
+    }
+  ]
+}
