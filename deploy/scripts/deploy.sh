@@ -51,9 +51,10 @@ say "IP del deployer (firewall SQL): ${IP_DEPLOYER:-<no detectada>}"
 say "Bootstrap del state remoto"
 RG_STATE="$RG_STATE" SA="$SA" LOCATION="$LOCATION" CONTAINER="$CONTAINER" bash "$TF/bootstrap/bootstrap-state.sh"
 
-# 2) init con backend remoto. El rol "Storage Blob Data Contributor" recién asignado en el bootstrap puede
-# tardar 1-5 min en propagar (RBAC de Azure) → el primer init puede dar 403; se reintenta con backoff.
-say "terraform init (backend azurerm, auth AAD)"
+# 2) init con backend remoto. Auth del backend por CLAVE de cuenta (ARM_ACCESS_KEY), obtenida en runtime y
+# nunca persistida en el repo (ver versions.tf/bootstrap). El reintento cubre cualquier hipo transitorio del init.
+export ARM_ACCESS_KEY="$(az storage account keys list --account-name "$SA" --resource-group "$RG_STATE" --query '[0].value' -o tsv)"
+say "terraform init (backend azurerm, auth por clave de cuenta)"
 init_backend() {
   terraform -chdir="$TF" init -reconfigure \
     -backend-config="resource_group_name=$RG_STATE" \
