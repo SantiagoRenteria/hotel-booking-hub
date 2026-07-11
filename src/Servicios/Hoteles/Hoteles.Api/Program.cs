@@ -46,7 +46,9 @@ builder.Services.AddManejoExcepcionesNegocio();
 builder.Services.AddMediatorPipeline(typeof(CrearHotelCommand).Assembly);
 
 // Adaptadores de infraestructura (DbContext + repositorio).
-builder.Services.AddHotelesInfrastructure(builder.Configuration.GetConnectionString("hotelesdb"));
+builder.Services.AddHotelesInfrastructure(
+    builder.Configuration.GetConnectionString("hotelesdb"),
+    builder.Configuration.GetConnectionString("redis"));
 
 var app = builder.Build();
 
@@ -179,8 +181,8 @@ app.MapPost("/api/v1/habitaciones/{id:guid}/deshabilitar", async (Guid id, Cambi
 
 // CAP · Lectura del catálogo (Story T.5). GET aislados por agente (query filter de hoteles + verificación del
 // hotel dueño para habitaciones). Devuelven el rowVersion vigente para editar tras leer (GET → PUT). 404 lo ajeno.
-app.MapGet("/api/v1/hoteles", async (ISender sender, CancellationToken ct) =>
-        (await sender.Send(new ListarHotelesDelAgenteQuery(), ct)).ToOkResult())
+app.MapGet("/api/v1/hoteles", async (ISender sender, CancellationToken ct, int page = 1, int pageSize = 20) =>
+        (await sender.Send(new ListarHotelesDelAgenteQuery(page, pageSize), ct)).ToOkResult())
     .WithName("ListarHoteles")
     .WithTags("Hoteles")
     .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
@@ -191,8 +193,8 @@ app.MapGet("/api/v1/hoteles/{id:guid}", async (Guid id, ISender sender, Cancella
     .WithTags("Hoteles")
     .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
 
-app.MapGet("/api/v1/hoteles/{hotelId:guid}/habitaciones", async (Guid hotelId, ISender sender, CancellationToken ct) =>
-        (await sender.Send(new ListarHabitacionesDeHotelQuery(hotelId), ct)).ToOkResult())
+app.MapGet("/api/v1/hoteles/{hotelId:guid}/habitaciones", async (Guid hotelId, ISender sender, CancellationToken ct, int page = 1, int pageSize = 20) =>
+        (await sender.Send(new ListarHabitacionesDeHotelQuery(hotelId, page, pageSize), ct)).ToOkResult())
     .WithName("ListarHabitacionesDeHotel")
     .WithTags("Habitaciones")
     .RequireAuthorization(PoliticasAutorizacion.SoloAgente);

@@ -1,6 +1,8 @@
 using HotelBookingHub.Comun.Excepciones;
+using Hoteles.Application.Abstracciones;
 using Hoteles.Domain.Habitaciones;
 using Hoteles.Domain.Puertos;
+using Hoteles.Infrastructure.Cache;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hoteles.Infrastructure.Persistencia;
@@ -10,12 +12,16 @@ namespace Hoteles.Infrastructure.Persistencia;
 /// optimista que <see cref="HotelRepository"/>: fuerza el UPDATE (excluyendo la shadow <c>Seq</c> identity),
 /// usa el <c>rowversion</c> del cliente como token y traduce <c>DbUpdateConcurrencyException</c> → 409.
 /// </summary>
-public sealed class HabitacionRepository(HotelesDbContext db) : IHabitacionRepository
+public sealed class HabitacionRepository(HotelesDbContext db, IInvalidadorCacheCatalogo? cache = null) : IHabitacionRepository
 {
+    // DI inyecta el invalidador real (Redis/no-op); tests que construyen el repo a mano → null degrada a no-op.
+    private readonly IInvalidadorCacheCatalogo _cache = cache ?? new InvalidadorCacheCatalogoNoop();
+
     public async Task<byte[]> CrearAsync(Habitacion habitacion, CancellationToken ct)
     {
         db.Habitaciones.Add(habitacion);
         await db.SaveChangesAsync(ct);
+        await _cache.InvalidarHabitacionesDeHotelAsync(habitacion.HotelId, ct); // Story T.6: la lista del hotel caduca
         return RowVersionActual(habitacion);
     }
 
@@ -35,6 +41,7 @@ public sealed class HabitacionRepository(HotelesDbContext db) : IHabitacionRepos
         try
         {
             await db.SaveChangesAsync(ct);
+            await _cache.InvalidarHabitacionesDeHotelAsync(habitacion.HotelId, ct); // editar/estado → lista del hotel caduca
             return RowVersionActual(habitacion);
         }
         catch (DbUpdateConcurrencyException ex)

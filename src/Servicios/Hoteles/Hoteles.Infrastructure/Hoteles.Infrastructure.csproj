@@ -20,6 +20,8 @@
     <!-- Story 9.1 (ADR-019): adaptador de transporte RabbitMQ detrás de IPublicadorEventos (local). -->
     <PackageReference Include="RabbitMQ.Client" />
     <PackageReference Include="Dapr.Client" />
+    <!-- Story T.6: caché Redis de la lectura del catálogo (IConnectionMultiplexer: payload + INCR de generación). -->
+    <PackageReference Include="StackExchange.Redis" />
   </ItemGroup>
 
 </Project>
