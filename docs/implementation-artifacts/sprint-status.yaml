@@ -126,5 +126,5 @@ development_status:
   t-1-cerrar-los-entregables-del-enunciado: done
   t-2-pulido-de-entregables-cobertura-y-docs: done
   t-5-lectura-del-catalogo-get-hoteles-habitaciones: done
-  t-6-paginacion-y-cache-redis-del-catalogo: ready-for-dev
+  t-6-paginacion-y-cache-redis-del-catalogo: review
   epic-t-retrospective: optional

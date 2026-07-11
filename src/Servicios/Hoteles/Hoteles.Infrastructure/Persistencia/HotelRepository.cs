@@ -1,6 +1,8 @@
 using HotelBookingHub.Comun.Excepciones;
+using Hoteles.Application.Abstracciones;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Domain.Puertos;
+using Hoteles.Infrastructure.Cache;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,8 +13,12 @@ namespace Hoteles.Infrastructure.Persistencia;
 /// eventos). En 2.5, cuando el alta emita un evento de catálogo, migrará al write-path transaccional con outbox.
 /// La edición/baja (2.2) usan concurrencia optimista por <c>rowversion</c>.
 /// </summary>
-public sealed class HotelRepository(HotelesDbContext db) : IHotelRepository
+public sealed class HotelRepository(HotelesDbContext db, IInvalidadorCacheCatalogo? cache = null) : IHotelRepository
 {
+    // En producción DI inyecta el invalidador (Redis o no-op); en tests que construyen el repo a mano y no
+    // ejercen la caché, `null` degrada a no-op (sin Redis no hay nada que invalidar).
+    private readonly IInvalidadorCacheCatalogo _cache = cache ?? new InvalidadorCacheCatalogoNoop();
+
     public async Task<byte[]> CrearAsync(Hotel hotel, CancellationToken ct)
     {
         db.Hoteles.Add(hotel);
@@ -26,6 +32,8 @@ public sealed class HotelRepository(HotelesDbContext db) : IHotelRepository
             throw new HotelDuplicadoException(ex);
         }
 
+        // Invalida la lista cacheada del agente (Story T.6) → un GET posterior muestra el alta de inmediato.
+        await _cache.InvalidarHotelesDeAgenteAsync(hotel.AgentePropietario, ct);
         return RowVersionActual(hotel);
     }
 
@@ -54,6 +62,7 @@ public sealed class HotelRepository(HotelesDbContext db) : IHotelRepository
         try
         {
             await db.SaveChangesAsync(ct);
+            await _cache.InvalidarHotelesDeAgenteAsync(hotel.AgentePropietario, ct); // editar/eliminar/estado → lista caduca
             return RowVersionActual(hotel);
         }
         catch (DbUpdateConcurrencyException ex)
