@@ -105,12 +105,19 @@ TOKEN="$(bash "$HERE/mint-jwt.sh" "$KEY" Agente hotel-booking-hub hotel-booking-
 TOKEN_VIAJERO="$(bash "$HERE/mint-jwt.sh" "$KEY" Viajero hotel-booking-hub hotel-booking-hub-api viajero-smoke@ejemplo.com)"
 
 # ---- 3) Catálogo: crear + ciclo de vida (Agente) ----
-say "Crear hotel"
-HOTEL=$(ok A POST /api/v1/hoteles '{"nombre":"Hotel Smoke","ciudad":"Bogota","direccion":"Cll 1 #2-3","descripcion":"smoke","estado":1}')
+# Nombre único por corrida: el índice único (AgentePropietario, Nombre, Ciudad) rechazaría re-crear el mismo
+# hotel si el smoke se re-ejecuta contra un compose que no se reinició. Con sufijo por corrida es idempotente.
+RUN_ID="$(date +%s)-$RANDOM"
+HOTEL_NOMBRE="Hotel Smoke $RUN_ID"
+say "Crear hotel ($HOTEL_NOMBRE)"
+HOTEL=$(ok A POST /api/v1/hoteles "{\"nombre\":\"$HOTEL_NOMBRE\",\"ciudad\":\"Bogota\",\"direccion\":\"Cll 1 #2-3\",\"descripcion\":\"smoke\",\"estado\":1}")
 HOTEL_ID=$(id_of "$HOTEL")
 HOTEL_RV=$(rv_of "$HOTEL")
 HOTEL_RV0="$HOTEL_RV" # rowVersion original: quedará stale tras la 1ra edición (para el negativo 409)
 say "hotelId=$HOTEL_ID"
+
+# Negativo: re-crear el MISMO (nombre, ciudad) del mismo agente → 409 (índice único filtrado).
+expect 409 A POST /api/v1/hoteles "{\"nombre\":\"$HOTEL_NOMBRE\",\"ciudad\":\"Bogota\",\"direccion\":\"otra\",\"descripcion\":\"dup\",\"estado\":1}"
 
 say "Crear habitación"
 HAB=$(ok A POST "/api/v1/hoteles/$HOTEL_ID/habitaciones" '{"tipo":"Doble","costoBase":100.0,"impuestos":19.0,"ubicacion":"Piso 2","estado":1,"capacidad":2}')
@@ -119,7 +126,7 @@ HAB_RV=$(rv_of "$HAB")
 say "habitacionId=$HAB_ID"
 
 say "Ciclo de vida del hotel: editar -> deshabilitar -> habilitar"
-R=$(ok A PUT "/api/v1/hoteles/$HOTEL_ID" "{\"rowVersion\":\"$HOTEL_RV\",\"nombre\":\"Hotel Smoke (editado)\",\"ciudad\":\"Bogota\",\"direccion\":\"Cll 9\",\"descripcion\":\"editado\"}"); HOTEL_RV=$(rv_of "$R")
+R=$(ok A PUT "/api/v1/hoteles/$HOTEL_ID" "{\"rowVersion\":\"$HOTEL_RV\",\"nombre\":\"Hotel Smoke editado $RUN_ID\",\"ciudad\":\"Bogota\",\"direccion\":\"Cll 9\",\"descripcion\":\"editado\"}"); HOTEL_RV=$(rv_of "$R")
 R=$(ok A POST "/api/v1/hoteles/$HOTEL_ID/deshabilitar" "{\"rowVersion\":\"$HOTEL_RV\"}"); HOTEL_RV=$(rv_of "$R")
 R=$(ok A POST "/api/v1/hoteles/$HOTEL_ID/habilitar" "{\"rowVersion\":\"$HOTEL_RV\"}"); HOTEL_RV=$(rv_of "$R")
 say "hotel lifecycle OK"
@@ -131,7 +138,7 @@ R=$(ok A POST "/api/v1/habitaciones/$HAB_ID/habilitar" "{\"rowVersion\":\"$HAB_R
 say "habitacion lifecycle OK"
 
 say "Eliminar (baja lógica) un hotel desechable -> 204"
-DES=$(ok A POST /api/v1/hoteles '{"nombre":"Desechable","ciudad":"Cali","direccion":"Cll 0","descripcion":"del","estado":1}')
+DES=$(ok A POST /api/v1/hoteles "{\"nombre\":\"Desechable $RUN_ID\",\"ciudad\":\"Cali\",\"direccion\":\"Cll 0\",\"descripcion\":\"del\",\"estado\":1}")
 DES_ID=$(id_of "$DES"); DES_RV=$(rv_of "$DES")
 expect 204 A DELETE "/api/v1/hoteles/$DES_ID" "{\"rowVersion\":\"$DES_RV\"}"
 
