@@ -118,7 +118,10 @@ development_status:
   # Reabierta 2026-07-11 (instrucción de Santiago): segundo lote de pulido de entregables — cobertura de
   # pruebas exhaustiva (Postman/smoke), fix de routing del Gateway (disponibles), reconciliación del CD a
   # on-demand (ADR-021), y documentación (uso-de-ia full BMAD, observabilidad con Dapr, flujos BDD/E2E).
-  epic-t: done
+  # Reabierta 2026-07-11 (instrucción de Santiago): añadir lectura del catálogo (GET hoteles y habitaciones),
+  # detectada al probar (no había GET; el rowVersion solo venía de la respuesta de escritura).
+  epic-t: in-progress
   t-1-cerrar-los-entregables-del-enunciado: done
   t-2-pulido-de-entregables-cobertura-y-docs: done
+  t-5-lectura-del-catalogo-get-hoteles-habitaciones: review
   epic-t-retrospective: optional

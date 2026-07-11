@@ -264,6 +264,71 @@
             "body": { "mode": "raw", "raw": "{\"rowVersion\":\"AAAAAAAAAAA=\"}" }
           },
           "event": [ { "listen": "test", "script": { "exec": [ "pm.test('404 Not Found (GUID válido inexistente; el 0-GUID daría 400 por validación de Id)', () => pm.response.to.have.status(404));" ] } } ]
+        },
+        {
+          "name": "Listar hoteles del agente (Agente) → 200",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" } ],
+            "url": "{{baseUrl}}/api/v1/hoteles"
+          },
+          "event": [ { "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "var arr = pm.response.json();",
+            "pm.test('cuerpo es lista', () => pm.expect(arr).to.be.an('array'));",
+            "pm.test('contiene el hotel creado', () => pm.expect(arr.map(h => h.id)).to.include(pm.collectionVariables.get('hotelId')));"
+          ] } } ]
+        },
+        {
+          "name": "Detalle de hotel (Agente) → 200",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" } ],
+            "url": "{{baseUrl}}/api/v1/hoteles/{{hotelId}}"
+          },
+          "event": [ { "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "var j = pm.response.json();",
+            "pm.test('es el hotel pedido', () => pm.expect(j.id).to.eql(pm.collectionVariables.get('hotelId')));",
+            "pm.test('trae rowVersion (editar tras leer)', () => pm.expect(j.rowVersion).to.be.a('string').and.not.empty);"
+          ] } } ]
+        },
+        {
+          "name": "Listar habitaciones del hotel (Agente) → 200",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" } ],
+            "url": "{{baseUrl}}/api/v1/hoteles/{{hotelId}}/habitaciones"
+          },
+          "event": [ { "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "var arr = pm.response.json();",
+            "pm.test('cuerpo es lista', () => pm.expect(arr).to.be.an('array'));",
+            "pm.test('contiene la habitación creada', () => pm.expect(arr.map(h => h.id)).to.include(pm.collectionVariables.get('habitacionId')));"
+          ] } } ]
+        },
+        {
+          "name": "Detalle de habitación (Agente) → 200",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" } ],
+            "url": "{{baseUrl}}/api/v1/habitaciones/{{habitacionId}}"
+          },
+          "event": [ { "listen": "test", "script": { "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "var j = pm.response.json();",
+            "pm.test('es la habitación pedida', () => pm.expect(j.id).to.eql(pm.collectionVariables.get('habitacionId')));",
+            "pm.test('pertenece al hotel', () => pm.expect(j.hotelId).to.eql(pm.collectionVariables.get('hotelId')));"
+          ] } } ]
+        },
+        {
+          "name": "[neg] Listar habitaciones de hotel inexistente → 404",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" } ],
+            "url": "{{baseUrl}}/api/v1/hoteles/11111111-1111-1111-1111-111111111111/habitaciones"
+          },
+          "event": [ { "listen": "test", "script": { "exec": [ "pm.test('404 (hotel ajeno/inexistente, no lista vacía)', () => pm.response.to.have.status(404));" ] } } ]
         }
       ]
     },
