@@ -12,6 +12,8 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
     <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <!-- Story 9.1 (ADR-019): adaptador de transporte RabbitMQ detrás de IPublicadorEventos (local). -->
+    <PackageReference Include="RabbitMQ.Client" />
   </ItemGroup>
 
   <PropertyGroup>
