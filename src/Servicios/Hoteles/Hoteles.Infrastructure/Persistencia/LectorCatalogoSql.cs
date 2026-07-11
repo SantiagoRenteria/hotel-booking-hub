@@ -1,3 +1,4 @@
+using HotelBookingHub.Comun.Resultados;
 using Hoteles.Application.Abstracciones;
 using Hoteles.Application.Habitaciones;
 using Hoteles.Application.Hoteles;
@@ -15,10 +16,15 @@ namespace Hoteles.Infrastructure.Persistencia;
 /// </summary>
 public sealed class LectorCatalogoSql(HotelesDbContext db) : ILectorCatalogo
 {
-    public async Task<IReadOnlyList<HotelVistaDto>> ListarHotelesAsync(CancellationToken ct)
+    public async Task<PaginaDto<HotelVistaDto>> ListarHotelesAsync(int page, int pageSize, CancellationToken ct)
     {
-        var hoteles = await db.Hoteles.OrderBy(h => h.Nombre).ToListAsync(ct);
-        return hoteles.Select(h => HotelVistaDto.De(h, RowVersion(h))).ToList();
+        var total = await db.Hoteles.CountAsync(ct);
+        var hoteles = await db.Hoteles
+            .OrderBy(h => h.Nombre).ThenBy(h => h.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .ToListAsync(ct);
+        var items = hoteles.Select(h => HotelVistaDto.De(h, RowVersion(h))).ToList();
+        return new PaginaDto<HotelVistaDto>(items, page, pageSize, total);
     }
 
     public async Task<HotelVistaDto?> ObtenerHotelAsync(Guid id, CancellationToken ct)
@@ -27,7 +33,7 @@ public sealed class LectorCatalogoSql(HotelesDbContext db) : ILectorCatalogo
         return hotel is null ? null : HotelVistaDto.De(hotel, RowVersion(hotel));
     }
 
-    public async Task<IReadOnlyList<HabitacionResponseDto>?> ListarHabitacionesDeHotelAsync(Guid hotelId, CancellationToken ct)
+    public async Task<PaginaDto<HabitacionResponseDto>?> ListarHabitacionesDeHotelAsync(Guid hotelId, int page, int pageSize, CancellationToken ct)
     {
         // El hotel debe pertenecer al agente (query filter): si no, null → 404 (no una lista vacía que confirme
         // la existencia de un hotel ajeno).
@@ -37,8 +43,14 @@ public sealed class LectorCatalogoSql(HotelesDbContext db) : ILectorCatalogo
             return null;
         }
 
-        var habitaciones = await db.Habitaciones.Where(h => h.HotelId == hotelId).OrderBy(h => h.Ubicacion).ToListAsync(ct);
-        return habitaciones.Select(h => HabitacionResponseDto.De(h, RowVersion(h))).ToList();
+        var total = await db.Habitaciones.CountAsync(h => h.HotelId == hotelId, ct);
+        var habitaciones = await db.Habitaciones
+            .Where(h => h.HotelId == hotelId)
+            .OrderBy(h => h.Ubicacion).ThenBy(h => h.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .ToListAsync(ct);
+        var items = habitaciones.Select(h => HabitacionResponseDto.De(h, RowVersion(h))).ToList();
+        return new PaginaDto<HabitacionResponseDto>(items, page, pageSize, total);
     }
 
     public async Task<HabitacionResponseDto?> ObtenerHabitacionAsync(Guid id, CancellationToken ct)

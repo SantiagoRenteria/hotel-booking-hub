@@ -1,6 +1,10 @@
+---
+baseline_commit: 5c035d187e3096177d5786f4265d7fdca75e01f7
+---
+
 # Story T.6: Paginación y caché Redis de la lectura del catálogo
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -32,7 +36,7 @@ Tras CUALQUIER escritura de hotel del agente (crear/editar/eliminar/habilitar/de
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Paginación (contrato + queries)** (AC: ET.6.1, ET.6.2)
+- [x] **Task 1 — Paginación (contrato + queries)** (AC: ET.6.1, ET.6.2)
   - [ ] `PaginaDto<T>` (record genérico: `Items`, `Page`, `PageSize`, `Total`) en Application (Comun o Hoteles.Application).
   - [ ] `ListarHotelesDelAgenteQuery` y `ListarHabitacionesDeHotelQuery` pasan a llevar `Page`/`PageSize`; validación (page≥1, 1≤pageSize≤100) — validador FluentValidation o guard → `Result` 400. El endpoint bindea `page`/`pageSize` de query (con defaults).
   - [ ] `ILectorCatalogo`: los métodos de lista devuelven `PaginaDto<...>` (con `Skip((page-1)*pageSize).Take(pageSize)` + `CountAsync` en `LectorCatalogoSql`). Detalle sin cambios.

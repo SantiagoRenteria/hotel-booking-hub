@@ -142,12 +142,14 @@ DES=$(ok A POST /api/v1/hoteles "{\"nombre\":\"Desechable $RUN_ID\",\"ciudad\":\
 DES_ID=$(id_of "$DES"); DES_RV=$(rv_of "$DES")
 expect 204 A DELETE "/api/v1/hoteles/$DES_ID" "{\"rowVersion\":\"$DES_RV\"}"
 
-say "Lecturas del catálogo (GET, Story T.5)"
-LH=$(ok A GET /api/v1/hoteles)
-printf '%s' "$LH" | grep -q "$HOTEL_ID" && say "GET /hoteles OK (contiene el creado)" || die "el hotel $HOTEL_ID no aparece en GET /hoteles"
+say "Lecturas del catálogo (GET paginado, Story T.5/T.6)"
+# pageSize grande: la BD acumula entre corridas y el hotel recién creado debe caer en la página. La respuesta es
+# un sobre PaginaDto {items,page,pageSize,total}; el grep del id funciona igual sobre el JSON crudo.
+LH=$(ok A GET "/api/v1/hoteles?page=1&pageSize=1000")
+printf '%s' "$LH" | grep -q "$HOTEL_ID" && say "GET /hoteles OK (paginado, contiene el creado)" || die "el hotel $HOTEL_ID no aparece en GET /hoteles"
 ok A GET "/api/v1/hoteles/$HOTEL_ID" >/dev/null && say "GET hotel detalle OK"
-LHAB=$(ok A GET "/api/v1/hoteles/$HOTEL_ID/habitaciones")
-printf '%s' "$LHAB" | grep -q "$HAB_ID" && say "GET habitaciones del hotel OK (contiene la creada)" || die "la habitación $HAB_ID no aparece"
+LHAB=$(ok A GET "/api/v1/hoteles/$HOTEL_ID/habitaciones?page=1&pageSize=1000")
+printf '%s' "$LHAB" | grep -q "$HAB_ID" && say "GET habitaciones del hotel OK (paginado, contiene la creada)" || die "la habitación $HAB_ID no aparece"
 ok A GET "/api/v1/habitaciones/$HAB_ID" >/dev/null && say "GET habitación detalle OK"
 
 # ---- 4) Reserva (Agente) ----

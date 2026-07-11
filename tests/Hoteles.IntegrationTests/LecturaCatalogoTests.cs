@@ -49,11 +49,30 @@ public sealed class LecturaCatalogoTests(SqlServerFixture fixture)
         await SembrarHotel(AgenteA, $"Eliminado {_sfx}", eliminado: true);
         await SembrarHotel(AgenteB, $"Ajeno {_sfx}");
 
-        var lista = await LectorDe(AgenteA).ListarHotelesAsync(CancellationToken.None);
+        var pagina = await LectorDe(AgenteA).ListarHotelesAsync(1, 100, CancellationToken.None);
 
-        Assert.Contains(lista, h => h.Id == propio);
-        Assert.All(lista, h => Assert.DoesNotContain("Eliminado", h.Nombre));
-        Assert.All(lista, h => Assert.DoesNotContain("Ajeno", h.Nombre));
+        Assert.Contains(pagina.Items, h => h.Id == propio);
+        Assert.All(pagina.Items, h => Assert.DoesNotContain("Eliminado", h.Nombre));
+        Assert.All(pagina.Items, h => Assert.DoesNotContain("Ajeno", h.Nombre));
+    }
+
+    [Fact]
+    public async Task Paginacion_respeta_page_pageSize_y_total()
+    {
+        await SembrarHotel(AgenteA, $"Pag A {_sfx}");
+        await SembrarHotel(AgenteA, $"Pag B {_sfx}");
+        await SembrarHotel(AgenteA, $"Pag C {_sfx}");
+
+        var lector = LectorDe(AgenteA);
+        var p1 = await lector.ListarHotelesAsync(1, 2, CancellationToken.None);
+        Assert.Equal(3, p1.Total); // total del agente (aislado), no de la página
+        Assert.Equal(2, p1.Items.Count); // page size respetado
+        Assert.Equal(1, p1.Page);
+
+        var p2 = await lector.ListarHotelesAsync(2, 2, CancellationToken.None);
+        Assert.Single(p2.Items); // 3 hoteles → 2 + 1
+        // Sin solapamiento entre páginas (orden estable por Nombre+Id).
+        Assert.Empty(p1.Items.Select(h => h.Id).Intersect(p2.Items.Select(h => h.Id)));
     }
 
     [Fact]
@@ -82,13 +101,13 @@ public sealed class LecturaCatalogoTests(SqlServerFixture fixture)
         var hotelB = await SembrarHotel(AgenteB, $"Ajeno {_sfx}");
 
         var lector = LectorDe(AgenteA);
-        var propias = await lector.ListarHabitacionesDeHotelAsync(hotelA, CancellationToken.None);
+        var propias = await lector.ListarHabitacionesDeHotelAsync(hotelA, 1, 100, CancellationToken.None);
         Assert.NotNull(propias);
-        Assert.Contains(propias!, h => h.Id == habId);
+        Assert.Contains(propias!.Items, h => h.Id == habId);
 
         // El hotel de B es invisible para A → null (404), no una lista vacía.
-        Assert.Null(await lector.ListarHabitacionesDeHotelAsync(hotelB, CancellationToken.None));
-        Assert.Null(await lector.ListarHabitacionesDeHotelAsync(Guid.NewGuid(), CancellationToken.None));
+        Assert.Null(await lector.ListarHabitacionesDeHotelAsync(hotelB, 1, 100, CancellationToken.None));
+        Assert.Null(await lector.ListarHabitacionesDeHotelAsync(Guid.NewGuid(), 1, 100, CancellationToken.None));
     }
 
     [Fact]
