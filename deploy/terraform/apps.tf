@@ -40,12 +40,12 @@ resource "azurerm_container_app_environment_dapr_component" "statestore" {
   # `state.redis` espera la CLAVE en redisPassword (no la cadena de conexión completa) y el host aparte.
   secret {
     name  = "redis-password"
-    value = azurerm_redis_cache.principal.primary_access_key
+    value = azurerm_managed_redis.principal.default_database[0].primary_access_key
   }
 
   metadata {
     name  = "redisHost"
-    value = "${azurerm_redis_cache.principal.hostname}:${azurerm_redis_cache.principal.ssl_port}"
+    value = "${azurerm_managed_redis.principal.hostname}:${azurerm_managed_redis.principal.default_database[0].port}"
   }
 
   metadata {
@@ -275,11 +275,11 @@ resource "azurerm_container_app" "reservas" {
     value = "Server=tcp:${azurerm_mssql_server.principal.fully_qualified_domain_name},1433;Initial Catalog=db-reservas;User ID=${var.sql_admin_login};Password=${random_password.sql_admin.result};Encrypt=True;TrustServerCertificate=False;Connection Timeout=60;"
   }
 
-  # Redis para caché de disponibilidad (3.2) e idempotencia de reserva (1.7). La cadena StackExchange completa
-  # (host:6380,password=...,ssl=True) viene del atributo del recurso.
+  # Redis para caché de disponibilidad (3.2) e idempotencia de reserva (1.7). Cadena StackExchange de Azure
+  # Managed Redis (host:port TLS + clave), armada en local.redis_cs.
   secret {
     name  = "cs-redis"
-    value = azurerm_redis_cache.principal.primary_connection_string
+    value = local.redis_cs
   }
 
   dapr {
@@ -345,7 +345,7 @@ resource "azurerm_container_app" "notificaciones" {
   # Redis para el inbox de idempotencia del worker (dedup entre instancias; sin él, fallback en memoria).
   secret {
     name  = "cs-redis"
-    value = azurerm_redis_cache.principal.primary_connection_string
+    value = local.redis_cs
   }
 
   dapr {

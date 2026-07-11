@@ -15,7 +15,7 @@ La IaC se valida siempre con `terraform fmt -check` + `validate` (local y CI, si
 | Container Registry | `azurerm_container_registry` | Imágenes de los servicios |
 | Managed Identity | `azurerm_user_assigned_identity` | Passwordless: pull de ACR + lectura de Key Vault (ADR-020) |
 | SQL Server + 2 BD | `azurerm_mssql_server`, `azurerm_mssql_database` ×2 | Una BD por BC (ADR-001): `db-hoteles`, `db-reservas` |
-| Redis | `azurerm_redis_cache` | Caché / idempotencia / state Dapr (ADR-012) |
+| Azure Managed Redis | `azurerm_managed_redis` (Balanced_B0) | Caché / idempotencia / state Dapr (ADR-012). Reemplaza al Azure Cache for Redis clásico (retirado). |
 | Service Bus (+ topic) | `azurerm_servicebus_namespace`, `_topic` | Transporte del pub/sub Dapr en nube (ADR-019) |
 | Key Vault (+ secretos) | `azurerm_key_vault`, `_secret` | Custodia de secretos, RBAC (ADR-020) |
 | Container App Environment | `azurerm_container_app_environment` | ACA con Dapr + KEDA gestionados (ADR-008) |
@@ -82,7 +82,9 @@ Scripts (`deploy/scripts/` y `deploy/terraform/bootstrap/`):
 - `smoke.sh` — `/health` con retry + flujo de negocio real (crear hotel → habitación → reserva → cancelar) + evidencia del evento en el worker.
 - `deploy.sh` / `destroy.sh` — orquestadores del ciclo (la compuerta `CONFIRM=yes` protege el `apply`).
 
-**Costos/avisos:** Redis Basic C0 (~0.02 USD/h) y Service Bus Standard (~0.01 USD/h) **facturan 24/7 mientras existan**; SQL serverless pausada es marginal (solo storage); ACA scale-to-zero ≈ 0. Por eso el `destroy` es parte del ciclo. Riesgos: cold start (mitigado con retry), quota de ACA en suscripción nueva (el preflight registra providers; si `quota exceeded`, pedir aumento).
+**Región:** `westus2` (la suscripción de prueba **bloquea Azure SQL en eastus2/eastus**; se verificó con la API de capabilities que `westus2` sí lo permite).
+
+**Costos/avisos:** Azure Managed Redis Balanced_B0 (~0.06–0.10 USD/h) y Service Bus Standard (~0.01 USD/h) **facturan mientras existan**; SQL serverless pausada es marginal (solo storage); ACA scale-to-zero ≈ 0. Por eso el `destroy` es parte del ciclo. Riesgos: cold start (mitigado con retry), quota/restricciones de la suscripción (SQL y algunos SKU premium pueden estar deshabilitados por región — el `plan` no siempre lo detecta, solo el `apply`).
 
 ## Migración a AKS (documentada, no ejecutada)
 
