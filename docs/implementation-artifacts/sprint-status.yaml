@@ -53,7 +53,7 @@ development_status:
   1-6a-crear-confirmar-reserva-validacion-y-happy-path: done
   1-6b-atomicidad-transaccional-reserva-outbox: done
   1-6c-money-test-confirmacion-unica-bajo-concurrencia: done
-  1-7-idempotencia-creacion-reserva: in-progress
+  1-7-idempotencia-creacion-reserva: review
   epic-1-retrospective: done
 
   # ---- Epic 2: Gestión de hoteles e inventario (Agente) ----
