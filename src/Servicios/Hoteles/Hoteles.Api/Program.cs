@@ -4,10 +4,14 @@ using HotelBookingHub.Comun.Web.Seguridad;
 using Hoteles.Application.Habitaciones.CambiarEstadoHabitacion;
 using Hoteles.Application.Habitaciones.CrearHabitacion;
 using Hoteles.Application.Habitaciones.EditarHabitacion;
+using Hoteles.Application.Habitaciones.ListarHabitaciones;
+using Hoteles.Application.Habitaciones.ObtenerHabitacion;
 using Hoteles.Application.Hoteles.CambiarEstadoHotel;
 using Hoteles.Application.Hoteles.CrearHotel;
 using Hoteles.Application.Hoteles.EditarHotel;
 using Hoteles.Application.Hoteles.EliminarHotel;
+using Hoteles.Application.Hoteles.ListarHoteles;
+using Hoteles.Application.Hoteles.ObtenerHotel;
 using Hoteles.Domain.Habitaciones;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Infrastructure;
@@ -170,6 +174,32 @@ app.MapPost("/api/v1/habitaciones/{id:guid}/deshabilitar", async (Guid id, Cambi
         return resultado.ToOkResult();
     })
     .WithName("DeshabilitarHabitacion")
+    .WithTags("Habitaciones")
+    .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
+
+// CAP · Lectura del catálogo (Story T.5). GET aislados por agente (query filter de hoteles + verificación del
+// hotel dueño para habitaciones). Devuelven el rowVersion vigente para editar tras leer (GET → PUT). 404 lo ajeno.
+app.MapGet("/api/v1/hoteles", async (ISender sender, CancellationToken ct) =>
+        (await sender.Send(new ListarHotelesDelAgenteQuery(), ct)).ToOkResult())
+    .WithName("ListarHoteles")
+    .WithTags("Hoteles")
+    .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
+
+app.MapGet("/api/v1/hoteles/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
+        (await sender.Send(new ObtenerHotelDetalleQuery(id), ct)).ToOkResult())
+    .WithName("ObtenerHotel")
+    .WithTags("Hoteles")
+    .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
+
+app.MapGet("/api/v1/hoteles/{hotelId:guid}/habitaciones", async (Guid hotelId, ISender sender, CancellationToken ct) =>
+        (await sender.Send(new ListarHabitacionesDeHotelQuery(hotelId), ct)).ToOkResult())
+    .WithName("ListarHabitacionesDeHotel")
+    .WithTags("Habitaciones")
+    .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
+
+app.MapGet("/api/v1/habitaciones/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
+        (await sender.Send(new ObtenerHabitacionDetalleQuery(id), ct)).ToOkResult())
+    .WithName("ObtenerHabitacion")
     .WithTags("Habitaciones")
     .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
 

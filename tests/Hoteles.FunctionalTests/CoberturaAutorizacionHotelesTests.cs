@@ -26,8 +26,9 @@ public class CoberturaAutorizacionHotelesTests(HotelesApiFactory factory) : ICla
                 .StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        // Guard anti-vacuo + confirma que están los 9 endpoints de gestión.
-        Assert.Equal(9, negocio.Count);
+        // Guard anti-vacuo + confirma que están los 13 endpoints /api (9 de escritura/ciclo de vida + 4 GET de
+        // lectura del catálogo, Story T.5). TODOS exigen SoloAgente.
+        Assert.Equal(13, negocio.Count);
 
         foreach (var endpoint in negocio)
         {
@@ -48,6 +49,19 @@ public class CoberturaAutorizacionHotelesTests(HotelesApiFactory factory) : ICla
 
         // Sin cuerpo: la autorización (SoloAgente) rechaza antes del model binding → 403 (rol sin permiso).
         var respuesta = await cliente.PostAsync("/api/v1/hoteles", content: null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
+    }
+
+    // Story T.5 — los GET de lectura del catálogo también son SoloAgente: un Viajero recibe 403.
+    [Fact]
+    public async Task Viajero_al_listar_hoteles_responde_403()
+    {
+        var cliente = factory.CreateClient();
+        cliente.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", TokenDePrueba.Emitir(rol: TokenDePrueba.RolViajero));
+
+        var respuesta = await cliente.GetAsync("/api/v1/hoteles");
 
         Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
     }
