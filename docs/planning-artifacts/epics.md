@@ -456,6 +456,34 @@ para **garantizar cero overbooking bajo carga**.
 **Entonces** hay `exactamente 1` × `201` y `N-1` × `409`; `0` excepciones no mapeadas; los reintentos por deadlock `1205` están acotados (máx. 3, backoff+jitter) y un `1205` agotado se mapea a `409`, nunca a `500`.
 *(Collection `G1` aislada, `DisableParallelization = true`; el N sorteado 30–100 y la semilla se registran en la salida para reproducibilidad.)*
 
+### Story 1.7: Idempotencia de creación de reserva (`Idempotency-Key`)
+
+> **Trazabilidad:** auditoría de alineación vs DOCUMENTO-BASE §8.5 (2026-07-10) → **control de doble-envío del cliente** → `AC-E1.7.x` · **Obligatorio (alineación con el base doc)**
+> **Porqué:** el DOCUMENTO-BASE §8.5 lista el `Idempotency-Key` como control de la condición de carrera "doble clic en reservar" (el cliente reintenta el `POST` y NO debe crear dos reservas). La omisión en las épicas se corrige aquí. Complementa —no reemplaza— el anti-overbooking (que protege habitación/fechas, no el doble-submit del MISMO cliente sobre fechas nuevas).
+
+Como **viajero (o su cliente)**,
+quiero que **reenviar el mismo `POST /api/v1/reservas` con un `Idempotency-Key` devuelva la reserva ya creada en vez de crear otra**,
+para **no duplicar mi reserva ante un reintento de red o un doble clic**.
+
+**Acceptance Criteria:**
+
+**AC-E1.7.1 — Reintento con la misma clave devuelve la misma reserva**
+**Dado** un `POST /api/v1/reservas` con header `Idempotency-Key: K` que creó la reserva `R` (`201`)
+**Cuando** se reenvía el MISMO request con la misma `K`
+**Entonces** responde con **la misma `R`** (mismo id) y **no** se crea una segunda reserva ni segundos slots (`exactamente 1` reserva).
+
+**AC-E1.7.2 — Claves distintas no interfieren**
+**Dado** dos requests con `Idempotency-Key` distintas
+**Cuando** se procesan
+**Entonces** cada uno sigue su curso normal (crea o `409` según el invariante), sin dedup cruzada.
+
+**AC-E1.7.3 (negativo) — Misma clave, cuerpo distinto → conflicto**
+**Dado** una `Idempotency-Key: K` ya usada para un cuerpo
+**Cuando** llega otro `POST` con la misma `K` pero **cuerpo distinto**
+**Entonces** responde `409`/`422` (Problem Details): una clave de idempotencia no puede reutilizarse para otra operación.
+
+> **Alcance:** solo `POST /api/v1/reservas`. Store de idempotencia en **Redis** (SETNX+TTL, paridad con el inbox de E5) si está configurado; fallback en memoria para dev sin Redis. La clave es del **cliente** (header), distinta del `MessageId` del outbox (interno).
+
 ---
 
 ## Epic 2: Gestión de hoteles e inventario (Agente)
