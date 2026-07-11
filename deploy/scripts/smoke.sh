@@ -52,27 +52,25 @@ TOKEN="$(bash "$HERE/mint-jwt.sh" "$KEY" Agente)"
 
 # 3) Flujo de negocio.
 say "Crear hotel"
-HOTEL=$(req POST /api/v1/hoteles '{"nombre":"Hotel Smoke","ciudad":"Bogota","direccion":"Cll 1 #2-3","descripcion":"smoke","estado":"Habilitado"}')
+# estado como entero (EstadoHotel.Habilitado=1): la entrada del API bindea el enum numérico (sin JsonStringEnumConverter).
+HOTEL=$(req POST /api/v1/hoteles '{"nombre":"Hotel Smoke","ciudad":"Bogota","direccion":"Cll 1 #2-3","descripcion":"smoke","estado":1}')
 HOTEL_ID=$(printf '%s' "$HOTEL" | sed -nE 's/.*"id"[: ]*"([0-9a-fA-F-]+)".*/\1/p' | head -1)
 say "hotelId=$HOTEL_ID"
 
 say "Crear habitación"
-HAB=$(req POST "/api/v1/hoteles/$HOTEL_ID/habitaciones" '{"tipo":"Doble","costoBase":100.0,"impuestos":19.0,"ubicacion":"Piso 2","estado":"Habilitada","capacidad":2}')
+HAB=$(req POST "/api/v1/hoteles/$HOTEL_ID/habitaciones" '{"tipo":"Doble","costoBase":100.0,"impuestos":19.0,"ubicacion":"Piso 2","estado":1,"capacidad":2}')
 HAB_ID=$(printf '%s' "$HAB" | sed -nE 's/.*"id"[: ]*"([0-9a-fA-F-]+)".*/\1/p' | head -1)
 say "habitacionId=$HAB_ID"
 
 say "Crear reserva"
-RESERVA=$(req POST /api/v1/reservas "$(cat <<JSON
-{"habitacionId":"$HAB_ID","entrada":"2026-08-01","salida":"2026-08-03",
- "huespedes":[{"nombres":"Ana","apellidos":"López","fechaNacimiento":"1990-01-01","genero":"F","tipoDocumento":"CC","numeroDocumento":"123","email":"ana@x.com","telefono":"555"}],
- "contactoEmergencia":{"nombreCompleto":"Juan Pérez","telefono":"555"},"agenteEmail":"agente-smoke@ejemplo.com"}
-JSON
-)")
+# Cuerpo en UNA sola línea: `curl -d` elimina los saltos de línea y un JSON multilínea acababa corrupto → 400.
+RESERVA=$(req POST /api/v1/reservas "{\"habitacionId\":\"$HAB_ID\",\"entrada\":\"2026-08-01\",\"salida\":\"2026-08-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"agente-smoke@ejemplo.com\"}")
 RESERVA_ID=$(printf '%s' "$RESERVA" | sed -nE 's/.*"id"[: ]*"([0-9a-fA-F-]+)".*/\1/p' | head -1)
 say "reservaId=$RESERVA_ID (evento ReservaConfirmada debería propagarse al worker)"
 
 say "Cancelar (atajo de un paso)"
-req POST "/api/v1/reservas/$RESERVA_ID/cancelaciones/atajo" '{"categoriaMotivo":"Cliente","detalleMotivo":"smoke"}' >/dev/null
+# iniciador=2 (Agente), decision=1 (AprobarAplicandoPenalidad); enums numéricos.
+req POST "/api/v1/reservas/$RESERVA_ID/cancelaciones/atajo" '{"categoriaMotivo":"Cliente","detalleMotivo":"smoke","iniciador":2,"decision":1}' >/dev/null
 say "cancelación OK"
 
 # 4) Verificar propagación del evento (el worker consume del Service Bus y notifica).
