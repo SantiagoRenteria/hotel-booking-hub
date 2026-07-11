@@ -1,4 +1,5 @@
 using HotelBookingHub.Comun.Eventos;
+using HotelBookingHub.Comun.Observabilidad;
 
 namespace Notificaciones.Worker.Notificaciones;
 
@@ -27,12 +28,17 @@ public sealed class DespachadorNotificaciones(
 {
     public async Task DespacharAsync(EventoIntegracion evento, CancellationToken ct)
     {
+        // Story 7.1 (AC-E7.1.3): span de consumidor correlacionado con la traza originante por el trace-id de
+        // negocio del envelope, para que la actividad del worker sea atribuible a la petición que originó el evento.
+        using var actividad = ActividadHotelBookingHub.IniciarConsumo($"consumir {evento.Type}", evento.TraceId);
         try
         {
             await procesador.ProcesarAsync(evento, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            actividad?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
+            actividad?.AddException(ex); // Graba tipo + mensaje en el span (AC-E7.1.4) también en el salto asíncrono.
             var intentos = await contador.IncrementarAsync(evento.Id, ct);
             if (intentos >= opciones.MaxIntentos)
             {

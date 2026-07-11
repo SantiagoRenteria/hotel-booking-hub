@@ -10,9 +10,8 @@ builder.AddServiceDefaults();
 // Latido de fondo del worker.
 builder.Services.AddHostedService<Worker>();
 
-// Notificaciones (Story 5.1a): sink de Fase 1 (consola/MailHog) + consumidor de ReservaConfirmada.
-// La suscripción al transporte real (Dapr pub/sub) sigue diferida como en el resto del sistema
-// (PublicadorEventosLog es placeholder); el consumidor se invoca con el envelope (patrón de 3.1).
+// Notificaciones (Story 5.1a): sink de Fase 1 (consola/MailHog). El transporte real por RabbitMQ se cablea abajo
+// (Story 9.1): el ConsumidorRabbitMq recibe el envelope del broker y lo enruta a estos consumidores.
 builder.Services.AddSingleton<INotificador, NotificadorConsola>();
 
 // Inbox de idempotencia del consumidor (Story 5.1b): dedup del efecto por (MessageId, version, destinatario).
@@ -47,6 +46,19 @@ builder.Services.AddSingleton<IContadorReintentos, ContadorReintentosEnMemoria>(
 builder.Services.AddSingleton<IColaDeadLetter, ColaDeadLetterLog>();
 builder.Services.AddSingleton(new OpcionesDespachador());
 builder.Services.AddSingleton<DespachadorNotificaciones>();
+
+// Transporte real de eventos (Story 9.1, ADR-019): enrutador por tipo + consumidor RabbitMQ. Se arranca SOLO si
+// hay cadena de RabbitMQ (local/compose); sin ella el worker mantiene su latido (misma política "si-configurado"
+// del inbox Redis). El adaptador de nube (Dapr→Service Bus) se enchufa por el mismo seam en la Épica 8.
+builder.Services.AddSingleton<EnrutadorNotificaciones>();
+var cadenaRabbit = builder.Configuration.GetConnectionString("rabbitmq");
+if (!string.IsNullOrWhiteSpace(cadenaRabbit))
+{
+    builder.Services.AddHostedService(sp => new ConsumidorRabbitMq(
+        cadenaRabbit,
+        sp.GetRequiredService<EnrutadorNotificaciones>(),
+        sp.GetRequiredService<ILogger<ConsumidorRabbitMq>>()));
+}
 
 var app = builder.Build();
 

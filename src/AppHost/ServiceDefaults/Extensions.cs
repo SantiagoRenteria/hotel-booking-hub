@@ -61,7 +61,12 @@ public static class Extensions
             })
             .WithTracing(tracing =>
             {
-                tracing.AddSource(builder.Environment.ApplicationName)
+                // "HotelBookingHub" = ActivitySource compartido de negocio (Story 7.1, FR-25). Debe coincidir con
+                // HotelBookingHub.Comun.Observabilidad.ActividadHotelBookingHub.NombreSource. Se registra como
+                // literal para no acoplar ServiceDefaults (infra base) al assembly Comun. Sin él, los spans de
+                // dominio del pipeline y del consumidor NO se exportan al dashboard de Aspire.
+                tracing.AddSource("HotelBookingHub")
+                    .AddSource(builder.Environment.ApplicationName)
                     .AddAspNetCoreInstrumentation(tracing =>
                         // Exclude health check requests from tracing
                         tracing.Filter = context =>
