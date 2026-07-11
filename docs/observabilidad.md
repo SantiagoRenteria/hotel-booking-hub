@@ -22,17 +22,15 @@ Son dos cosas distintas y **no se confunden** (arquitectura, sección "Observabi
 | Cliente → `ApiGateway` (YARP) | Instrumentación ASP.NET Core crea/continúa la actividad raíz | ✅ automático (OTel) |
 | `Gateway → Hoteles.Api / Reservas.Api` | YARP reenvía `traceparent`; HttpClient/AspNetCore instrumentation continúa la traza | ✅ automático (OTel) |
 | Servicio (pipeline del mediador) | `TracingBehavior` emite span propio desde `"HotelBookingHub"` | ✅ Story 7.1 |
-| Servicio → `Notificaciones.Worker` (evento) | Correlación por `trace-id` de negocio del envelope (span de consumidor cuelga de la misma traza) | ✅ Story 7.1 (Dapr-ready) |
-| Sidecar Dapr físico | Propagación de `traceparent` en el CloudEvent | ⏸️ **diferido** (transporte Dapr no cableado; ver abajo) |
+| Servicio → `Notificaciones.Worker` (evento, LOCAL/RabbitMQ) | Correlación por `trace-id` de negocio del envelope (span de consumidor cuelga de la misma traza) | ✅ Story 7.1 + 9.1 (RabbitMQ real) |
+| Servicio → `Notificaciones.Worker` (evento, NUBE/Dapr) | El sidecar Dapr propaga el `traceparent` W3C en el CloudEvent (span padre real) | 🟡 implementado (T.2), pendiente verificación de runtime en ACA |
 
-## Alcance honesto: transporte Dapr diferido
+## Alcance honesto: transporte de eventos por entorno (Dapr ya cableado)
 
-El enunciado de la épica menciona el salto físico "`sidecar Dapr → worker`". En el sistema, **el transporte Dapr pub/sub está diferido** desde E1/E5 (decisión establecida, no omisión):
+El transporte de eventos vive tras el puerto hexagonal `IPublicadorEventos`, con una **Strategy por entorno** (ADR-019). Ya **no** hay placeholder degradado como transporte real: el `PublicadorEventosLog` queda solo para tests sin broker.
 
-- El publicador de eventos es un placeholder (`PublicadorEventosLog`) que registra en el log; no hay sidecars Dapr ni componentes pub/sub cableados en el `AppHost`.
-- El `Worker` late; sus consumidores se ejercitan vía `DespachadorNotificaciones` (invocación directa con el envelope), no por una suscripción de transporte real.
-
-**Consecuencia:** la correlación asíncrona se implementa de forma **Dapr-ready** sobre la costura que sí existe (productor → outbox → despacho del worker): se transporta el `trace-id` de negocio y el consumidor abre su span bajo la misma traza. Cuando se cablee Dapr, el sidecar propaga el `traceparent` completo (con el span-id padre real) y esta correlación manual se retira. El span-id padre exacto no viaja hoy; la correlación se hace por `trace-id` (suficiente para atribuir la actividad del worker a la petición originante en el dashboard).
+- **LOCAL / compose — RabbitMQ directo (Story 9.1, verificado end-to-end):** `PublicadorEventosRabbitMq` publica al exchange; `ConsumidorRabbitMq` recibe y enruta por `EnrutadorNotificaciones` (inbox idempotente + dead-letter). La correlación asíncrona se hace por el **`trace-id` de negocio** del envelope (`EventoIntegracion.TraceId`): el consumidor abre su span bajo la misma traza. El adaptador RabbitMQ **no** propaga el `traceparent` W3C físico por headers, así que el span-id padre exacto no viaja en local; el `trace-id` basta para atribuir la actividad del worker a la petición originante en el dashboard.
+- **NUBE / ACA — Dapr → Azure Service Bus (Story T.2, implementado):** `PublicadorEventosDapr` publica al component `pubsub`; el worker se suscribe vía Dapr (`UseCloudEvents()` + `MapSubscribeHandler()` + `WithTopic`). Aquí el **sidecar Dapr propaga el `traceparent` W3C completo** en el CloudEvent (distributed tracing nativo de Dapr), de modo que el span del worker cuelga del span padre real — correlación más rica que en local. Está **implementado y seleccionado por `TransporteEventos=Dapr`**, pendiente de **verificación de runtime** en el próximo despliegue a ACA (el sidecar Dapr solo existe en la nube). Ambos caminos comparten el mismo `EnrutadorNotificaciones`, así que la lógica de consumo es idéntica; cambia solo el proveedor de transporte y el mecanismo de propagación de traza.
 
 ## Prueba automatizada (gate de CI)
 

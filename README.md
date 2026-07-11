@@ -102,7 +102,9 @@ Todo por Terraform (`deploy/terraform/`, ADR-008): ACA + Dapr/KEDA, Azure SQL×2
 ├─ docs/
 │  ├─ adr/                 # 23 ADRs como archivos (Contexto·Decisión·Consecuencias)
 │  ├─ seguridad.md         # prácticas de seguridad → OWASP
-│  ├─ uso-de-ia.md         # cómo se usó la IA (método BMAD)
+│  ├─ uso-de-ia.md         # cómo se usó la IA (método BMAD, de punta a punta)
+│  ├─ observabilidad.md    # trazas distribuidas + métricas + transporte de eventos
+│  ├─ bdd-y-e2e.md         # flujos BDD + estrategia de pruebas E2E
 │  ├─ specs/ · planning-artifacts/ · implementation-artifacts/   # SPEC, PRD, épicas, historias
 │  └─ DOCUMENTO-BASE.md    # documento base consolidado
 └─ .github/workflows/      # ci.yml (build·format·test·gitleaks·terraform) + cd.yml (OIDC)
@@ -119,6 +121,7 @@ Todo por Terraform (`deploy/terraform/`, ADR-008): ACA + Dapr/KEDA, Azure SQL×2
 | **Uso de IA** (método BMAD) | [`docs/uso-de-ia.md`](docs/uso-de-ia.md) |
 | El **contrato** y requisitos | [`docs/specs/`](docs/specs/) · [`docs/DOCUMENTO-BASE.md`](docs/DOCUMENTO-BASE.md) |
 | **Observabilidad** | [`docs/observabilidad.md`](docs/observabilidad.md) |
+| **Pruebas** (BDD + E2E) | [`docs/bdd-y-e2e.md`](docs/bdd-y-e2e.md) |
 | El **backlog** (31 historias, no es lectura de evaluación) | [`docs/planning-artifacts/epics.md`](docs/planning-artifacts/epics.md) |
 
 ## Stack
