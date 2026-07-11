@@ -21,9 +21,9 @@ variable "entorno" {
 }
 
 variable "ubicacion" {
-  description = "Región de Azure."
+  description = "Región de Azure. West US 2: la suscripción 'Estudio' permite SQL aquí (eastus2/eastus lo bloquean)."
   type        = string
-  default     = "eastus2"
+  default     = "westus2"
 }
 
 variable "sql_admin_login" {
