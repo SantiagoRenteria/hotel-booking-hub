@@ -1,6 +1,6 @@
 # Story 8.3: CD automático por Terraform + protección de `main`
 
-Status: review
+Status: done
 baseline_commit: 2b46351
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
