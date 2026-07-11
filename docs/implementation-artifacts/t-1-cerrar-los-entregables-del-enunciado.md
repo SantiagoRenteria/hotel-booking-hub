@@ -1,6 +1,6 @@
 # Story T.1: Cerrar los entregables del enunciado
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -40,19 +40,19 @@ ADR como archivos individuales (Contexto · Decisión · Consecuencias), incluid
   - [ ] Aplicar migraciones EF al arranque (Program.cs `Database.Migrate()` gated por entorno/flag, o un init) para que el esquema exista sin pasos manuales. Verificar que NO rompe los tests (que usan Testcontainers `MigrateAsync`).
   - [ ] Verificar local: `docker compose up` → crear hotel→habitación→reserva→cancelar 2xx + notificación por RabbitMQ (log del worker). Documentar.
 
-- [ ] **Task 2 — README enrutador + C4** (AC: ET.1.2)
+- [x] **Task 2 — README enrutador + C4** (AC: ET.1.2)
   - [ ] `README.md` raíz: tabla "Decisiones y por qué" (5-7 con enlace a `docs/adr/`), C4 de contenedores (mermaid), árbol comentado, tabla enrutadora. Sin duplicar; enlazar SPEC/PRD/architecture/epics con su letrero de navegación.
 
-- [ ] **Task 3 — ADRs como archivos** (AC: ET.1.6)
+- [x] **Task 3 — ADRs como archivos** (AC: ET.1.6)
   - [ ] `docs/adr/ADR-0XX-*.md` por cada ADR (extraer de `docs/specs/spec-hotel-booking-hub/decisions-adr.md`), con Contexto·Decisión·Consecuencias. Índice `docs/adr/README.md`. Incluir ADR-021/022/023 (E8). Enlazar desde el README.
 
-- [ ] **Task 4 — Docs de seguridad + uso de IA** (AC: ET.1.3)
+- [x] **Task 4 — Docs de seguridad + uso de IA** (AC: ET.1.3)
   - [ ] `docs/seguridad.md`: 8 prácticas → OWASP + porqué (reusar Épica 6). `docs/uso-de-ia.md`: flujo BMAD, agentes, party-mode, prompts críticos, iteración/verificación (incluye la saga real de E8: restricciones de la sub y cómo se resolvieron).
 
-- [ ] **Task 5 — Postman/Newman en CI** (AC: ET.1.4)
+- [x] **Task 5 — Postman/Newman en CI** (AC: ET.1.4)
   - [ ] `postman/hotel-booking-hub.postman_collection.json` (+ environment): flujo feliz + negativos, con auth JWT. Job de CI que corre `newman run` (contra el compose levantado, reusando el smoke). Reusar payloads reales de `deploy/scripts/smoke.sh`.
 
-- [ ] **Task 6 — Repo/limpieza final** (AC: ET.1.1)
+- [x] **Task 6 — Repo/limpieza final** (AC: ET.1.1)
   - [ ] Verificar repo público, sin paquetes privados, gitleaks verde, `.gitignore` correcto. Revisar el enunciado para cualquier entregable faltante.
 
 ## Dev Notes
@@ -82,8 +82,28 @@ ADR como archivos individuales (Contexto · Decisión · Consecuencias), incluid
 
 ### Agent Model Used
 
+claude-opus-4-8 (Amelia / dev-story; docs seguridad/uso-de-IA por subagentes paralelos)
+
 ### Debug Log References
+
+- **Data-plane (T1):** `docker compose up` verificado E2E en caliente y en frío (cold start con reintento del Migrate); Newman `8 requests / 10 assertions / 0 fallos` contra el stack local.
+- **ADRs (T3):** 23 archivos generados por script desde `decisions-adr.md` + índice.
+- **Docs (T4):** `seguridad.md` (8 prácticas→OWASP, citas `file:line` reales) y `uso-de-ia.md` (método BMAD + saga E8), ancladas al código.
+- **Repo (T6):** `.env` gitignored, sin feeds privados (nuget.org, ADR-009), sin secretos literales.
 
 ### Completion Notes List
 
+- **Tasks 1-6 COMPLETAS.** T.1 cierra el DoD: data-plane del compose funcional (un comando), README enrutador + C4 (mermaid) + tabla de decisiones→ADR, 23 ADRs como archivos (`docs/adr/`), docs de seguridad (OWASP) y de uso de IA, colección Postman ejecutada por Newman en CI (job `smoke-compose`), repo limpio.
+- **Verificado real:** flujo crear hotel→habitación→reserva→cancelar + evento→worker por RabbitMQ (local); Newman verde.
+- **Límite conocido (heredado):** evento→worker no fluye en nube (transporte Dapr diferido); en local sí.
+
 ### File List
+
+**Nuevos:** `docs/adr/*.md` (23 + README índice), `docs/seguridad.md`, `docs/uso-de-ia.md`, `postman/hotel-booking-hub.postman_collection.json`
+**Modificados:** `README.md` (reescrito), `deploy/docker-compose.yml`, `src/Servicios/Hoteles|Reservas/*.Api/Program.cs`, `.github/workflows/ci.yml` (Newman)
+
+## Change Log
+
+| Fecha | Cambio |
+|---|---|
+| 2026-07-11 | Story T.1: data-plane del compose (verificado E2E), README+C4, 23 ADRs como archivo, docs seguridad+IA, Postman/Newman en CI, repo limpio. Status → review. |
