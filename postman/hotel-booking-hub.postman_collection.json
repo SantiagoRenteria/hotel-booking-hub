@@ -39,8 +39,7 @@
           "  return header+'.'+payload+'.'+sig;",
           "}",
           "pm.collectionVariables.set('jwtAgente', mint('Agente','agente@x.com'));",
-          "pm.collectionVariables.set('jwtViajero', mint('Viajero','viajero@x.com'));",
-          "if (!pm.collectionVariables.get('idemKey')) { pm.collectionVariables.set('idemKey', 'newman-' + Date.now()); }"
+          "pm.collectionVariables.set('jwtViajero', mint('Viajero','viajero@x.com'));"
         ]
       }
     }
@@ -78,15 +77,33 @@
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" } ],
             "url": "{{baseUrl}}/api/v1/hoteles",
-            "body": { "mode": "raw", "raw": "{\"nombre\":\"Hotel Newman\",\"ciudad\":\"Bogota\",\"direccion\":\"Cll 1\",\"descripcion\":\"e2e\",\"estado\":1}" }
+            "body": { "mode": "raw", "raw": "{\"nombre\":\"Hotel Newman {{runId}}\",\"ciudad\":\"Bogota\",\"direccion\":\"Cll 1\",\"descripcion\":\"e2e\",\"estado\":1}" }
           },
-          "event": [ { "listen": "test", "script": { "exec": [
-            "pm.test('201 Created', () => pm.response.to.have.status(201));",
-            "var j = pm.response.json();",
-            "pm.collectionVariables.set('hotelId', j.id);",
-            "pm.collectionVariables.set('hotelRowVersion', j.rowVersion);",
-            "pm.collectionVariables.set('hotelRowVersionStale', j.rowVersion);"
-          ] } } ]
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "// runId fresco POR CORRIDA (sin guard): así los nombres de hotel son únicos en cada ejecución de la",
+              "// colección aunque las collection variables persistan (Postman app) → re-ejecutable contra un compose",
+              "// no reiniciado, sin chocar con el índice único (agente, nombre, ciudad).",
+              "pm.collectionVariables.set('runId', 'r' + Date.now());"
+            ] } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "var j = pm.response.json();",
+              "pm.collectionVariables.set('hotelId', j.id);",
+              "pm.collectionVariables.set('hotelRowVersion', j.rowVersion);",
+              "pm.collectionVariables.set('hotelRowVersionStale', j.rowVersion);"
+            ] } }
+          ]
+        },
+        {
+          "name": "[neg] Crear hotel duplicado (mismo nombre+ciudad) → 409",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{baseUrl}}/api/v1/hoteles",
+            "body": { "mode": "raw", "raw": "{\"nombre\":\"Hotel Newman {{runId}}\",\"ciudad\":\"Bogota\",\"direccion\":\"otra\",\"descripcion\":\"dup\",\"estado\":1}" }
+          },
+          "event": [ { "listen": "test", "script": { "exec": [ "pm.test('409 Conflict (único por agente+nombre+ciudad)', () => pm.response.to.have.status(409));" ] } } ]
         },
         {
           "name": "Editar hotel (Agente) → 200",
@@ -94,7 +111,7 @@
             "method": "PUT",
             "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" } ],
             "url": "{{baseUrl}}/api/v1/hoteles/{{hotelId}}",
-            "body": { "mode": "raw", "raw": "{\"rowVersion\":\"{{hotelRowVersion}}\",\"nombre\":\"Hotel Newman (editado)\",\"ciudad\":\"Bogota\",\"direccion\":\"Cll 2\",\"descripcion\":\"e2e editado\"}" }
+            "body": { "mode": "raw", "raw": "{\"rowVersion\":\"{{hotelRowVersion}}\",\"nombre\":\"Hotel Newman (editado) {{runId}}\",\"ciudad\":\"Bogota\",\"direccion\":\"Cll 2\",\"descripcion\":\"e2e editado\"}" }
           },
           "event": [ { "listen": "test", "script": { "exec": [
             "pm.test('200 OK', () => pm.response.to.have.status(200));",
@@ -219,7 +236,7 @@
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" } ],
             "url": "{{baseUrl}}/api/v1/hoteles",
-            "body": { "mode": "raw", "raw": "{\"nombre\":\"Desechable\",\"ciudad\":\"Cali\",\"direccion\":\"Cll 0\",\"descripcion\":\"para eliminar\",\"estado\":1}" }
+            "body": { "mode": "raw", "raw": "{\"nombre\":\"Desechable {{runId}}\",\"ciudad\":\"Cali\",\"direccion\":\"Cll 0\",\"descripcion\":\"para eliminar\",\"estado\":1}" }
           },
           "event": [ { "listen": "test", "script": { "exec": [
             "pm.test('201 Created', () => pm.response.to.have.status(201));",
@@ -275,10 +292,17 @@
             "url": "{{baseUrl}}/api/v1/reservas",
             "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-09-01\",\"salida\":\"2026-09-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"agente@x.com\"}" }
           },
-          "event": [ { "listen": "test", "script": { "exec": [
-            "pm.test('2xx', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
-            "pm.collectionVariables.set('reservaIdemId', pm.response.json().id);"
-          ] } } ]
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "// idemKey fresco POR CORRIDA (sin guard): el replay y el negativo 422 lo reutilizan dentro de la misma",
+              "// corrida, pero cada ejecución nueva usa una clave distinta → no choca con el almacén de idempotencia.",
+              "pm.collectionVariables.set('idemKey', 'newman-' + Date.now());"
+            ] } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('2xx', () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+              "pm.collectionVariables.set('reservaIdemId', pm.response.json().id);"
+            ] } }
+          ]
         },
         {
           "name": "Replay del Idempotency-Key (Agente) → 200 misma reserva",
