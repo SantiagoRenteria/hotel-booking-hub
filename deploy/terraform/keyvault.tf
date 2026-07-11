@@ -8,7 +8,8 @@ resource "azurerm_key_vault" "principal" {
   tenant_id                  = data.azurerm_client_config.actual.tenant_id
   sku_name                   = "standard"
   rbac_authorization_enabled = true
-  purge_protection_enabled   = false
+  # Purge protection en prod (evita borrado permanente de secretos, requisito de cumplimiento); relajado en dev/stg.
+  purge_protection_enabled   = var.entorno == "prod"
   soft_delete_retention_days = 7
   tags                       = local.tags
 }

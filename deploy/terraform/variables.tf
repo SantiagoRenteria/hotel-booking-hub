@@ -11,6 +11,13 @@ variable "entorno" {
   description = "Entorno de despliegue (dev/stg/prod); parte del nombre de los recursos."
   type        = string
   default     = "dev"
+
+  # El nombre del Key Vault (`${prefijo}-${entorno}-kv`) tiene un techo de 24 chars: se acota el entorno para no
+  # desbordarlo en `apply` (con prefijo por defecto "hbh", entorno ≤ 17 mantiene el KV ≤ 24).
+  validation {
+    condition     = length(var.entorno) >= 2 && length(var.entorno) <= 12
+    error_message = "El entorno debe tener entre 2 y 12 caracteres (límite de nombres de Azure, p. ej. Key Vault ≤ 24)."
+  }
 }
 
 variable "ubicacion" {

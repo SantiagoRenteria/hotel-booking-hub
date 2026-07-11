@@ -37,9 +37,10 @@ resource "azurerm_container_app_environment_dapr_component" "statestore" {
   version                      = "v1"
   scopes                       = ["reservas", "notificaciones"]
 
+  # `state.redis` espera la CLAVE en redisPassword (no la cadena de conexión completa) y el host aparte.
   secret {
-    name  = "redis-connection"
-    value = azurerm_redis_cache.principal.primary_connection_string
+    name  = "redis-password"
+    value = azurerm_redis_cache.principal.primary_access_key
   }
 
   metadata {
@@ -49,12 +50,34 @@ resource "azurerm_container_app_environment_dapr_component" "statestore" {
 
   metadata {
     name        = "redisPassword"
-    secret_name = "redis-connection"
+    secret_name = "redis-password"
   }
 
   metadata {
     name  = "enableTLS"
     value = "true"
+  }
+}
+
+# Component Dapr `secretstore` → Key Vault por Managed Identity (passwordless, ADR-020). Cumple AC-E8.1.3:
+# los componentes pueden resolver secretos vía `secretKeyRef` contra este store en vez de `secret` inline.
+# Migrar pubsub/statestore a `secretKeyRef` sobre este store es el endurecimiento documentado en la Nota de alcance.
+resource "azurerm_container_app_environment_dapr_component" "secretstore" {
+  name                         = "secretstore"
+  container_app_environment_id = azurerm_container_app_environment.principal.id
+  component_type               = "secretstores.azure.keyvault"
+  version                      = "v1"
+  scopes                       = ["reservas", "hoteles", "notificaciones"]
+
+  metadata {
+    name  = "vaultName"
+    value = azurerm_key_vault.principal.name
+  }
+
+  # Identidad de usuario asignada (la misma que las apps) → acceso passwordless al Key Vault.
+  metadata {
+    name  = "azureClientId"
+    value = azurerm_user_assigned_identity.apps.client_id
   }
 }
 
@@ -65,6 +88,9 @@ resource "azurerm_container_app" "gateway" {
   resource_group_name          = azurerm_resource_group.principal.name
   revision_mode                = "Single"
   tags                         = local.tags
+
+  # Debe existir el rol "KV Secrets User" antes de arrancar (la app lee el secreto JWT por Managed Identity).
+  depends_on = [azurerm_role_assignment.kv_lectura_apps]
 
   identity {
     type         = "UserAssigned"
@@ -111,8 +137,11 @@ resource "azurerm_container_app" "gateway" {
         name  = "ASPNETCORE_ENVIRONMENT"
         value = "Production"
       }
+      # Azure Monitor (App Insights) se alimenta por su connection string, NO por OTEL_EXPORTER_OTLP_ENDPOINT (que
+      # espera una URL OTLP). En la nube, ServiceDefaults habilita el exporter Azure Monitor (UseAzureMonitor);
+      # ese toggle .NET es el paso de nube diferido (ver deferred-work.md).
       env {
-        name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+        name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.principal.connection_string
       }
       env {
@@ -130,6 +159,8 @@ resource "azurerm_container_app" "hoteles" {
   resource_group_name          = azurerm_resource_group.principal.name
   revision_mode                = "Single"
   tags                         = local.tags
+
+  depends_on = [azurerm_role_assignment.kv_lectura_apps]
 
   identity {
     type         = "UserAssigned"
@@ -176,8 +207,11 @@ resource "azurerm_container_app" "hoteles" {
         name  = "ASPNETCORE_ENVIRONMENT"
         value = "Production"
       }
+      # Azure Monitor (App Insights) se alimenta por su connection string, NO por OTEL_EXPORTER_OTLP_ENDPOINT (que
+      # espera una URL OTLP). En la nube, ServiceDefaults habilita el exporter Azure Monitor (UseAzureMonitor);
+      # ese toggle .NET es el paso de nube diferido (ver deferred-work.md).
       env {
-        name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+        name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.principal.connection_string
       }
       env {
@@ -194,6 +228,8 @@ resource "azurerm_container_app" "reservas" {
   resource_group_name          = azurerm_resource_group.principal.name
   revision_mode                = "Single"
   tags                         = local.tags
+
+  depends_on = [azurerm_role_assignment.kv_lectura_apps]
 
   identity {
     type         = "UserAssigned"
@@ -240,8 +276,11 @@ resource "azurerm_container_app" "reservas" {
         name  = "ASPNETCORE_ENVIRONMENT"
         value = "Production"
       }
+      # Azure Monitor (App Insights) se alimenta por su connection string, NO por OTEL_EXPORTER_OTLP_ENDPOINT (que
+      # espera una URL OTLP). En la nube, ServiceDefaults habilita el exporter Azure Monitor (UseAzureMonitor);
+      # ese toggle .NET es el paso de nube diferido (ver deferred-work.md).
       env {
-        name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+        name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.principal.connection_string
       }
       env {
@@ -288,8 +327,11 @@ resource "azurerm_container_app" "notificaciones" {
         name  = "ASPNETCORE_ENVIRONMENT"
         value = "Production"
       }
+      # Azure Monitor (App Insights) se alimenta por su connection string, NO por OTEL_EXPORTER_OTLP_ENDPOINT (que
+      # espera una URL OTLP). En la nube, ServiceDefaults habilita el exporter Azure Monitor (UseAzureMonitor);
+      # ese toggle .NET es el paso de nube diferido (ver deferred-work.md).
       env {
-        name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+        name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.principal.connection_string
       }
     }
