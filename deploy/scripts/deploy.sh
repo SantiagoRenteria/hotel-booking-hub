@@ -29,6 +29,13 @@ CONTAINER="${CONTAINER:-tfstate}"
 
 say() { echo -e "\n>> $*"; }
 
+# Auth de Terraform por Azure CLI (cero secretos). ARM_SUBSCRIPTION_ID es OBLIGATORIO en azurerm v4;
+# ARM_USE_CLI=true fuerza la auth por `az` y evita el sondeo de IMDS/MSI (que cuelga varios minutos fuera de Azure).
+export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+export ARM_TENANT_ID="$(az account show --query tenantId -o tsv)"
+export ARM_USE_CLI="true"
+export ARM_USE_MSI="false"
+
 # 0) Preflight
 say "Preflight: suscripción y providers"
 az account show --query "{sub:name, id:id}" -o table

@@ -76,8 +76,10 @@ resource "azurerm_redis_cache" "principal" {
   tags                 = local.tags
 }
 
+# Nota: el nombre de un Service Bus namespace NO puede terminar en "-sb" ni "-mgmt" (regla del provider,
+# validada en `plan`, no en `validate`) → se usa "-bus" en vez de "-sb".
 resource "azurerm_servicebus_namespace" "principal" {
-  name                = "${local.nombre}-sb"
+  name                = "${local.nombre}-bus"
   location            = azurerm_resource_group.principal.location
   resource_group_name = azurerm_resource_group.principal.name
   sku                 = "Standard"
