@@ -21,6 +21,9 @@ public static class RegistroInfraestructura
         servicios.AddScoped<IHotelRepository, HotelRepository>();
         servicios.AddScoped<IHabitacionRepository, HabitacionRepository>();
 
+        // Lectura del catálogo (Story T.5): read-port CQRS sobre el DbContext (hereda el query filter por agente).
+        servicios.AddScoped<ILectorCatalogo, LectorCatalogoSql>();
+
         // Emisión transaccional de eventos de catálogo (2.5, Opción U): la cola stagea la fila de outbox en el
         // mismo DbContext; el repositorio la confirma junto al dominio en un único SaveChanges (sin TransactionBehavior).
         servicios.AddScoped<IColaOutbox, ColaOutbox>();
