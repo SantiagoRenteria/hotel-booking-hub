@@ -9,6 +9,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TF="$ROOT/deploy/terraform"
 RG_STATE="${RG_STATE:-hbh-tfstate-rg}"; SA="${SA:-hbhtfstate}"; CONTAINER="${CONTAINER:-tfstate}"
 
+# Auth por Azure CLI (igual que deploy.sh): subscription obligatoria en azurerm v4; evita el sondeo IMDS.
+export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+export ARM_TENANT_ID="$(az account show --query tenantId -o tsv)"
+export ARM_USE_CLI="true"
+export ARM_USE_MSI="false"
+
 # Asegura el backend inicializado (por si se corre en una sesión nueva).
 terraform -chdir="$TF" init -reconfigure \
   -backend-config="resource_group_name=$RG_STATE" \
