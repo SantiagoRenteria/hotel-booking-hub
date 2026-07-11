@@ -2,6 +2,11 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: code review of story-9.1 (2026-07-10)
+
+- **Requeue sin backoff + contador de reintentos en memoria (veneno cross-restart)** (blind+edge, MED) — el `ConsumidorRabbitMq` hace `nack+requeue` inmediato cuando el `DespachadorNotificaciones` relanza; dentro de una corrida está acotado a `MaxIntentos`, pero sin backoff es un hot-loop, y `ContadorReintentosEnMemoria` se reinicia si el worker se reinicia → un mensaje-veneno podría no alcanzar nunca el dead-letter entre reinicios. Fix: contador de reintentos en Redis (paridad con el inbox de 5.1b) + backoff (delayed-retry exchange o requeue con espera). Misma familia que la limitación ya registrada del contador en memoria de 5.1b. `[Notificaciones.Worker/ConsumidorRabbitMq.cs, ContadorReintentosEnMemoria.cs]`
+- **Anti-pérdida decoupled por publisher-confirms + mandatory** (hardening, informativo) — el fix de 9.1 evita la pérdida silenciosa declarando la cola durable del consumidor en el productor (acopla el productor a nombres de cola conocidos). El patrón más desacoplado es `mandatory:true` + publisher confirms con tracking + handler de `BasicReturnAsync` → lanzar si el mensaje es no-ruteable (el productor no necesita conocer las colas). Migrar a ese patrón al endurecer el transporte. `[ambos PublicadorEventosRabbitMq.cs]`
+
 ## Deferred from: Story 9.1 (transporte real de eventos RabbitMQ, 2026-07-10)
 
 - **Data-plane funcional del `docker-compose` (cadenas SQL/Redis + migraciones al arranque)** (alcance, MED — Epic T) — el `docker-compose.yml` nunca cableó cadenas de conexión de SQL/Redis ni aplica migraciones EF al arrancar; fue un smoke de `/health`, no un compose funcional de datos. Con el transporte RabbitMQ ya cableado (9.1), aún falta esto para que `docker compose up` + crear reserva fluya end-to-end. El transporte se valida por Testcontainers (CI). Al cerrar la entrega (Epic T "docker compose up funciona"): pasar `ConnectionStrings__reservasdb`/`__hotelesdb`/`__redis` a los servicios y aplicar `Database.Migrate()` (o un init) al arranque. `[deploy/docker-compose.yml, src/Servicios/*/*.Api/Program.cs]`
