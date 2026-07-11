@@ -40,12 +40,12 @@ resource "azurerm_container_app_environment_dapr_component" "statestore" {
   # `state.redis` espera la CLAVE en redisPassword (no la cadena de conexión completa) y el host aparte.
   secret {
     name  = "redis-password"
-    value = azurerm_redis_cache.principal.primary_access_key
+    value = azurerm_managed_redis.principal.default_database[0].primary_access_key
   }
 
   metadata {
     name  = "redisHost"
-    value = "${azurerm_redis_cache.principal.hostname}:${azurerm_redis_cache.principal.ssl_port}"
+    value = "${azurerm_managed_redis.principal.hostname}:${azurerm_managed_redis.principal.default_database[0].port}"
   }
 
   metadata {
@@ -124,7 +124,8 @@ resource "azurerm_container_app" "gateway" {
   }
 
   template {
-    min_replicas = 1
+    # Scale-to-zero (ADR-023): sin tráfico no hay réplicas → costo de cómputo ~0. Primer request paga cold start.
+    min_replicas = 0
     max_replicas = 3
 
     container {
@@ -147,6 +148,16 @@ resource "azurerm_container_app" "gateway" {
       env {
         name        = "Jwt__SigningKey"
         secret_name = "jwt-signing-key"
+      }
+      # Override del ruteo YARP para la nube: en ACA los servicios internos se resuelven por su NOMBRE de app
+      # (`hbh-dev-hoteles`), no por el nombre de docker-compose (`hoteles`). Sobreescribe el Address del appsettings.
+      env {
+        name  = "ReverseProxy__Clusters__hoteles__Destinations__d1__Address"
+        value = "http://${local.nombre}-hoteles"
+      }
+      env {
+        name  = "ReverseProxy__Clusters__reservas__Destinations__d1__Address"
+        value = "http://${local.nombre}-reservas"
       }
     }
   }
@@ -188,12 +199,22 @@ resource "azurerm_container_app" "hoteles" {
     }
   }
 
+  # Cadena de conexión a la BD (auth SQL; la contraseña viene de random_password, nunca del repo). El valor es un
+  # secreto del Container App (no env plano). Connection Timeout alto por el cold start del auto-resume (GP_S).
+  secret {
+    name  = "cs-hotelesdb"
+    value = "Server=tcp:${azurerm_mssql_server.principal.fully_qualified_domain_name},1433;Initial Catalog=db-hoteles;User ID=${var.sql_admin_login};Password=${random_password.sql_admin.result};Encrypt=True;TrustServerCertificate=False;Connection Timeout=60;"
+  }
+
   dapr {
     app_id   = "hoteles"
     app_port = 8080
   }
 
   template {
+    # min=1 (ADR-023): servicio INTERNO detrás del gateway. ACA no despierta de forma fiable un servicio interno
+    # scale-to-zero por tráfico servicio-a-servicio (el gateway ruteando da 502 mientras arranca) → se mantiene 1
+    # réplica caliente. El scale-to-zero real queda en el gateway (ingress externo, sí activa).
     min_replicas = 1
     max_replicas = 3
 
@@ -213,6 +234,10 @@ resource "azurerm_container_app" "hoteles" {
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.principal.connection_string
+      }
+      env {
+        name        = "ConnectionStrings__hotelesdb"
+        secret_name = "cs-hotelesdb"
       }
       env {
         name        = "Jwt__SigningKey"
@@ -257,12 +282,25 @@ resource "azurerm_container_app" "reservas" {
     }
   }
 
+  secret {
+    name  = "cs-reservasdb"
+    value = "Server=tcp:${azurerm_mssql_server.principal.fully_qualified_domain_name},1433;Initial Catalog=db-reservas;User ID=${var.sql_admin_login};Password=${random_password.sql_admin.result};Encrypt=True;TrustServerCertificate=False;Connection Timeout=60;"
+  }
+
+  # Redis para caché de disponibilidad (3.2) e idempotencia de reserva (1.7). Cadena StackExchange de Azure
+  # Managed Redis (host:port TLS + clave), armada en local.redis_cs.
+  secret {
+    name  = "cs-redis"
+    value = local.redis_cs
+  }
+
   dapr {
     app_id   = "reservas"
     app_port = 8080
   }
 
   template {
+    # min=1 (ADR-023): servicio INTERNO detrás del gateway (ver nota en hoteles).
     min_replicas = 1
     max_replicas = 5
 
@@ -282,6 +320,14 @@ resource "azurerm_container_app" "reservas" {
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.principal.connection_string
+      }
+      env {
+        name        = "ConnectionStrings__reservasdb"
+        secret_name = "cs-reservasdb"
+      }
+      env {
+        name        = "ConnectionStrings__redis"
+        secret_name = "cs-redis"
       }
       env {
         name        = "Jwt__SigningKey"
@@ -308,12 +354,21 @@ resource "azurerm_container_app" "notificaciones" {
     identity = azurerm_user_assigned_identity.apps.id
   }
 
+  # Redis para el inbox de idempotencia del worker (dedup entre instancias; sin él, fallback en memoria).
+  secret {
+    name  = "cs-redis"
+    value = local.redis_cs
+  }
+
   dapr {
     app_id   = "notificaciones"
     app_port = 8080
   }
 
   template {
+    # NO scale-to-zero (ADR-023): el worker consume del Service Bus; con min=0 no habría quién procese salvo un
+    # KEDA scaler azure-servicebus, que en ACA reintroduce un secreto de conexión (choca con cero-secretos).
+    # min=1 (cómputo ínfimo en Consumption) garantiza el consumo end-to-end. Scaler por workload identity = deuda.
     min_replicas = 1
     max_replicas = 3
 
@@ -333,6 +388,10 @@ resource "azurerm_container_app" "notificaciones" {
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.principal.connection_string
+      }
+      env {
+        name        = "ConnectionStrings__redis"
+        secret_name = "cs-redis"
       }
     }
   }
