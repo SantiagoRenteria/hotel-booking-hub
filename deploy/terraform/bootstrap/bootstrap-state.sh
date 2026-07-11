@@ -5,7 +5,8 @@
 # Crea (idempotente) un RG-state PERMANENTE con Storage + container y asigna al deployer el rol de datos de blob.
 # Corre UNA vez; NO se destruye con el ciclo apply->destroy del RG-app.
 #
-# Auth: usa la sesión `az` ya iniciada (az login). Cero secretos: el backend usa `use_azuread_auth=true`.
+# Auth: usa la sesión `az` ya iniciada (az login). El backend del tfstate se autentica por CLAVE de cuenta
+# (ARM_ACCESS_KEY), obtenida en runtime; la clave NUNCA entra al repo (cero-secretos-en-repo). Ver versions.tf.
 #
 # Uso:
 #   ./bootstrap-state.sh                 # usa los valores por defecto
@@ -49,20 +50,14 @@ else
   echo ">> Storage Account ya existe: $SA"
 fi
 
-# 3) Rol de datos de blob para el deployer (acceso AAD passwordless al tfstate).
-DEPLOYER_OID="$(az ad signed-in-user show --query id -o tsv 2>/dev/null || az account show --query user.name -o tsv)"
-SA_ID="$(az storage account show --name "$SA" --resource-group "$RG_STATE" --query id -o tsv)"
-echo ">> Asignando 'Storage Blob Data Contributor' al deployer sobre el Storage (idempotente)"
-az role assignment create \
-  --assignee "$DEPLOYER_OID" \
-  --role "Storage Blob Data Contributor" \
-  --scope "$SA_ID" \
-  --only-show-errors -o none 2>/dev/null || echo "   (rol ya asignado o propagándose)"
-
-# 4) Container del tfstate (idempotente, auth por AAD login).
-echo ">> Creando container '$CONTAINER' (auth-mode login)"
+# 3) Container del tfstate (idempotente, auth por CLAVE de cuenta). Se usa la clave —no AAD login— porque la
+# cuenta de despliegue es invitada en el tenant y no puede asignarse el rol de datos de blob (ver versions.tf).
+# La clave se obtiene en runtime y NO se escribe en el repo.
+echo ">> Obteniendo clave de la cuenta de Storage (runtime, no se persiste)"
+SA_KEY="$(az storage account keys list --account-name "$SA" --resource-group "$RG_STATE" --query '[0].value' -o tsv)"
+echo ">> Creando container '$CONTAINER' (auth-mode key)"
 az storage container create \
-  --name "$CONTAINER" --account-name "$SA" --auth-mode login \
+  --name "$CONTAINER" --account-name "$SA" --account-key "$SA_KEY" --auth-mode key \
   --only-show-errors -o none
 
 cat <<EOF

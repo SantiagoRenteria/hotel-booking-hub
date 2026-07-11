@@ -15,6 +15,9 @@ export ARM_TENANT_ID="$(az account show --query tenantId -o tsv)"
 export ARM_USE_CLI="true"
 export ARM_USE_MSI="false"
 
+# Auth del backend por clave de cuenta (runtime, no en repo).
+export ARM_ACCESS_KEY="$(az storage account keys list --account-name "$SA" --resource-group "$RG_STATE" --query '[0].value' -o tsv)"
+
 # Asegura el backend inicializado (por si se corre en una sesión nueva).
 terraform -chdir="$TF" init -reconfigure \
   -backend-config="resource_group_name=$RG_STATE" \
