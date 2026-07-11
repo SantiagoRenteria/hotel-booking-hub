@@ -3,7 +3,7 @@ baseline_commit: 07943acd6d0c4a602de87f009deb914491f38612
 ---
 # Story 8.2: Despliegue real de bajo costo + smoke end-to-end + destroy
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -74,7 +74,7 @@ para **demostrar que el despliegue cloud-native funciona incurriendo solo en el 
   - [ ] Ejecutar el flujo: crear hotel (rol Agente) → buscar disponibilidad/crear reserva → solicitar/resolver cancelación; aserción de 2xx y de que el **evento** llega al worker (revisar logs de la Container App `notificaciones` o App Insights).
   - [ ] Capturar evidencia (salida de `az containerapp logs`, outputs de smoke) en `docs/implementation-artifacts/evidencia/8-2-*` o `deferred-work.md`.
 
-- [ ] **Task 6 — Ejecución del ciclo apply → smoke → destroy** (AC: 8.2.1–8.2.5) **[COMPUERTA: requiere OK explícito de Santiago antes de crear recursos facturables]**
+- [x] **Task 6 — Ejecución del ciclo apply → smoke → destroy** (AC: 8.2.1–8.2.5) ✅ **Ejecutado 2026-07-11 en West US 2** (OK de Santiago). Apply por fases+reintentos → 32 recursos; `az acr build` ×4; migraciones EF por auth SQL; **smoke E2E VERDE** (/health 200, crear hotel/habitación/reserva 201, cancelar OK contra Azure SQL, vía gateway, JWT de KV); `az group delete` limpió el RG-app. Evidencia: `docs/implementation-artifacts/evidencia/8-2-despliegue-real-smoke.md`. *(AC-E8.2.4: flujo HTTP de negocio ✅; evento→worker = límite conocido, transporte Dapr de nube diferido.)*
   - [ ] **Preflight:** `az account show` (confirmar suscripción), registrar providers (`az provider register` para `Microsoft.App`, `Microsoft.ServiceBus`, `Microsoft.Cache`, `Microsoft.Sql`, `Microsoft.ContainerRegistry`, `Microsoft.KeyVault`, `Microsoft.OperationalInsights`), y verificar **quota de ACA** en East US 2.
   - [ ] `bootstrap-state.sh` → `terraform init` (backend AAD) → `terraform plan` (mostrar a Santiago) → **OK** → `terraform apply`.
   - [ ] `az acr build` (Task 3) → migraciones (Task 4) → smoke (Task 5).
@@ -168,3 +168,4 @@ claude-opus-4-8 (Amelia / dev-story, modo autónomo)
 | Fecha | Cambio |
 |---|---|
 | 2026-07-10 | Story 8.2 (dev-story): Tasks 1-5 y 7 — tuning de bajo costo (scale-to-zero + worker min=1 + SQL GP_S serverless), bootstrap de state remoto AAD, build/push ACR, migraciones EF idempotentes (offline, versionadas), smoke E2E, orquestadores `deploy.sh`/`destroy.sh`, runbook. `terraform fmt`+`validate` verde. **Task 6 (apply→smoke→destroy real) en HALT: requiere OK de Santiago (recursos facturables).** |
+| 2026-07-11 | **Task 6 EJECUTADO** en West US 2 (OK de Santiago). Se resolvieron restricciones reales de la suscripción: región (SQL bloqueado en East US), backend del tfstate por clave (cuenta invitada sin RBAC de datos), Azure Managed Redis (clásico retirado), apply por fases+reintentos (consistencia eventual ARM), servicios internos `min=1` (scale-to-zero tras gateway), ruteo del gateway a nombres de app ACA. **Smoke E2E verde** (hotel/habitación/reserva/cancelar contra Azure SQL). Límite conocido: evento→worker (transporte Dapr nube diferido). RG-app destruido. Status → review. |
