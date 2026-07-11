@@ -1,6 +1,7 @@
 using HotelBookingHub.Comun.Excepciones;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Domain.Puertos;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hoteles.Infrastructure.Persistencia;
@@ -15,7 +16,16 @@ public sealed class HotelRepository(HotelesDbContext db) : IHotelRepository
     public async Task<byte[]> CrearAsync(Hotel hotel, CancellationToken ct)
     {
         db.Hoteles.Add(hotel);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (EsViolacionUnicidad(ex))
+        {
+            // El índice único filtrado (AgentePropietario, Nombre, Ciudad) rechazó un duplicado → 409.
+            throw new HotelDuplicadoException(ex);
+        }
+
         return RowVersionActual(hotel);
     }
 
@@ -52,8 +62,17 @@ public sealed class HotelRepository(HotelesDbContext db) : IHotelRepository
             // volvería a fallar → 409 y NUNCA retry (a diferencia del deadlock 1205, que sí es transitorio).
             throw new ConflictoConcurrenciaException(ex);
         }
+        catch (DbUpdateException ex) when (EsViolacionUnicidad(ex))
+        {
+            // Renombrar el hotel a un par (Nombre, Ciudad) ya usado por el agente → el índice único lo rechaza.
+            throw new HotelDuplicadoException(ex);
+        }
     }
 
     // EF refresca el rowversion (shadow property) tras SaveChanges; lo devolvemos para exponerlo en la respuesta.
     private byte[] RowVersionActual(Hotel hotel) => (byte[])db.Entry(hotel).Property("RowVersion").CurrentValue!;
+
+    // Violación de índice único de SQL Server: 2627 (constraint) / 2601 (índice único). Determinístico → 409.
+    private static bool EsViolacionUnicidad(DbUpdateException ex) =>
+        ex.InnerException is SqlException sql && sql.Number is 2601 or 2627;
 }
