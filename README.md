@@ -93,13 +93,18 @@ Requiere Docker. Copia `deploy/.env.example` → `deploy/.env` y define `MSSQL_S
 ```bash
 docker compose -f deploy/docker-compose.yml up -d --build
 # Gateway en http://localhost:8080  ·  /health anónimo
-# Dashboard OTel: http://localhost:18888
+# Dashboard OTel (trazas/métricas): http://localhost:18888
+# RabbitMQ management UI:            http://localhost:15672  (usuario/clave: guest/guest)
 # API docs (OpenAPI + UI Scalar):
 #   Hoteles  → http://localhost:8081/scalar   (spec: /openapi/v1.json)
 #   Reservas → http://localhost:8082/scalar   (spec: /openapi/v1.json)
 ```
 
 Levanta Gateway + Hoteles + Reservas + Worker + SQL×2 + Redis + RabbitMQ + dashboard OTel; las migraciones EF se aplican al arranque (`AplicarMigraciones`). El flujo crear hotel→habitación→reserva→cancelar funciona end-to-end, con la notificación disparada por RabbitMQ. La colección [`postman/`](postman/) ejercita el flujo (auth JWT incluida).
+
+**¿Dónde veo las notificaciones?** El requisito de "notificar por correo" (HU2) se implementa con el patrón puerto/adaptador: `INotificador` con un adaptador de Fase 1 **`NotificadorConsola`** que **escribe el correo en el log** (evita depender de un SMTP real y de secretos en una prueba). Se ven con `docker compose -f deploy/docker-compose.yml logs notificaciones` (líneas `NotificadorConsola`). Cambiar a envío real (SMTP/MailHog/SendGrid) es un swap de una línea de DI, sin tocar el dominio. El broker RabbitMQ (transporte del evento) es visible en su management UI (arriba).
+
+> **Nota de puertos:** el AMQP de RabbitMQ (5672) **no** se publica al host (en Windows suele chocar con un rango reservado de WSL/Hyper-V); los servicios lo usan por la red interna del compose. Solo se publica la **management UI** (15672).
 
 **Documentación de la API (OpenAPI/Swagger, ADR-011):** cada servicio expone su **spec OpenAPI** (`/openapi/v1.json`) y una **UI Scalar** navegable (`/scalar`) en los puertos 8081 (Hoteles) y 8082 (Reservas). Se activa en Development y en el compose (flag `ExponerOpenApi`); en Azure/ACA **no** se expone (higiene de producción — no publicar la superficie de la API). El tráfico de negocio siempre entra por el Gateway (`:8080`), con JWT.
 
