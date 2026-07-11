@@ -86,6 +86,8 @@ services:
       # Data-plane local (Story T.1, AC-ET.1.5): cadena SQL + migración al arranque (gated por AplicarMigraciones).
       ConnectionStrings__hotelesdb: "Server=sql-hoteles;Database=db-hoteles;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True"
       AplicarMigraciones: "true"
+      # Expone OpenAPI + UI Scalar en el compose (evaluabilidad, §4.3). En Azure/ACA NO se define → oculto en prod real.
+      ExponerOpenApi: "true"
     ports: ["8081:8080"]
     depends_on:
       sql-hoteles:
@@ -110,6 +112,8 @@ services:
       ConnectionStrings__reservasdb: "Server=sql-reservas;Database=db-reservas;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True"
       ConnectionStrings__redis: "redis:6379"
       AplicarMigraciones: "true"
+      # Expone OpenAPI + UI Scalar en el compose (evaluabilidad, §4.3). En Azure/ACA NO se define → oculto en prod real.
+      ExponerOpenApi: "true"
     ports: ["8082:8080"]
     depends_on:
       sql-reservas:
