@@ -4,7 +4,7 @@ baseline_commit: cd4104e8b7166ed5a3d8d0a964f2b640209d1fc8
 
 # Story T.2: Pulido de entregables — cobertura de pruebas y documentación
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -76,8 +76,8 @@ Nuevo `docs/bdd-y-e2e.md` que consolide: (a) las **convenciones BDD** del proyec
 - [x] **Task 7 — `docs/bdd-y-e2e.md` (nuevo)** (AC: ET.2.7)
   - [x] Documento consolidado: convenciones BDD (Gherkin en historias, `Dado_cuando_entonces` en dominio, `// Given/When/Then` en mensajería), mapeo historia↔test, pirámide (unit/integration/functional/contract/smoke+Newman), flujo reserva→evento→notificación partido por contrato de evento, y el porqué de no-SpecFlow/Playwright + aplicabilidad de `bmad-qa-generate-e2e-tests`. Enlazado desde README (árbol + mapa) y `uso-de-ia.md`.
 
-- [ ] **Task 8 — Verificación integral** (AC: ET.2.8)
-  - [ ] `dotnet build` + `dotnet format --verify-no-changes` + suite completa de tests verde. `docker compose up` + smoke + Newman verdes. Grep final de contradicciones (auto-apply / "Dapr diferido"). Actualizar File List y Change Log.
+- [x] **Task 8 — Verificación integral** (AC: ET.2.8)
+  - [x] `dotnet format --verify-no-changes` (exit 0), `dotnet build -c Release` (0 warnings/0 errores, TreatWarningsAsErrors), suite completa **verde**: ~364 tests no-G1 (incl. `RuteoGatewayTests`) + 3 G1. `docker compose up` + smoke local verde + Newman `32/43/0`. Grep final: sin afirmaciones vigentes de auto-apply ni de "Dapr diferido/no fluye" (solo contexto histórico en stories/evidencia, marcado como tal). File List y Change Log actualizados.
 
 ## Dev Notes
 
@@ -117,12 +117,25 @@ claude-opus-4-8 (Amelia / dev-story)
 
 ### Debug Log References
 
+- **Gateway (T1):** Red→Green de `RuteoGatewayTests` verificado (sin la ruta, `disponibles→reservas` falla). Overrides de ACA no tocan Routes → aplica en compose y Azure.
+- **Smoke (T2):** verde end-to-end contra el compose local (health+alive, camino feliz, disponibles Viajero+Agente, listado, detalle, idempotencia replay 200, cancelación en 2 pasos, pendientes, negativos 401/403/404).
+- **Postman/Newman (T3):** `32 requests / 43 assertions / 0 fallos`. Dos asertos corregidos tras runtime: detalle usa `reserva.id` (DTO anidado `ReservaDetalleDto`); delete-inexistente usa GUID válido no-cero (el 0-GUID da 400 por validación `Id NotEmpty`, no 404).
+- **Verificación integral (T8):** format exit 0; build Release 0 warnings; ~364 tests no-G1 + 3 G1 verdes.
+
 ### Completion Notes List
 
+- **Tasks 1-8 COMPLETAS.** (1) Fix de routing del Gateway: ruta YARP específica `/api/v1/habitaciones/disponibles`→`reservas` + test de regresión `RuteoGatewayTests`. (2) `smoke.sh` reescrito, exhaustivo y dual-propósito (local/Key Vault). (3) Postman reorganizada por servicio (3 carpetas, 30 requests, positivos+negativos 401/403/404/409/422, cadena de rowVersion). (4) CD reconciliado a **on-demand** (cd.yml sin `push:main`) + reconciliación documental completa (README, ADR-021, decisions-adr, deferred-work, nota de reversión en 8-3). (5) `uso-de-ia.md` narra el método BMAD de punta a punta. (6) `observabilidad.md` al día con el transporte Dapr por entorno. (7) nuevo `docs/bdd-y-e2e.md`.
+- **Verificado real:** smoke + Newman contra el compose local; suite completa verde; sin contradicciones vigentes en la doc.
+- **Hallazgo de correctitud cerrado:** la búsqueda de disponibilidad era **inalcanzable por el Gateway** (404); ahora enruta a Reservas (200), cubierto por test + smoke + Postman.
+
 ### File List
+
+**Nuevos:** `tests/Seguridad.FunctionalTests/RuteoGatewayTests.cs`, `docs/bdd-y-e2e.md`, `docs/implementation-artifacts/t-2-pulido-de-entregables-cobertura-y-docs.md`
+**Modificados:** `src/ApiGateway/appsettings.json`, `deploy/scripts/smoke.sh`, `postman/hotel-booking-hub.postman_collection.json`, `.github/workflows/cd.yml`, `deploy/terraform/README.md`, `docs/adr/ADR-021-*.md`, `docs/specs/spec-hotel-booking-hub/decisions-adr.md`, `docs/implementation-artifacts/deferred-work.md`, `docs/implementation-artifacts/8-3-cd-on-demand-y-proteccion-main.md`, `docs/uso-de-ia.md`, `docs/observabilidad.md`, `README.md`, `docs/implementation-artifacts/sprint-status.yaml`
 
 ## Change Log
 
 | Fecha | Cambio |
 |---|---|
 | 2026-07-11 | Story T.2 creada (create-story): pulido de entregables — Postman/smoke exhaustivos, fix routing Gateway (disponibles), CD a on-demand, docs (uso-de-ia full BMAD, observabilidad Dapr, bdd-y-e2e). Status → ready-for-dev. |
+| 2026-07-11 | Story T.2 (dev-story): Tasks 1-8 completas. Fix Gateway (disponibles→reservas) + RuteoGatewayTests; smoke exhaustivo dual-propósito; Postman por servicio (30 req, Newman 43/0); CD a on-demand + reconciliación documental; docs uso-de-ia (BMAD e2e), observabilidad (Dapr), nuevo bdd-y-e2e. Format+build+suite completa verdes; smoke+Newman verdes. Status → review. |
