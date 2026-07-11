@@ -14,6 +14,7 @@ using Hoteles.Infrastructure;
 using Hoteles.Infrastructure.Persistencia;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -66,9 +67,13 @@ app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
 
-if (app.Environment.IsDevelopment())
+// OpenAPI + UI Scalar (ADR-011): en Development, y en cualquier entorno si ExponerOpenApi=true (el docker-compose
+// lo activa para que el evaluador lo alcance; en Azure/ACA NO se activa → no se expone la superficie de la API en
+// la nube real). Scalar sirve la UI en /scalar y lee la spec de /openapi/v1.json.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("ExponerOpenApi"))
 {
     app.MapOpenApi();
+    app.MapScalarApiReference(opciones => opciones.WithTitle("Hoteles.Api — hotel-booking-hub"));
 }
 
 // HTTPS enforcement es responsabilidad del API Gateway (borde único); los servicios corren HTTP tras él.
