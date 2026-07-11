@@ -89,7 +89,28 @@ Todos los ADRs viven como archivos en `docs/adr/` y están reconciliados con el 
 
 ---
 
-## 5. Iteración y verificación
+## 5. Generación asistida de código: un caso concreto (crear-confirmar reserva)
+
+Además de las decisiones, la IA generó y refactorizó **módulos críticos**. Aquí un caso end-to-end —el flujo que el enunciado nombra explícitamente, *"crear reserva"*— con el prompt real, la iteración y cómo se validó que el código quedara **seguro, limpio y alineado a la arquitectura**.
+
+**Módulo:** write-path de creación de reserva — `CrearReservaCommandHandler` + `TransactionBehavior` + política de reintentos de deadlock + el invariante anti-overbooking (`UNIQUE(HabitacionId, Noche)`). Es el corazón transaccional del sistema: si falla bajo concurrencia, hay overbooking o errores 500.
+
+**El "prompt" en BMAD = la historia como contrato + la invocación de `dev-story`.** No fue un chat suelto: la Story 1.6c fijó el criterio de aceptación en Gherkin como contrato máquina, y la instrucción al agente desarrollador (Amelia) fue, textualmente en esencia:
+
+> *"Implementa la Story 1.6c siguiendo TDD estricto Red→Green **visible en commits**. Primero un test que **falle** ejerciendo **concurrencia real** (N solicitudes con `Task.WhenAll`) sobre el **pipeline de producción** con SQL Server real (Testcontainers), no un mock. El invariante: exactamente **1×201** y **N-1×409**, **cero excepciones no mapeadas** y **cero 500**. Luego el código mínimo para ponerlo en verde. No marques la tarea completa si el test no existe y pasa al 100%."*
+
+**Cómo se iteró (Red → Green → refactor → revisión adversarial):**
+
+1. **Red:** `MoneyTestG1Tests` lanza N `CrearReservaCommand` concurrentes; falla (aún no hay arbitraje del invariante).
+2. **Green:** se arbitra el conflicto en el `INSERT` con el índice único de slots (READ COMMITTED, no SERIALIZABLE — ADR-016); la carrera perdedora viola el índice y se traduce a **409**.
+3. **Revisión adversarial (el paso que atrapó el bug de seguridad/correctitud):** el *Blind Hunter* del `code-review` detectó que el `catch` de deadlock solo capturaba `DbUpdateException` y **dejaba escapar un `SqlException` crudo (error 1205, deadlock victim) como HTTP 500** en vez de 409. Se corrigió reusando el mismo predicado de dominio `PoliticaReintentos.EsDeadlock` en ambos puntos → el deadlock siempre degrada a 409, nunca a un 500 que filtraría un detalle de infraestructura.
+4. **Verificación objetiva:** money test en verde y determinista — `1×201`, `N-1×409`, `1205` agotado → 409, cero 500. Corre aislado en CI (`Category=G1`, sin paralelizar).
+
+**Por qué el resultado es "seguro, limpio y alineado":** el código generado no se aceptó por confianza en el modelo, sino porque (a) un test de concurrencia real sobre el pipeline de producción lo prueba, (b) una revisión adversarial independiente cazó un fallo que el camino feliz ocultaba, y (c) el fix reutiliza una abstracción de dominio existente (`PoliticaReintentos`) en vez de duplicar lógica. El mismo patrón (historia-contrato → TDD → revisión de 3 capas → fix) se aplicó a los otros módulos críticos (Outbox atómico, idempotencia de reserva, máquina de estados de cancelación). Ver [BDD y E2E](bdd-y-e2e.md) para el mapa completo historia↔test.
+
+---
+
+## 6. Iteración y verificación
 
 Cada paso se validó con evidencia objetiva, no con la palabra del modelo:
 
@@ -119,7 +140,7 @@ El transporte evento → worker está cableado en **ambos entornos** tras el pue
 
 ---
 
-## 6. Transparencia
+## 7. Transparencia
 
 - **Autoría del código: Santiago Rentería.** La IA asistió bajo su dirección y aprobación.
 - Las **decisiones clave las aprobó Santiago** explícitamente: alcance por épica, cada decisión arquitectónica de party-mode (que se volvió ADR), y —de forma crítica— el **OK explícito antes de crear cualquier recurso facturable** en Azure. El despliegue real fue una compuerta dura que no se cruzó sin su autorización.
