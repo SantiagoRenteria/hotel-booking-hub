@@ -22,6 +22,26 @@ Prueba técnica · Back End Developer · **UltraGroup** (Tech, Travel & Loyalty)
 
 > **Estado:** implementado y verificado. Núcleo de dominio + mensajería (Épicas 1-6, 9), observabilidad (7) y nube por IaC (8) completos; despliegue **probado de verdad** en Azure (West US 2) con CD por OIDC. `docker compose up` levanta el sistema **funcional end-to-end en local** (un comando). Épica T (entrega) en curso.
 
+## Contexto del proyecto
+
+`hotel-booking-hub` es el back end de una agencia de viajes para **publicar hoteles y su inventario, buscar disponibilidad y gestionar reservas**, con un ciclo de cancelación auditado y notificaciones por evento. Es un sistema **distribuido y orientado a eventos** (no un CRUD monolítico): el estado de negocio se protege con invariantes fuertes (**no hay overbooking**) y los efectos secundarios (notificar) viajan de forma **asíncrona y sin pérdida**.
+
+**Actores.** *Agente* (gestiona hoteles/habitaciones y sus reservas; ve solo lo suyo) y *Viajero* (busca disponibilidad y reserva). Autenticados por **JWT**, autorizados por **rol (RBAC)** en el borde y en cada servicio.
+
+**Capacidades núcleo:**
+
+| Área | Qué hace | Dónde vive |
+|---|---|---|
+| **Catálogo** | Alta/edición/baja lógica de hoteles y habitaciones, habilitar/deshabilitar; concurrencia optimista (`rowVersion`) | `Servicios/Hoteles` |
+| **Disponibilidad** | Búsqueda por ciudad/fechas/huéspedes sobre un read-model proyectado del catálogo, con caché Redis | `Servicios/Reservas` (`BuscarDisponibilidad`, `Proyeccion`) |
+| **Reserva** | Crear-confirmar con **anti-overbooking** (una sola confirmación bajo concurrencia) e **idempotencia** por `Idempotency-Key` | `Servicios/Reservas` (`CrearReserva`) |
+| **Cancelación** | Dos pasos (solicitud→resolución) o atajo de un paso; penalidad congelada + discreción del agente; auditada | `Servicios/Reservas` (`SolicitarCancelacion`, `ResolverCancelacion`, `CancelarEnUnPaso`) |
+| **Notificaciones** | Consume los eventos de integración (confirmación/cancelación) y notifica, **idempotente y sin pérdida** | `Servicios/Notificaciones` (Worker) |
+
+**Forma técnica:** 2 Bounded Contexts (Hoteles, Reservas) + **Gateway** (YARP, único ingress externo) + **Worker**, comunicados por **eventos** (Transactional Outbox → RabbitMQ local / Dapr→Service Bus nube). Cada servicio es **Clean Architecture + DDD + CQRS** (mediador propio). Observabilidad por **OpenTelemetry** de punta a punta.
+
+> Para profundizar sin perderte: la tabla [**Decisiones y por qué**](#decisiones-y-por-qué) da el porqué de cada elección con enlace a su ADR; el [**mapa de documentación**](#dónde-está-x-mapa-de-documentación) dice exactamente dónde está cada cosa; y el [**árbol de carpetas**](#árbol-de-carpetas) mapea el código a bajo nivel.
+
 ## Decisiones y por qué
 
 | # | Decisión | Trade-off / por qué | ADR |
@@ -80,34 +100,89 @@ Levanta Gateway + Hoteles + Reservas + Worker + SQL×2 + Redis + RabbitMQ + dash
 
 ## Nube (Azure) e IaC
 
-Todo por Terraform (`deploy/terraform/`, ADR-008): ACA + Dapr/KEDA, Azure SQL×2, Azure Managed Redis, Service Bus, Key Vault, App Insights, ACR, Managed Identity. Despliegue **probado de verdad** en West US 2 (ciclo apply→smoke→destroy). CD automático por OIDC al merge a `main` (gate = aprobación de PR). Runbook y setup: [`deploy/terraform/README.md`](deploy/terraform/README.md).
+Todo por Terraform (`deploy/terraform/`, ADR-008): ACA + Dapr/KEDA, Azure SQL×2, Azure Managed Redis, Service Bus, Key Vault, App Insights, ACR, Managed Identity. Despliegue **probado de verdad** en West US 2 (ciclo apply→smoke→destroy). CD por OIDC **on-demand** (`workflow_dispatch`) — passwordless, con `main` protegida (aprobación de PR); mergear a `main` no despliega por sí solo (ADR-021). Runbook y setup: [`deploy/terraform/README.md`](deploy/terraform/README.md).
 
 ## Árbol de carpetas
 
+Mapa a bajo nivel. Cada BC repite el mismo layout de **Clean Architecture** (`Domain` → `Application` → `Infrastructure` → `Api`), con la capa de aplicación organizada en **slices verticales por caso de uso** (CQRS).
+
 ```
+├─ HotelBookingHub.slnx            # solución (formato .slnx)
+├─ Directory.Packages.props        # versiones centralizadas de NuGet (Central Package Mgmt)
+├─ Directory.Build.props           # TreatWarningsAsErrors, Nullable, langversion (todo el repo)
+│
 ├─ src/
-│  ├─ ApiGateway/          # YARP: JWT, RBAC, rate-limit, ruteo (único ingress externo)
-│  ├─ Comun/               # librerías compartidas (mediator, Web/seguridad, resultados, mensajería)
-│  ├─ AppHost/             # Aspire AppHost + ServiceDefaults (OTel, health, discovery)
+│  ├─ ApiGateway/                  # YARP: único ingress externo
+│  │  ├─ Program.cs                #   auth JWT + RBAC + rate-limit + CORS + HSTS + MapReverseProxy
+│  │  └─ appsettings.json          #   ReverseProxy: rutas hoteles/habitaciones/disponibles/reservas → clusters
+│  │
+│  ├─ Comun/
+│  │  ├─ HotelBookingHub.Comun/            # sin dependencias de web
+│  │  │  ├─ Mensajeria/            #   mediador propio (ISender/IRequest) + Behaviors (Validation, Transaction, Tracing)
+│  │  │  ├─ Eventos/               #   contratos de eventos de integración (EventoIntegracion, ReservaConfirmadaV1…)
+│  │  │  ├─ Resultados/            #   Result / Result<T> (patrón Result, sin excepciones de control)
+│  │  │  ├─ Observabilidad/        #   ActivitySource "HotelBookingHub", correlación de traza
+│  │  │  └─ Excepciones/
+│  │  └─ HotelBookingHub.Comun.Web/        # transversales HTTP
+│  │     └─ Seguridad/             #   AddAutenticacionJwt, políticas RBAC (SoloAgente / AgenteOViajero), IContextoAgente
+│  │
+│  ├─ AppHost/
+│  │  ├─ AppHost/                  # Aspire: orquesta servicios + SQL/Redis/RabbitMQ en local dev
+│  │  └─ ServiceDefaults/          # OpenTelemetry + health checks + service discovery + resiliencia
+│  │
 │  └─ Servicios/
-│     ├─ Hoteles/          # BC Hoteles (Domain · Application · Infrastructure · Api)
-│     ├─ Reservas/         # BC Reservas (idem) — anti-overbooking, cancelación
-│     └─ Notificaciones/   # Worker: consumidor de eventos → notificaciones
-├─ tests/                  # unit · integración (Testcontainers) · funcionales · money test
+│     ├─ Hoteles/                  # ── BC Catálogo ──
+│     │  ├─ Hoteles.Domain/        #   Hoteles/ · Habitaciones/ (agregados, invariantes) · Puertos/
+│     │  ├─ Hoteles.Application/   #   slices: CrearHotel · EditarHotel · EliminarHotel · CambiarEstadoHotel
+│     │  │                         #          CrearHabitacion · EditarHabitacion · CambiarEstadoHabitacion
+│     │  ├─ Hoteles.Infrastructure/#   Persistencia (EF) · Migraciones · Outbox · Mensajeria (RabbitMQ/Dapr)
+│     │  └─ Hoteles.Api/           #   Program.cs (Minimal API, endpoints /api/v1/hoteles·habitaciones)
+│     │
+│     ├─ Reservas/                 # ── BC Reservas (anti-overbooking, cancelación) ──
+│     │  ├─ Reservas.Domain/       #   Reservas/ (agregado, máquina de estados) · Servicios/ (precio, penalidad) · Puertos/
+│     │  ├─ Reservas.Application/  #   slices: CrearReserva · BuscarDisponibilidad · ListarReservasDelAgente
+│     │  │                         #          ObtenerReservaDetalle · SolicitarCancelacion · ResolverCancelacion
+│     │  │                         #          CancelarEnUnPaso · ListarCancelacionesPendientes
+│     │  ├─ Reservas.Infrastructure/#  Persistencia · Migraciones · Outbox · Cache (Redis) · Idempotencia
+│     │  │                         #   Disponibilidad · Proyeccion (read-model del catálogo) · Mensajeria
+│     │  └─ Reservas.Api/          #   Program.cs + Http/ (endpoints /api/v1/reservas + disponibles)
+│     │
+│     └─ Notificaciones/
+│        └─ Notificaciones.Worker/ #   consumidor (RabbitMQ local / suscripción Dapr nube) → Notificaciones/
+│                                  #   (INotificador, inbox idempotente, dead-letter, enrutador por tipo)
+│
+├─ tests/
+│  ├─ *.UnitTests/                 # Hoteles · Reservas · Notificaciones · Comun.Web (xUnit; dominio, handlers, RBAC, traza)
+│  ├─ *.IntegrationTests/          # Hoteles · Reservas · Notificaciones (Testcontainers: SQL/Redis/RabbitMQ reales)
+│  ├─ *.FunctionalTests/           # Hoteles · Reservas · Seguridad (WebApplicationFactory: borde HTTP y del Gateway)
+│  ├─ Contracts/                   # tests de contrato de los eventos de integración
+│  └─ TestKit.Auth/                # helper de emisión de JWT de prueba
+│
 ├─ deploy/
-│  ├─ docker-compose.yml   # stack local funcional (ADR-007)
-│  ├─ terraform/           # IaC Azure + bootstrap del state + runbook (ADR-008)
-│  ├─ scripts/             # deploy/destroy/build-push/migrate/smoke (reusados por el CD)
-│  └─ dapr/                # componentes Dapr (referencia de nube)
+│  ├─ docker-compose.yml           # stack local funcional: gateway+3 servicios+SQL×2+Redis+RabbitMQ+OTel (ADR-007)
+│  ├─ .env.example                 # plantilla (MSSQL_SA_PASSWORD, JWT_SIGNING_KEY); el .env real está gitignored
+│  ├─ terraform/                   # IaC Azure (ADR-008)
+│  │  ├─ main·apps·data·keyvault·registry·observability.tf   # ACA/Dapr, SQL, Redis, Service Bus, KV, ACR, App Insights
+│  │  ├─ providers·versions·variables·outputs.tf
+│  │  ├─ bootstrap/                #   crea el Storage del tfstate remoto (huevo-gallina, ADR-022)
+│  │  └─ README.md                 #   runbook de despliegue + setup OIDC del CD
+│  ├─ scripts/                     # deploy · destroy · build-push · migrate · smoke · mint-jwt (reusados por el CD)
+│  └─ dapr/                        # componentes Dapr: pubsub.yaml · statestore.yaml (referencia de nube)
+│
 ├─ docs/
-│  ├─ adr/                 # 23 ADRs como archivos (Contexto·Decisión·Consecuencias)
-│  ├─ seguridad.md         # prácticas de seguridad → OWASP
-│  ├─ uso-de-ia.md         # cómo se usó la IA (método BMAD, de punta a punta)
-│  ├─ observabilidad.md    # trazas distribuidas + métricas + transporte de eventos
-│  ├─ bdd-y-e2e.md         # flujos BDD + estrategia de pruebas E2E
-│  ├─ specs/ · planning-artifacts/ · implementation-artifacts/   # SPEC, PRD, épicas, historias
-│  └─ DOCUMENTO-BASE.md    # documento base consolidado
-└─ .github/workflows/      # ci.yml (build·format·test·gitleaks·terraform) + cd.yml (OIDC)
+│  ├─ adr/                         # 23 ADRs como archivos (Contexto·Decisión·Consecuencias) + índice
+│  ├─ seguridad.md                 # 8 prácticas de seguridad → OWASP
+│  ├─ uso-de-ia.md                 # cómo se usó la IA (método BMAD, de punta a punta)
+│  ├─ observabilidad.md            # trazas distribuidas + métricas p95/p99 + transporte de eventos
+│  ├─ bdd-y-e2e.md                 # flujos BDD (Given/When/Then) + estrategia de pruebas E2E
+│  ├─ specs/                       # SPEC (contrato máquina) + decisions-adr.md (origen de los ADR)
+│  ├─ planning-artifacts/          # prds/ · architecture.md · epics.md · sprint-change-proposals
+│  ├─ implementation-artifacts/    # historias (una por archivo) · sprint-status.yaml · deferred-work.md · evidencia/
+│  └─ DOCUMENTO-BASE.md            # documento base consolidado
+│
+└─ .github/workflows/
+   ├─ ci.yml                       # build · format · test (+ G1 aislado) · gitleaks · terraform · smoke-compose+Newman
+   └─ cd.yml                       # despliegue on-demand a Azure por OIDC (workflow_dispatch: deploy/destroy)
 ```
 
 ## ¿Dónde está X? (mapa de documentación)
