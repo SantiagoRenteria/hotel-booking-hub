@@ -4,7 +4,7 @@ baseline_commit: cd4104e8b7166ed5a3d8d0a964f2b640209d1fc8
 
 # Story T.2: Pulido de entregables — cobertura de pruebas y documentación
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
