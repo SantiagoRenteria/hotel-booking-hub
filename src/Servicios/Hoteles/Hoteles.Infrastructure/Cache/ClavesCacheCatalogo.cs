@@ -16,8 +16,11 @@ internal static class ClavesCacheCatalogo
     public static string Hoteles(string agente, long gen, int page, int pageSize) =>
         $"catalogo:hoteles:{agente}:g{gen}:p{page}:s{pageSize}";
 
-    public static string Habitaciones(Guid hotelId, long gen, int page, int pageSize) =>
-        $"catalogo:habitaciones:{hotelId}:g{gen}:p{page}:s{pageSize}";
+    // El AGENTE va en la clave (aunque la generación sea por hotelId): sin él, un hit cacheado por el dueño se
+    // serviría a CUALQUIER agente que pida el mismo hotelId, saltándose la comprobación de propiedad del inner
+    // (IDOR). Con el agente en la clave, un no-dueño arma una clave distinta → miss → inner → 404 (no se cachea).
+    public static string Habitaciones(string agente, Guid hotelId, long gen, int page, int pageSize) =>
+        $"catalogo:habitaciones:{agente}:{hotelId}:g{gen}:p{page}:s{pageSize}";
 }
 
 /// <summary>TTL de respaldo de las páginas cacheadas (la corrección la da la invalidación por generación; el TTL solo acota memoria).</summary>

@@ -16,7 +16,8 @@ public sealed class ListarHabitacionesDeHotelQueryValidator : AbstractValidator<
 {
     public ListarHabitacionesDeHotelQueryValidator()
     {
-        RuleFor(x => x.Page).GreaterThanOrEqualTo(1).WithMessage("page debe ser ≥ 1.");
+        // Cota superior de page: sin ella (page-1)*pageSize desborda Int32 → OFFSET negativo → 500.
+        RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000).WithMessage("page debe estar entre 1 y 1.000.000.");
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100).WithMessage("pageSize debe estar entre 1 y 100.");
     }
 }

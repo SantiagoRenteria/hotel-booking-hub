@@ -25,7 +25,8 @@ public sealed class PaginacionValidatorsTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void Hoteles_page_menor_que_1_es_invalido(int page)
+    [InlineData(2_000_000)] // fuera de la cota superior → 400 (evita el overflow de (page-1)*pageSize → OFFSET negativo → 500)
+    public void Hoteles_page_fuera_de_rango_es_invalido(int page)
     {
         _hoteles.TestValidate(new ListarHotelesDelAgenteQuery(page, 20))
             .ShouldHaveValidationErrorFor(q => q.Page);

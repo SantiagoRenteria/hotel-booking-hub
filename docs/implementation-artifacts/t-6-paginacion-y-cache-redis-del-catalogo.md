@@ -4,7 +4,7 @@ baseline_commit: 5c035d187e3096177d5786f4265d7fdca75e01f7
 
 # Story T.6: Paginación y caché Redis de la lectura del catálogo
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -89,6 +89,14 @@ Tras CUALQUIER escritura de hotel del agente (crear/editar/eliminar/habilitar/de
 - [Source: src/Servicios/Reservas/Reservas.Infrastructure/RegistroInfraestructura.cs] — DI "Redis-si-configurado".
 - [Source: docs/implementation-artifacts/t-5-lectura-del-catalogo-get-hoteles-habitaciones.md] — read-port ILectorCatalogo + fail-closed. [Source: ADR-012 Redis]
 
+### Review Findings
+
+_Code-review (3 capas adversariales: Blind Hunter + Edge Case Hunter + Acceptance Auditor) — 2026-07-11. Las tres capas convergieron en el hallazgo #1._
+
+- [x] [Review][Patch] **CRÍTICO — IDOR: la caché de habitaciones no está aislada por agente** [src/Servicios/Hoteles/Hoteles.Infrastructure/Cache/LectorCatalogoCacheado.cs:48] — RESUELTO: la clave de página de habitaciones ahora incluye el agente (`catalogo:habitaciones:{agente}:{hotelId}:g{gen}:...`) y el decorator lee `contexto.AgenteActual` con fail-closed (sin identidad → pasa al inner sin cachear). Un no-dueño arma una clave distinta → miss → inner → 404. Regresión cubierta por `CacheCatalogoTests.La_lista_de_habitaciones_cacheada_no_se_filtra_a_otro_agente`.
+- [x] [Review][Patch] **MEDIO — eliminar un hotel no invalida la caché de sus habitaciones** [src/Servicios/Hoteles/Hoteles.Infrastructure/Persistencia/HotelRepository.cs:65] — RESUELTO: `GuardarConcurrenciaAsync` invalida también `habitaciones-gen:{hotelId}` cuando `hotel.Eliminado`. Regresión: `CacheCatalogoTests.Eliminar_el_hotel_invalida_la_cache_de_sus_habitaciones`.
+- [x] [Review][Patch] **MEDIO — `page` sin cota superior desborda Int32 → 500** [src/Servicios/Hoteles/Hoteles.Application/Hoteles/ListarHoteles/ListarHotelesDelAgenteQuery.cs:16] — RESUELTO: ambos validadores acotan `page` a `[1, 1_000_000]` (`InclusiveBetween`) → 400 en vez de 500. Cubierto en `PaginacionValidatorsTests` (caso `2_000_000`).
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -139,3 +147,4 @@ claude-opus-4-8 (Amelia / dev-story)
 |---|---|
 | 2026-07-11 | Story T.6 creada (create-story): paginación (page/pageSize) de las listas GET del catálogo + caché Redis con invalidación por generación (anti-stale). Status → ready-for-dev. |
 | 2026-07-11 | dev-story implementada: paginación + decorator de caché Redis (invalidación por generación), DI Redis-si-configurado, infra (compose+apps.tf), tests (unit+integración Testcontainers+E2E). Fix de artefactos (agente único por corrida + agenteEmail alineado). Suite 489 + G1 + smoke/Newman verdes. Status → review. |
+| 2026-07-11 | code-review (3 capas adversariales, convergen en el #1) + agent-dev: 3 patches — (CRÍTICO) IDOR en caché de habitaciones (agente en la clave + fail-closed); (MEDIO) eliminar hotel invalida su caché de habitaciones; (MEDIO) cota superior de `page` (evita overflow→500). +2 tests de regresión de caché y caso de validator. Hoteles.UnitTests 113 + Hoteles.IntegrationTests 38 + format verdes. Status → done. |
