@@ -6,6 +6,10 @@ locals {
   # Prefijo estable para todos los recursos: p. ej. "hbh-dev".
   nombre = "${var.prefijo}-${var.entorno}"
   tags   = merge(var.etiquetas, { entorno = var.entorno })
+
+  # Cadena StackExchange.Redis para Azure Managed Redis (host:port TLS + clave). Se reutiliza en las cadenas de
+  # conexión de las apps (apps.tf) y en el secreto de Key Vault (keyvault.tf).
+  redis_cs = "${azurerm_managed_redis.principal.hostname}:${azurerm_managed_redis.principal.default_database[0].port},password=${azurerm_managed_redis.principal.default_database[0].primary_access_key},ssl=True,abortConnect=False"
 }
 
 resource "azurerm_resource_group" "principal" {

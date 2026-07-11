@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-07-08
-last_updated: 2026-07-10T22:30
+last_updated: 2026-07-10T23:15
 project: hotel-booking-hub
 project_key: NOKEY
 tracking_system: file-system
@@ -102,8 +102,11 @@ development_status:
   epic-7-retrospective: optional
 
   # ---- Epic 8: Nube por IaC (con compuerta) ----
-  epic-8: done
+  # Reabierta 2026-07-10 (correct-course + party-mode + Santiago): se cruza la compuerta de Fase 3 → despliegue real.
+  epic-8: in-progress
   8-1-aprovisionar-azure-por-terraform: done
+  8-2-despliegue-real-bajo-costo: in-progress
+  8-3-cd-on-demand-y-proteccion-main: backlog
   epic-8-retrospective: optional
 
   # ---- Epic 9: Transporte real de eventos entre BCs (cierre de brecha, correct-course 2026-07-10) ----
