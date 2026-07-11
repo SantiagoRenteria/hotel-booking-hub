@@ -1,0 +1,6 @@
+# ADR-022 — State remoto de Terraform por bootstrap `az` + backend AAD + dos resource groups
+
+- **Contexto:** el CD y el ciclo apply→destroy repetido necesitan un `tfstate` compartido y con lock; pero el Storage Account del state no puede vivir en su propio state (huevo-gallina), y un state local subido como artifact es frágil (sin lock, carreras, artifact perdido = recursos huérfanos costando). Decidido en party-mode + Santiago (2026-07-10).
+- **Decisión:** un **script `bootstrap` idempotente** (`az group/storage account/container create`) crea el backend **una vez**, fuera del ciclo destroy. Backend `azurerm` con **`use_azuread_auth=true`** (cero claves de storage; auth por la sesión `az`/OIDC, rol *Storage Blob Data Contributor*). **Dos resource groups:** **RG-state permanente** (tfstate, nunca se destruye, cuesta centavos) y **RG-app efímero** (todo lo demás, apply→destroy). El lock lo da el blob lease del backend.
+- **Alternativas:** (A) state local + artifact (descartado: frágil con destroy repetido, sin lock); (B) módulo Terraform bootstrap con su propio state (descartado: reintroduce el mismo problema de state en un segundo proyecto).
+- **Consecuencias:** (+) `terraform destroy` arrasa la app sin tocar el state; lock nativo; passwordless. (−) un paso de bootstrap manual previo (documentado, corre una vez).
