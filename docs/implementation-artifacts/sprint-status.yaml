@@ -103,10 +103,10 @@ development_status:
 
   # ---- Epic 8: Nube por IaC (con compuerta) ----
   # Reabierta 2026-07-10 (correct-course + party-mode + Santiago): se cruza la compuerta de Fase 3 → despliegue real.
-  epic-8: in-progress
+  epic-8: done
   8-1-aprovisionar-azure-por-terraform: done
   8-2-despliegue-real-bajo-costo: done
-  8-3-cd-on-demand-y-proteccion-main: review
+  8-3-cd-on-demand-y-proteccion-main: done
   epic-8-retrospective: optional
 
   # ---- Epic 9: Transporte real de eventos entre BCs (cierre de brecha, correct-course 2026-07-10) ----
