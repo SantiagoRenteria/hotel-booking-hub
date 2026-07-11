@@ -14,13 +14,6 @@ resource "azurerm_mssql_server" "principal" {
   # dinámicas) alcancen la BD. Hardening de prod: private endpoint + VNet integration (documentado, no aplicado).
   public_network_access_enabled = true
   tags                          = local.tags
-
-  # Admin AAD del servidor = el deployer (identidad de la sesión az/OIDC que corre Terraform). Habilita aplicar
-  # las migraciones EF Core por token AAD (sqlcmd -G), sin contraseña SQL en el pipeline (ADR-021/022).
-  azuread_administrator {
-    login_username = var.sql_aad_admin_login
-    object_id      = var.sql_aad_admin_object_id != "" ? var.sql_aad_admin_object_id : data.azurerm_client_config.actual.object_id
-  }
 }
 
 # Regla de firewall para la IP pública del deployer (la máquina/runner que aplica migraciones). La regla

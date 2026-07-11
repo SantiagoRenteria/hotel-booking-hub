@@ -189,6 +189,13 @@ resource "azurerm_container_app" "hoteles" {
     }
   }
 
+  # Cadena de conexión a la BD (auth SQL; la contraseña viene de random_password, nunca del repo). El valor es un
+  # secreto del Container App (no env plano). Connection Timeout alto por el cold start del auto-resume (GP_S).
+  secret {
+    name  = "cs-hotelesdb"
+    value = "Server=tcp:${azurerm_mssql_server.principal.fully_qualified_domain_name},1433;Initial Catalog=db-hoteles;User ID=${var.sql_admin_login};Password=${random_password.sql_admin.result};Encrypt=True;TrustServerCertificate=False;Connection Timeout=60;"
+  }
+
   dapr {
     app_id   = "hoteles"
     app_port = 8080
@@ -215,6 +222,10 @@ resource "azurerm_container_app" "hoteles" {
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.principal.connection_string
+      }
+      env {
+        name        = "ConnectionStrings__hotelesdb"
+        secret_name = "cs-hotelesdb"
       }
       env {
         name        = "Jwt__SigningKey"
@@ -259,6 +270,18 @@ resource "azurerm_container_app" "reservas" {
     }
   }
 
+  secret {
+    name  = "cs-reservasdb"
+    value = "Server=tcp:${azurerm_mssql_server.principal.fully_qualified_domain_name},1433;Initial Catalog=db-reservas;User ID=${var.sql_admin_login};Password=${random_password.sql_admin.result};Encrypt=True;TrustServerCertificate=False;Connection Timeout=60;"
+  }
+
+  # Redis para caché de disponibilidad (3.2) e idempotencia de reserva (1.7). La cadena StackExchange completa
+  # (host:6380,password=...,ssl=True) viene del atributo del recurso.
+  secret {
+    name  = "cs-redis"
+    value = azurerm_redis_cache.principal.primary_connection_string
+  }
+
   dapr {
     app_id   = "reservas"
     app_port = 8080
@@ -287,6 +310,14 @@ resource "azurerm_container_app" "reservas" {
         value = azurerm_application_insights.principal.connection_string
       }
       env {
+        name        = "ConnectionStrings__reservasdb"
+        secret_name = "cs-reservasdb"
+      }
+      env {
+        name        = "ConnectionStrings__redis"
+        secret_name = "cs-redis"
+      }
+      env {
         name        = "Jwt__SigningKey"
         secret_name = "jwt-signing-key"
       }
@@ -309,6 +340,12 @@ resource "azurerm_container_app" "notificaciones" {
   registry {
     server   = azurerm_container_registry.principal.login_server
     identity = azurerm_user_assigned_identity.apps.id
+  }
+
+  # Redis para el inbox de idempotencia del worker (dedup entre instancias; sin él, fallback en memoria).
+  secret {
+    name  = "cs-redis"
+    value = azurerm_redis_cache.principal.primary_connection_string
   }
 
   dapr {
@@ -339,6 +376,10 @@ resource "azurerm_container_app" "notificaciones" {
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.principal.connection_string
+      }
+      env {
+        name        = "ConnectionStrings__redis"
+        secret_name = "cs-redis"
       }
     }
   }
