@@ -11,7 +11,9 @@ using Hoteles.Application.Hoteles.EliminarHotel;
 using Hoteles.Domain.Habitaciones;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Infrastructure;
+using Hoteles.Infrastructure.Persistencia;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,6 +44,21 @@ builder.Services.AddMediatorPipeline(typeof(CrearHotelCommand).Assembly);
 builder.Services.AddHotelesInfrastructure(builder.Configuration.GetConnectionString("hotelesdb"));
 
 var app = builder.Build();
+
+// Migraciones al arranque SOLO si se solicita explícitamente (`AplicarMigraciones=true`, que activa docker-compose
+// para el data-plane local de un comando). En tests (WebApplicationFactory, cadena falsa) y en la nube (migraciones
+// por el pipeline de CD) queda DESACTIVADO → no toca la BD al bootear. Story T.1 (AC-ET.1.5).
+if (app.Configuration.GetValue<bool>("AplicarMigraciones"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<HotelesDbContext>();
+    // En docker-compose el servicio arranca antes de que SQL Server acepte conexiones → reintenta hasta ~60s.
+    for (var intento = 1; ; intento++)
+    {
+        try { db.Database.Migrate(); break; }
+        catch when (intento < 30) { await Task.Delay(TimeSpan.FromSeconds(2)); }
+    }
+}
 
 app.UseExceptionHandler();
 

@@ -3,6 +3,7 @@ using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
 using HotelBookingHub.Comun.Web.Seguridad;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Reservas.Api;
 using Reservas.Application.Abstracciones;
 using Reservas.Application.Reservas.BuscarDisponibilidad;
@@ -15,6 +16,7 @@ using Reservas.Application.Reservas.ResolverCancelacion;
 using Reservas.Application.Reservas.SolicitarCancelacion;
 using Reservas.Domain.Servicios;
 using Reservas.Infrastructure;
+using Reservas.Infrastructure.Persistencia;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -71,6 +73,21 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IContextoAgente, ClaimContextoAgente>();
 
 var app = builder.Build();
+
+// Migraciones al arranque SOLO si se solicita (`AplicarMigraciones=true`, que activa docker-compose para el
+// data-plane local de un comando). Desactivado en tests (cadena falsa) y en la nube (migraciones por CD).
+// Story T.1 (AC-ET.1.5).
+if (app.Configuration.GetValue<bool>("AplicarMigraciones"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ReservasDbContext>();
+    // En docker-compose el servicio arranca antes de que SQL Server acepte conexiones → reintenta hasta ~60s.
+    for (var intento = 1; ; intento++)
+    {
+        try { db.Database.Migrate(); break; }
+        catch when (intento < 30) { await Task.Delay(TimeSpan.FromSeconds(2)); }
+    }
+}
 
 app.UseExceptionHandler();
 
