@@ -36,6 +36,13 @@ services:
     # No se publica al host (no lo necesita nada externo y, en Windows, 5672 suele caer en un rango de
     # puertos reservado por WSL/Hyper-V → 'bind: ... forbidden'). Solo se publica la UI de management.
     ports: ["15672:15672"]
+    # Healthcheck (Story 9.1): los productores/consumidor esperan a que el broker esté listo antes de conectar
+    # (evita errores y pérdida de mensajes al arranque).
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # Dashboard OTel standalone: el evaluador ve trazas sin instalar Aspire.
   aspire-dashboard:
@@ -73,8 +80,15 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
       Jwt__SigningKey: ${JWT_SIGNING_KEY:-}
+      # Transporte real de eventos (Story 9.1, ADR-019): publica eventos de catálogo al broker. guest/guest es el
+      # default local de RabbitMQ (no secreto de prod; en nube = Dapr+Key Vault, ADR-020).
+      ConnectionStrings__rabbitmq: amqp://guest:guest@rabbitmq:5672
     ports: ["8081:8080"]
-    depends_on: [sql-hoteles]
+    depends_on:
+      sql-hoteles:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
   reservas:
     build:
@@ -87,8 +101,16 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
       Jwt__SigningKey: ${JWT_SIGNING_KEY:-}
+      # Transporte real de eventos (Story 9.1, ADR-019): el relay del outbox publica al broker.
+      ConnectionStrings__rabbitmq: amqp://guest:guest@rabbitmq:5672
     ports: ["8082:8080"]
-    depends_on: [sql-reservas, redis, rabbitmq]
+    depends_on:
+      sql-reservas:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
   notificaciones:
     build:
@@ -100,8 +122,15 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+      # Transporte real de eventos (Story 9.1, ADR-019): el ConsumidorRabbitMq consume del broker y enruta a los
+      # consumidores de notificación. Redis (inbox idempotente) opcional; sin él usa el fallback en memoria.
+      ConnectionStrings__rabbitmq: amqp://guest:guest@rabbitmq:5672
     ports: ["8083:8080"]
-    depends_on: [redis, rabbitmq]
+    depends_on:
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
 volumes:
   sql-hoteles-data:
