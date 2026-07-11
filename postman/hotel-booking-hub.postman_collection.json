@@ -333,7 +333,9 @@
           },
           "event": [ { "listen": "test", "script": { "exec": [
             "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('cuerpo es lista', () => pm.expect(pm.response.json()).to.be.an('array'));"
+            "var arr = pm.response.json();",
+            "pm.test('cuerpo es lista', () => pm.expect(arr).to.be.an('array'));",
+            "pm.test('contiene la reserva creada', () => pm.expect(arr.map(r => r.id)).to.include(pm.collectionVariables.get('reservaId')));"
           ] } } ]
         },
         {

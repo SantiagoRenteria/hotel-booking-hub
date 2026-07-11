@@ -57,7 +57,7 @@ Nuevo `docs/bdd-y-e2e.md` que consolide: (a) las **convenciones BDD** del proyec
   - [x] **Verificado local contra el compose**: `docker compose up` → smoke verde end-to-end (health+alive, camino feliz, lecturas, idempotencia, 2 pasos, negativos 401/403/404).
 
 - [x] **Task 3 — Colección Postman completa por servicio** (AC: ET.2.1, ET.2.8)
-  - [x] Reestructurada en 3 carpetas (`item` anidado): **Gateway/Health**, **Hoteles** (crear/editar/deshabilitar/habilitar/eliminar hotel + concurrencia 409; crear/editar/deshabilitar/habilitar habitación), **Reservas** (crear; idempotencia 201/200/422; disponibles Viajero+Agente; listar; detalle; solicitud/pendientes/resolución; atajo). 30 requests.
+  - [x] Reestructurada en 3 carpetas (`item` anidado): **Gateway/Health**, **Hoteles** (crear/editar/deshabilitar/habilitar/eliminar hotel + concurrencia 409; crear/editar/deshabilitar/habilitar habitación), **Reservas** (crear; idempotencia 201/200/422; disponibles Viajero+Agente; listar; detalle; solicitud/pendientes/resolución; atajo). 32 requests.
   - [x] Un request por endpoint real + negativos (401/403/404/409/422). Cadena de `rowVersion` e ids con `pm.collectionVariables`; asertos de status + forma. Pre-request de mint JWT (Agente+Viajero) preservado.
   - [x] **Newman local verde**: `32 requests / 43 assertions / 0 fallos` contra el compose. El job `smoke-compose` de `ci.yml` la sigue invocando (mismo path). Dos asertos corregidos tras runtime: detalle usa `reserva.id` (DTO anidado); delete-inexistente usa GUID válido no-cero (el 0-GUID da 400 por validación de `Id`, no 404).
 
@@ -138,4 +138,22 @@ claude-opus-4-8 (Amelia / dev-story)
 | Fecha | Cambio |
 |---|---|
 | 2026-07-11 | Story T.2 creada (create-story): pulido de entregables — Postman/smoke exhaustivos, fix routing Gateway (disponibles), CD a on-demand, docs (uso-de-ia full BMAD, observabilidad Dapr, bdd-y-e2e). Status → ready-for-dev. |
-| 2026-07-11 | Story T.2 (dev-story): Tasks 1-8 completas. Fix Gateway (disponibles→reservas) + RuteoGatewayTests; smoke exhaustivo dual-propósito; Postman por servicio (30 req, Newman 43/0); CD a on-demand + reconciliación documental; docs uso-de-ia (BMAD e2e), observabilidad (Dapr), nuevo bdd-y-e2e. Format+build+suite completa verdes; smoke+Newman verdes. Status → review. |
+| 2026-07-11 | Story T.2 (dev-story): Tasks 1-8 completas. Fix Gateway (disponibles→reservas) + RuteoGatewayTests; smoke exhaustivo dual-propósito; Postman por servicio (32 req, Newman 43/0); CD a on-demand + reconciliación documental; docs uso-de-ia (BMAD e2e), observabilidad (Dapr), nuevo bdd-y-e2e. Format+build+suite completa verdes; smoke+Newman verdes. Status → review. |
+| 2026-07-11 | Code-review (3 capas adversariales) + follow-ups aplicados: smoke.sh en CI, 7 mutaciones de ciclo de vida + 409 en smoke, guardia de precedencia en RuteoGatewayTests, aserción de contenido del listado (smoke+Postman), verificación local de evento→worker, README (contexto + árbol a bajo nivel). Re-verificado verde. |
+
+## Senior Developer Review (AI)
+
+- **Fecha:** 2026-07-11 · **Resultado:** Changes Requested → **resuelto** (todos los follow-ups cerrados).
+- **Método:** 3 capas adversariales en paralelo — Blind Hunter (solo diff), Edge Case Hunter (diff + repo), Acceptance Auditor (diff + spec). **Sin hallazgos ALTA.**
+- **Confirmado correcto por los revisores:** diseño `set -euo pipefail`+`die`-en-subshell del smoke; `if:` del `cd.yml` tras quitar el trigger push (sin jobs muertos); Postman (cadena de `rowVersion`, idempotencia 200/422, 409 con stale genuino, `reserva.id` anidado); precedencia YARP por especificidad; overrides de ACA solo tocan Destinations; enums de cancelación 1-based; las 15 clases de test citadas en `bdd-y-e2e.md` existen; docs sin contradicciones vigentes de auto-apply ni de "Dapr diferido".
+- **Action items (todos resueltos):** ver *Review Follow-ups (AI)* abajo.
+
+## Review Follow-ups (AI)
+
+- [x] [AI-Review][Med] `smoke.sh` no se invocaba en CI (el AC afirmaba "corre en CI"). → Añadido paso `Smoke exhaustivo` al job `smoke-compose` de `ci.yml` (modo local con `JWT_SIGNING_KEY`).
+- [x] [AI-Review][Med] `smoke.sh` sobre-afirmaba "TODOS los endpoints" pero no ejercía las 7 mutaciones de ciclo de vida de catálogo. → Añadidas al smoke (editar/deshabilitar/habilitar hotel y habitación + eliminar hotel desechable con `expect 204`, que además evita el parseo de body vacío) + negativo **409** stale. Header del script corregido.
+- [x] [AI-Review][Med] `RuteoGatewayTests` aseveraba la tabla de rutas, no la precedencia (un `Order:-1` en el catch-all dejaría el test verde). → Añadido test `Ninguna_ruta_de_habitaciones_fija_un_Order_que_invierta_la_precedencia` (aserta `Order` nulo); precedencia real cubierta e2e por smoke/Newman (documentado en el doc-comment).
+- [x] [AI-Review][Low] Las lecturas solo aseveraban alcanzabilidad (un array vacío pasaba). → `smoke.sh` y Postman ahora aseveran que **el listado contiene la reserva creada** (no flaky: lee la BD propia de Reservas). Disponibilidad sigue en 200 (contenido depende de proyección async; documentado).
+- [x] [AI-Review][Low] En local, `smoke.sh` no verificaba evento→worker (solo imprimía un hint). → Añadida verificación best-effort por `docker compose logs notificaciones`.
+- [x] [AI-Review][Low] Nota "30 requests" inexacta (Newman reporta 32). → Corregida a 32.
+- [x] [AI-Review][Low] Residual histórico: header de AC-E8.3.2 en la historia 8.3 aún dice "CD automático en merge". → Nota inline añadida en ese AC (además del banner de reversión al tope).
