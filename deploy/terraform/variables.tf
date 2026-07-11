@@ -53,6 +53,24 @@ variable "imagen_notificaciones" {
   default = "mcr.microsoft.com/k8se/quickstart:latest"
 }
 
+variable "sql_aad_admin_login" {
+  description = "Nombre visible del administrador AAD del SQL Server (etiqueta; el acceso lo define el object_id)."
+  type        = string
+  default     = "hbh-sql-aad-admin"
+}
+
+variable "sql_aad_admin_object_id" {
+  description = "Object ID (AAD) del administrador del SQL Server. Vacío = usa la identidad del deployer (sesión az/OIDC que corre Terraform)."
+  type        = string
+  default     = ""
+}
+
+variable "ip_deployer" {
+  description = "IP pública del deployer para la regla de firewall SQL (aplicar migraciones). Vacío = no se crea la regla. Se detecta en el runbook/pipeline."
+  type        = string
+  default     = ""
+}
+
 variable "etiquetas" {
   description = "Tags comunes de todos los recursos."
   type        = map(string)

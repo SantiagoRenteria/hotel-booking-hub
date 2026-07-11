@@ -1,16 +1,14 @@
-# Story 8.1 (ADR-008) — versiones fijadas de Terraform y providers.
+# Story 8.1/8.2 (ADR-008/022) — versiones fijadas de Terraform y providers + backend remoto.
 #
-# BACKEND: para la prueba se valida con `terraform init -backend=false` (sin estado remoto). En producción
-# se usaría un backend remoto con lock — descomentar y parametrizar:
-#
-#   backend "azurerm" {
-#     resource_group_name  = "hbh-tfstate-rg"
-#     storage_account_name = "hbhtfstate"
-#     container_name       = "tfstate"
-#     key                  = "hotel-booking-hub.tfstate"
-#   }
+# BACKEND remoto azurerm con auth AAD (cero claves de storage, ADR-022). Config PARCIAL: los nombres del
+# RG-state/Storage/container/key se pasan en `terraform init -backend-config=...` (ver deploy/terraform/bootstrap/).
+# El RG-state es permanente (no se destruye con el RG-app). CI valida con `init -backend=false` (ignora este bloque).
 terraform {
   required_version = ">= 1.9.0"
+
+  backend "azurerm" {
+    use_azuread_auth = true
+  }
 
   required_providers {
     azurerm = {

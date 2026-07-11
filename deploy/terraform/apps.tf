@@ -124,7 +124,8 @@ resource "azurerm_container_app" "gateway" {
   }
 
   template {
-    min_replicas = 1
+    # Scale-to-zero (ADR-023): sin tráfico no hay réplicas → costo de cómputo ~0. Primer request paga cold start.
+    min_replicas = 0
     max_replicas = 3
 
     container {
@@ -194,7 +195,8 @@ resource "azurerm_container_app" "hoteles" {
   }
 
   template {
-    min_replicas = 1
+    # Scale-to-zero (ADR-023).
+    min_replicas = 0
     max_replicas = 3
 
     container {
@@ -263,7 +265,8 @@ resource "azurerm_container_app" "reservas" {
   }
 
   template {
-    min_replicas = 1
+    # Scale-to-zero (ADR-023).
+    min_replicas = 0
     max_replicas = 5
 
     container {
@@ -314,6 +317,9 @@ resource "azurerm_container_app" "notificaciones" {
   }
 
   template {
+    # NO scale-to-zero (ADR-023): el worker consume del Service Bus; con min=0 no habría quién procese salvo un
+    # KEDA scaler azure-servicebus, que en ACA reintroduce un secreto de conexión (choca con cero-secretos).
+    # min=1 (cómputo ínfimo en Consumption) garantiza el consumo end-to-end. Scaler por workload identity = deuda.
     min_replicas = 1
     max_replicas = 3
 
