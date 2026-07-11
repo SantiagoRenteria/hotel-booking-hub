@@ -149,6 +149,16 @@ resource "azurerm_container_app" "gateway" {
         name        = "Jwt__SigningKey"
         secret_name = "jwt-signing-key"
       }
+      # Override del ruteo YARP para la nube: en ACA los servicios internos se resuelven por su NOMBRE de app
+      # (`hbh-dev-hoteles`), no por el nombre de docker-compose (`hoteles`). Sobreescribe el Address del appsettings.
+      env {
+        name  = "ReverseProxy__Clusters__hoteles__Destinations__d1__Address"
+        value = "http://${local.nombre}-hoteles"
+      }
+      env {
+        name  = "ReverseProxy__Clusters__reservas__Destinations__d1__Address"
+        value = "http://${local.nombre}-reservas"
+      }
     }
   }
 }
@@ -202,8 +212,10 @@ resource "azurerm_container_app" "hoteles" {
   }
 
   template {
-    # Scale-to-zero (ADR-023).
-    min_replicas = 0
+    # min=1 (ADR-023): servicio INTERNO detrás del gateway. ACA no despierta de forma fiable un servicio interno
+    # scale-to-zero por tráfico servicio-a-servicio (el gateway ruteando da 502 mientras arranca) → se mantiene 1
+    # réplica caliente. El scale-to-zero real queda en el gateway (ingress externo, sí activa).
+    min_replicas = 1
     max_replicas = 3
 
     container {
@@ -288,8 +300,8 @@ resource "azurerm_container_app" "reservas" {
   }
 
   template {
-    # Scale-to-zero (ADR-023).
-    min_replicas = 0
+    # min=1 (ADR-023): servicio INTERNO detrás del gateway (ver nota en hoteles).
+    min_replicas = 1
     max_replicas = 5
 
     container {
