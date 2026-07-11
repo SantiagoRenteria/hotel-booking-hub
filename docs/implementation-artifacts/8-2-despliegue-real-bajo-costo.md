@@ -138,6 +138,7 @@ claude-opus-4-8 (Amelia / dev-story, modo autónomo)
 - Gate IaC (no aplica TDD): `terraform fmt -check -recursive` + `init -backend=false` + `validate` → **Success** tras el tuning (GP_S serverless, min_replicas, AAD admin, firewall condicional, backend AAD).
 - Migraciones generadas offline del modelo (placeholder connection string en la fábrica design-time, no conecta): `dotnet ef migrations script --idempotent` → `deploy/scripts/sql/{reservas,hoteles}.sql` (386/237 líneas, guard `__EFMigrationsHistory`).
 - Sin código .NET tocado → sin regresión en la suite (se valida en CI del PR).
+- **Vista previa `terraform plan`** (backend local temporal, no crea recursos, auth por `az`): **Plan 31 to add, 0 change, 0 destroy**, sin errores. Halló 2 defectos que `validate` no captura (validaciones del provider en `plan`) y se corrigieron: (1) el Service Bus namespace no puede terminar en `-sb` → `hbh-dev-bus`; (2) `ARM_SUBSCRIPTION_ID` obligatorio + `ARM_USE_CLI=true` (evita el cuelgue del sondeo IMDS fuera de Azure) en `deploy.sh`/`destroy.sh`. Providers `Microsoft.Cache/ContainerRegistry/KeyVault/ServiceBus` = NotRegistered (los registra el preflight de `deploy.sh`).
 
 ### Completion Notes List
 

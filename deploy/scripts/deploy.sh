@@ -39,8 +39,10 @@ export ARM_USE_MSI="false"
 # 0) Preflight
 say "Preflight: suscripción y providers"
 az account show --query "{sub:name, id:id}" -o table
+# --wait: bloquea hasta Registered (los recursos fallarían si el provider aún no está registrado al aplicar).
 for p in Microsoft.App Microsoft.ServiceBus Microsoft.Cache Microsoft.Sql Microsoft.ContainerRegistry Microsoft.KeyVault Microsoft.OperationalInsights Microsoft.Insights; do
-  az provider register --namespace "$p" --only-show-errors -o none || true
+  echo "   registrando $p ..."
+  az provider register --namespace "$p" --wait --only-show-errors -o none || true
 done
 IP_DEPLOYER="$(curl -fsS https://api.ipify.org || echo '')"
 say "IP del deployer (firewall SQL): ${IP_DEPLOYER:-<no detectada>}"
@@ -84,9 +86,9 @@ say "terraform apply (con imágenes reales)"
 # shellcheck disable=SC2086
 terraform -chdir="$TF" apply -auto-approve -var="ip_deployer=$IP_DEPLOYER" $IMG_VARS
 
-# 6) Migraciones EF (idempotentes, por AAD)
+# 6) Migraciones EF (idempotentes, auth SQL con contraseña de Key Vault)
 say "Aplicando migraciones EF Core"
-SQL_SERVER="$SQL_SERVER" bash "$SCRIPTS/migrate.sh"
+SQL_SERVER="$SQL_SERVER" KV="$KV" SQL_ADMIN="${sql_admin_login:-hbhadmin}" bash "$SCRIPTS/migrate.sh"
 
 # 7) Smoke end-to-end
 GATEWAY_FQDN="$(terraform -chdir="$TF" output -raw gateway_fqdn)"
