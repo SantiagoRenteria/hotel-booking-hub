@@ -66,15 +66,15 @@ Nuevo `docs/bdd-y-e2e.md` que consolide: (a) las **convenciones BDD** del proyec
   - [x] `deploy/terraform/README.md` §CD y §3 Flujo reescritos a on-demand (comandos OIDC intactos).
   - [x] Reconciliados además `docs/adr/ADR-021-*.md` y `decisions-adr.md` (nota de **reversión** del refinamiento auto-apply de la 8.3), `deferred-work.md`, y nota de reversión en la historia `8-3-*.md`. Grep del repo → sin afirmaciones contradictorias vigentes (solo contexto histórico marcado como tal).
 
-- [ ] **Task 5 — `docs/uso-de-ia.md`: método BMAD completo** (AC: ET.2.5)
-  - [ ] Añadir sección(es) del flujo upstream: analista/dominio (Mary), PRD (John), SPEC, arquitectura (Winston), épicas/historias, sprint planning, UX (Sally) — cada una enlazando su artefacto real en `docs/`. Mantener y referenciar el ciclo por historia ya documentado.
-  - [ ] Corregir §4: el adaptador Dapr de nube ya **no** está diferido (implementado 2026-07-11; resta verificación runtime). Enlazar el nuevo `docs/bdd-y-e2e.md`.
+- [x] **Task 5 — `docs/uso-de-ia.md`: método BMAD completo** (AC: ET.2.5)
+  - [x] Nuevo §1 "El flujo BMAD de punta a punta": análisis/dominio (Mary), PRD (John → `prd.md`), SPEC (`SPEC.md`), arquitectura (Winston → `architecture.md`), épicas/historias (`epics.md`), sprint planning (`sprint-status.yaml`), UX (Sally, API headless), correct-course (sprint-change-proposals) — cada etapa enlaza su artefacto real. El ciclo por historia pasó a §2; secciones renumeradas.
+  - [x] Corregido el "límite conocido" (§5): el adaptador Dapr de nube ya **no** está diferido (implementado; resta verificación runtime). Enlazado `docs/bdd-y-e2e.md` (nav + §2).
 
-- [ ] **Task 6 — `docs/observabilidad.md`: Dapr al día** (AC: ET.2.6)
-  - [ ] Actualizar el estado del "Sidecar Dapr físico" y la sección de "transporte Dapr diferido": describir RabbitMQ local (correlación por pipeline) vs Dapr nube (propagación `traceparent` por sidecar en el CloudEvent vía Service Bus), marcando lo verificado (local) vs pendiente (runtime nube). Sin sobre-afirmar.
+- [x] **Task 6 — `docs/observabilidad.md`: Dapr al día** (AC: ET.2.6)
+  - [x] Tabla de propagación y sección de alcance reescritas: LOCAL RabbitMQ (correlación por `trace-id` de negocio; sin `traceparent` físico) vs NUBE Dapr (sidecar propaga `traceparent` W3C en el CloudEvent), marcando verificado (local) vs pendiente de runtime (nube). Retirada la premisa obsoleta "transporte Dapr no cableado".
 
-- [ ] **Task 7 — `docs/bdd-y-e2e.md` (nuevo)** (AC: ET.2.7)
-  - [ ] Redactar el documento consolidado (convenciones BDD, mapeo historia↔test, pirámide de test, flujo reserva→evento→notificación partido por contrato, no-SpecFlow/Playwright y aplicabilidad de `bmad-qa-generate-e2e-tests`). Enlazar desde README y `uso-de-ia.md`.
+- [x] **Task 7 — `docs/bdd-y-e2e.md` (nuevo)** (AC: ET.2.7)
+  - [x] Documento consolidado: convenciones BDD (Gherkin en historias, `Dado_cuando_entonces` en dominio, `// Given/When/Then` en mensajería), mapeo historia↔test, pirámide (unit/integration/functional/contract/smoke+Newman), flujo reserva→evento→notificación partido por contrato de evento, y el porqué de no-SpecFlow/Playwright + aplicabilidad de `bmad-qa-generate-e2e-tests`. Enlazado desde README (árbol + mapa) y `uso-de-ia.md`.
 
 - [ ] **Task 8 — Verificación integral** (AC: ET.2.8)
   - [ ] `dotnet build` + `dotnet format --verify-no-changes` + suite completa de tests verde. `docker compose up` + smoke + Newman verdes. Grep final de contradicciones (auto-apply / "Dapr diferido"). Actualizar File List y Change Log.
