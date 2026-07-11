@@ -1,6 +1,6 @@
 # Story T.1: Cerrar los entregables del enunciado
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
