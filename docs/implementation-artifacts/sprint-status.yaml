@@ -105,7 +105,7 @@ development_status:
   # Reabierta 2026-07-10 (correct-course + party-mode + Santiago): se cruza la compuerta de Fase 3 → despliegue real.
   epic-8: in-progress
   8-1-aprovisionar-azure-por-terraform: done
-  8-2-despliegue-real-bajo-costo: ready-for-dev
+  8-2-despliegue-real-bajo-costo: review
   8-3-cd-on-demand-y-proteccion-main: backlog
   epic-8-retrospective: optional
 

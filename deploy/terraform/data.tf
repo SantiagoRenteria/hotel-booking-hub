@@ -16,6 +16,17 @@ resource "azurerm_mssql_server" "principal" {
   tags                          = local.tags
 }
 
+# Regla de firewall para la IP pública del deployer (la máquina/runner que aplica migraciones). La regla
+# "AllowAzureServices" (0.0.0.0) solo cubre servicios de Azure, NO la IP local → sin esta regla, `sqlcmd` desde
+# la máquina del deployer da timeout. Se crea solo si se pasa `ip_deployer` (se detecta en el runbook/pipeline).
+resource "azurerm_mssql_firewall_rule" "deployer" {
+  count            = var.ip_deployer != "" ? 1 : 0
+  name             = "AllowDeployer"
+  server_id        = azurerm_mssql_server.principal.id
+  start_ip_address = var.ip_deployer
+  end_ip_address   = var.ip_deployer
+}
+
 # Permite que servicios de Azure (incluidas las Container Apps) se conecten al servidor SQL. La regla 0.0.0.0
 # es la convención de Azure para "Allow Azure services", no un rango público real.
 resource "azurerm_mssql_firewall_rule" "azure_services" {
@@ -25,35 +36,48 @@ resource "azurerm_mssql_firewall_rule" "azure_services" {
   end_ip_address   = "0.0.0.0"
 }
 
-# Una base por servicio (ADR-001): Hoteles y Reservas. SKU barato (Basic) — la escala a esta prueba sobra.
+# Una base por servicio (ADR-001): Hoteles y Reservas. GP_S serverless con auto-pause (ADR-022): cuando no hay
+# conexiones la BD se pausa a 0 de cómputo (solo se paga almacenamiento marginal) → mínimo costo en el ciclo
+# apply→probar→destroy. min_capacity 0.5 vCore; auto_pause_delay 60 min (mínimo permitido por Azure).
 resource "azurerm_mssql_database" "hoteles" {
-  name      = "db-hoteles"
-  server_id = azurerm_mssql_server.principal.id
-  sku_name  = "Basic"
-  tags      = local.tags
+  name                        = "db-hoteles"
+  server_id                   = azurerm_mssql_server.principal.id
+  sku_name                    = "GP_S_Gen5_1"
+  min_capacity                = 0.5
+  auto_pause_delay_in_minutes = 60
+  tags                        = local.tags
 }
 
 resource "azurerm_mssql_database" "reservas" {
-  name      = "db-reservas"
-  server_id = azurerm_mssql_server.principal.id
-  sku_name  = "Basic"
-  tags      = local.tags
+  name                        = "db-reservas"
+  server_id                   = azurerm_mssql_server.principal.id
+  sku_name                    = "GP_S_Gen5_1"
+  min_capacity                = 0.5
+  auto_pause_delay_in_minutes = 60
+  tags                        = local.tags
 }
 
-resource "azurerm_redis_cache" "principal" {
-  name                 = "${local.nombre}-redis"
-  location             = azurerm_resource_group.principal.location
-  resource_group_name  = azurerm_resource_group.principal.name
-  capacity             = 0
-  family               = "C"
-  sku_name             = "Basic"
-  non_ssl_port_enabled = false
-  minimum_tls_version  = "1.2"
-  tags                 = local.tags
+# Azure Managed Redis (reemplaza al Azure Cache for Redis CLÁSICO, que Microsoft retira y ya no deja crear).
+# SKU Balanced_B0 (el más pequeño). HA off (entorno de prueba, mínimo costo). Expone hostname/port/primary_access_key;
+# la cadena StackExchange completa se arma en `local.redis_cs` (main.tf) y se usa en apps/keyvault.
+resource "azurerm_managed_redis" "principal" {
+  name                      = "${local.nombre}-redis"
+  location                  = azurerm_resource_group.principal.location
+  resource_group_name       = azurerm_resource_group.principal.name
+  sku_name                  = "Balanced_B0"
+  high_availability_enabled = false
+  tags                      = local.tags
+
+  # Habilita auth por clave de acceso (StackExchange usa password); si no, AMR queda solo con Entra ID.
+  default_database {
+    access_keys_authentication_enabled = true
+  }
 }
 
+# Nota: el nombre de un Service Bus namespace NO puede terminar en "-sb" ni "-mgmt" (regla del provider,
+# validada en `plan`, no en `validate`) → se usa "-bus" en vez de "-sb".
 resource "azurerm_servicebus_namespace" "principal" {
-  name                = "${local.nombre}-sb"
+  name                = "${local.nombre}-bus"
   location            = azurerm_resource_group.principal.location
   resource_group_name = azurerm_resource_group.principal.name
   sku                 = "Standard"
