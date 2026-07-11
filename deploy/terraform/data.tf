@@ -14,6 +14,24 @@ resource "azurerm_mssql_server" "principal" {
   # dinámicas) alcancen la BD. Hardening de prod: private endpoint + VNet integration (documentado, no aplicado).
   public_network_access_enabled = true
   tags                          = local.tags
+
+  # Admin AAD del servidor = el deployer (identidad de la sesión az/OIDC que corre Terraform). Habilita aplicar
+  # las migraciones EF Core por token AAD (sqlcmd -G), sin contraseña SQL en el pipeline (ADR-021/022).
+  azuread_administrator {
+    login_username = var.sql_aad_admin_login
+    object_id      = var.sql_aad_admin_object_id != "" ? var.sql_aad_admin_object_id : data.azurerm_client_config.actual.object_id
+  }
+}
+
+# Regla de firewall para la IP pública del deployer (la máquina/runner que aplica migraciones). La regla
+# "AllowAzureServices" (0.0.0.0) solo cubre servicios de Azure, NO la IP local → sin esta regla, `sqlcmd` desde
+# la máquina del deployer da timeout. Se crea solo si se pasa `ip_deployer` (se detecta en el runbook/pipeline).
+resource "azurerm_mssql_firewall_rule" "deployer" {
+  count            = var.ip_deployer != "" ? 1 : 0
+  name             = "AllowDeployer"
+  server_id        = azurerm_mssql_server.principal.id
+  start_ip_address = var.ip_deployer
+  end_ip_address   = var.ip_deployer
 }
 
 # Permite que servicios de Azure (incluidas las Container Apps) se conecten al servidor SQL. La regla 0.0.0.0
@@ -25,19 +43,25 @@ resource "azurerm_mssql_firewall_rule" "azure_services" {
   end_ip_address   = "0.0.0.0"
 }
 
-# Una base por servicio (ADR-001): Hoteles y Reservas. SKU barato (Basic) — la escala a esta prueba sobra.
+# Una base por servicio (ADR-001): Hoteles y Reservas. GP_S serverless con auto-pause (ADR-022): cuando no hay
+# conexiones la BD se pausa a 0 de cómputo (solo se paga almacenamiento marginal) → mínimo costo en el ciclo
+# apply→probar→destroy. min_capacity 0.5 vCore; auto_pause_delay 60 min (mínimo permitido por Azure).
 resource "azurerm_mssql_database" "hoteles" {
-  name      = "db-hoteles"
-  server_id = azurerm_mssql_server.principal.id
-  sku_name  = "Basic"
-  tags      = local.tags
+  name                        = "db-hoteles"
+  server_id                   = azurerm_mssql_server.principal.id
+  sku_name                    = "GP_S_Gen5_1"
+  min_capacity                = 0.5
+  auto_pause_delay_in_minutes = 60
+  tags                        = local.tags
 }
 
 resource "azurerm_mssql_database" "reservas" {
-  name      = "db-reservas"
-  server_id = azurerm_mssql_server.principal.id
-  sku_name  = "Basic"
-  tags      = local.tags
+  name                        = "db-reservas"
+  server_id                   = azurerm_mssql_server.principal.id
+  sku_name                    = "GP_S_Gen5_1"
+  min_capacity                = 0.5
+  auto_pause_delay_in_minutes = 60
+  tags                        = local.tags
 }
 
 resource "azurerm_redis_cache" "principal" {

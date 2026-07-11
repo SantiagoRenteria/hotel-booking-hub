@@ -4,7 +4,7 @@ IaC del despliegue a Azure de `hotel-booking-hub`, **exclusivamente por Terrafor
 
 ## ⚠️ Compuerta de Fase 3 (leer)
 
-La IaC se entrega **validada y ejecutable**, **no aplicada**: `terraform plan`/`apply` requieren una suscripción de Azure + credenciales, fuera del alcance de la prueba. El gate reproducible (local y en CI) es `terraform fmt -check` + `terraform validate`. No es "documentado pero roto": Terraform es intrínsecamente *describir → validar → aplicar cuando haya auth*.
+La IaC se valida siempre con `terraform fmt -check` + `validate` (local y CI, sin credenciales). **La compuerta se cruza on-demand** (Story 8.2, decisión de Santiago): el despliegue real se ejecuta **cuando se decide**, con estrategia de **mínimo costo `apply → probar → destroy`** — NO auto-aplica en cada merge (ADR-021). Ver el runbook abajo.
 
 ## Qué provisiona
 
@@ -19,8 +19,10 @@ La IaC se entrega **validada y ejecutable**, **no aplicada**: `terraform plan`/`
 | Service Bus (+ topic) | `azurerm_servicebus_namespace`, `_topic` | Transporte del pub/sub Dapr en nube (ADR-019) |
 | Key Vault (+ secretos) | `azurerm_key_vault`, `_secret` | Custodia de secretos, RBAC (ADR-020) |
 | Container App Environment | `azurerm_container_app_environment` | ACA con Dapr + KEDA gestionados (ADR-008) |
-| Componentes Dapr | `azurerm_container_app_environment_dapr_component` | `pubsub` (Service Bus) + `statestore` (Redis) |
+| Componentes Dapr | `azurerm_container_app_environment_dapr_component` | `pubsub` (Service Bus) + `statestore` (Redis) + `secretstore` (Key Vault) |
 | 4 Container Apps | `azurerm_container_app` | gateway (ingress externo), hoteles, reservas, notificaciones |
+
+**Bajo costo (Story 8.2 · ADR-023):** `gateway/hoteles/reservas` con `min_replicas=0` (scale-to-zero); `notificaciones` con `min_replicas=1` (consume del Service Bus sin reintroducir secretos). Las 2 BD son **GP_S serverless con auto-pause** (se pausan a 0 de cómputo sin conexiones).
 
 ## Cero secretos (ADR-020)
 
@@ -53,6 +55,34 @@ terraform -chdir=deploy/terraform init -backend=false
 terraform -chdir=deploy/terraform validate
 ```
 El job `terraform` de `.github/workflows/ci.yml` ejecuta exactamente esto en cada push/PR.
+
+## Runbook — despliegue real de bajo costo (Story 8.2)
+
+Estrategia **`apply → probar → destroy`** (pagas solo las horas de prueba). Requiere `az login` activo + Terraform + `dotnet ef` + `sqlcmd` (go-sqlcmd) + `openssl`.
+
+```bash
+# 1) Bootstrap del state remoto (una vez; RG-state PERMANENTE, no se destruye) — ADR-022
+bash deploy/terraform/bootstrap/bootstrap-state.sh          # crea RG-state + Storage + container (auth AAD)
+
+# 2) Deploy orquestado. Primer pase muestra el PLAN y se detiene (compuerta):
+bash deploy/scripts/deploy.sh                               # preflight + bootstrap + init + PLAN
+# Revisa el plan y, para crear recursos FACTURABLES:
+CONFIRM=yes bash deploy/scripts/deploy.sh                   # apply + build/push ACR + migraciones + smoke
+
+# 3) Al terminar de probar — imprescindible para no incurrir en costos:
+bash deploy/scripts/destroy.sh                              # destruye el RG-app (el RG-state permanece)
+```
+
+Scripts (`deploy/scripts/` y `deploy/terraform/bootstrap/`):
+- `bootstrap-state.sh` — state remoto sin secretos (backend `azurerm` + `use_azuread_auth`).
+- `build-push.sh` — `az acr build` de las 4 imágenes (tag = git sha); pull por Managed Identity.
+- `sql/*.sql` — migraciones EF Core **idempotentes** (generadas offline del modelo, versionadas).
+- `migrate.sh` — aplica los `.sql` por **AAD** (`sqlcmd -G`) con retry por el cold start del auto-resume.
+- `mint-jwt.sh` — emite un JWT HS256 de prueba con la clave de Key Vault (réplica de `TokenDePrueba`).
+- `smoke.sh` — `/health` con retry + flujo de negocio real (crear hotel → habitación → reserva → cancelar) + evidencia del evento en el worker.
+- `deploy.sh` / `destroy.sh` — orquestadores del ciclo (la compuerta `CONFIRM=yes` protege el `apply`).
+
+**Costos/avisos:** Redis Basic C0 (~0.02 USD/h) y Service Bus Standard (~0.01 USD/h) **facturan 24/7 mientras existan**; SQL serverless pausada es marginal (solo storage); ACA scale-to-zero ≈ 0. Por eso el `destroy` es parte del ciclo. Riesgos: cold start (mitigado con retry), quota de ACA en suscripción nueva (el preflight registra providers; si `quota exceeded`, pedir aumento).
 
 ## Migración a AKS (documentada, no ejecutada)
 
