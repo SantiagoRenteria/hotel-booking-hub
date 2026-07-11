@@ -15,11 +15,26 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NOTIF="${APP_NOTIF:-hbh-dev-notificaciones}"
 
 say() { echo ">> $*"; }
-req() { # metodo ruta [json]  -> imprime el body; falla si no es 2xx
-  local m="$1" path="$2" body="${3:-}"
-  local args=(-fsS -X "$m" "$GATEWAY$path" -H "Authorization: Bearer $TOKEN")
+req() { # metodo ruta [json]  -> imprime el body en 2xx; reintenta el cold start (scale-to-zero) de servicios internos
+  local m="$1" path="$2" body="${3:-}" attempt=1 out code resp
+  local args=(-sS -X "$m" "$GATEWAY$path" -H "Authorization: Bearer $TOKEN" -w $'\n%{http_code}')
   [ -n "$body" ] && args+=(-H "Content-Type: application/json" -d "$body")
-  curl "${args[@]}"
+  while :; do
+    out="$(curl "${args[@]}" 2>/dev/null)"
+    code="${out##*$'\n'}"
+    resp="${out%$'\n'*}"
+    if [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
+      printf '%s' "$resp"
+      return 0
+    fi
+    if [ "$attempt" -ge 8 ]; then
+      echo "   $m $path -> HTTP $code tras $attempt intentos: $resp" >&2
+      return 1
+    fi
+    echo "   $m $path -> HTTP $code (cold start de servicio interno); reintento $attempt/8 en 15s..." >&2
+    sleep 15
+    attempt=$((attempt + 1))
+  done
 }
 
 # 1) Health con retry (hasta ~2 min por cold start).
