@@ -103,7 +103,7 @@ development_status:
 
   # ---- Epic 8: Nube por IaC (con compuerta) ----
   epic-8: in-progress
-  8-1-aprovisionar-azure-por-terraform: review
+  8-1-aprovisionar-azure-por-terraform: in-progress
   epic-8-retrospective: optional
 
   # ---- Epic 9: Transporte real de eventos entre BCs (cierre de brecha, correct-course 2026-07-10) ----
