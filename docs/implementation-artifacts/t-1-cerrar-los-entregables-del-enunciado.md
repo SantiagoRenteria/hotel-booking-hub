@@ -1,6 +1,6 @@
 # Story T.1: Cerrar los entregables del enunciado
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -35,7 +35,7 @@ ADR como archivos individuales (Contexto · Decisión · Consecuencias), incluid
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Data-plane funcional del compose** (AC: ET.1.5)
+- [x] **Task 1 — Data-plane funcional del compose** (AC: ET.1.5)
   - [ ] `deploy/docker-compose.yml`: añadir a `hoteles` `ConnectionStrings__hotelesdb` (→ `sql-hoteles`), a `reservas` `ConnectionStrings__reservasdb` (→ `sql-reservas`) + `ConnectionStrings__redis` (→ `redis:6379`), a `notificaciones` `ConnectionStrings__redis`. Cadena SQL: `Server=<svc>;Database=db-<bc>;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True`.
   - [ ] Aplicar migraciones EF al arranque (Program.cs `Database.Migrate()` gated por entorno/flag, o un init) para que el esquema exista sin pasos manuales. Verificar que NO rompe los tests (que usan Testcontainers `MigrateAsync`).
   - [ ] Verificar local: `docker compose up` → crear hotel→habitación→reserva→cancelar 2xx + notificación por RabbitMQ (log del worker). Documentar.
