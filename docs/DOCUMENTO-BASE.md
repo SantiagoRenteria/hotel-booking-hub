@@ -335,7 +335,7 @@ Al confirmar una reserva, dentro de una transacción (*[Corregido — ADR-016]* 
 - Anti-overbooking garantizado por el motor vía unicidad de slots (§8.5).
 - Joins para reportes de comisiones del agente; madurez de EF Core + Testcontainers.
 
-**Rol de Redis:** caché de resultados de búsqueda de disponibilidad (lecturas frecuentes), inbox de idempotencia del worker, y Dapr state store. No es fuente de verdad transaccional.
+**Rol de Redis:** caché de resultados de búsqueda de disponibilidad (Reservas), caché de la lectura del catálogo (Hoteles — listas paginadas con invalidación por generación, Story T.6), inbox de idempotencia del worker, y Dapr state store. No es fuente de verdad transaccional.
 
 **Qué se sacrifica:** escalado horizontal de escritura (sharding) más simple en NoSQL, y flexibilidad de esquema. Pero **10.000 reservas/día ≈ 0,12 writes/s** promedio (picos de decenas/s) → SQL Server en una instancia sobra.
 
