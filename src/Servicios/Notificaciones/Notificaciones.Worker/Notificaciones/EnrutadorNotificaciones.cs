@@ -34,18 +34,21 @@ public sealed class EnrutadorNotificaciones
     }
 
     /// <summary>
-    /// Despacha el evento al procesador de su tipo. Devuelve <c>true</c> si el mensaje quedó resuelto
-    /// (procesado o apartado a dead-letter → ACK); propaga la excepción si aún hay presupuesto de reintentos
-    /// (→ NACK/requeue para reentrega). Un tipo desconocido devuelve <c>true</c> (ACK, nada que hacer).
+    /// Despacha el evento al procesador de su tipo. Retorna normalmente si el mensaje quedó resuelto (procesado o
+    /// apartado a dead-letter → el consumidor hace ACK); PROPAGA la excepción si aún hay presupuesto de reintentos
+    /// (→ el consumidor hace NACK/requeue para reentrega). Un <c>Type</c> nulo/vacío o desconocido retorna sin
+    /// hacer nada (ACK): otros BCs publican al mismo transporte y un envelope sin tipo enrutable no es reintentable.
     /// </summary>
-    public async Task<bool> EnrutarAsync(EventoIntegracion evento, CancellationToken ct)
+    public async Task EnrutarAsync(EventoIntegracion evento, CancellationToken ct)
     {
-        if (!_porTipo.TryGetValue(evento.Type, out var despachador))
+        // Guard de Type nulo/vacío ANTES del lookup: Dictionary.TryGetValue(null) lanza ArgumentNullException, que
+        // ocurriría fuera de todo DespachadorNotificaciones → sin tope de intentos → requeue infinito. Se trata
+        // como tipo no enrutable (ACK), igual que un tipo desconocido.
+        if (string.IsNullOrEmpty(evento.Type) || !_porTipo.TryGetValue(evento.Type, out var despachador))
         {
-            return true;
+            return;
         }
 
         await despachador.DespacharAsync(evento, ct);
-        return true;
     }
 }

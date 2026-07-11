@@ -107,10 +107,12 @@ public sealed class TransporteRabbitMqTests : IAsyncLifetime
         // When: se publica una ReservaConfirmada.v1 en el topic "reservas".
         await PublicarAsync(evento);
 
-        // Then: el worker la consume y dispara 2 correos (huésped + agente).
+        // Then: el worker la consume y dispara 2 correos, al huésped Y al agente (identidad, no solo cardinalidad).
         var llego = await EsperarHasta(() => notificador.Destinatarios.Count >= 2, TimeSpan.FromSeconds(15));
         Assert.True(llego, $"No llegó la notificación; destinatarios vistos: {notificador.Destinatarios.Count}");
         Assert.Equal(2, notificador.Destinatarios.Count);
+        Assert.Contains("ana@x.com", notificador.Destinatarios);
+        Assert.Contains("agente@x.com", notificador.Destinatarios);
 
         // When: se RE-ENTREGA el mismo MessageId (duplicado del broker / reintento).
         await PublicarAsync(evento);
@@ -118,6 +120,37 @@ public sealed class TransporteRabbitMqTests : IAsyncLifetime
 
         // Then: NO se re-emite (dedup por el inbox idempotente) → siguen 2.
         Assert.Equal(2, notificador.Destinatarios.Count);
+
+        await consumidor.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Enruta_por_tipo_al_consumidor_correcto()
+    {
+        // Given: el worker consumidor conectado; un evento de OTRO tipo (solicitud de cancelación) con
+        // destinatarios propios (que el consumidor de confirmación NO produciría — prueba de discriminación).
+        var notificador = new NotificadorFake();
+        var consumidor = new ConsumidorRabbitMq(_rabbit.GetConnectionString(), Enrutador(notificador), NullLogger<ConsumidorRabbitMq>.Instance);
+        await consumidor.StartAsync(CancellationToken.None);
+        var evento = new EventoIntegracion(
+            Id: Guid.CreateVersion7(),
+            Type: SolicitudCancelacionRegistradaV1.Tipo,
+            Version: 1,
+            OccurredAt: new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero),
+            TraceId: null,
+            Data: new SolicitudCancelacionRegistradaV1(
+                AggregateId: Guid.CreateVersion7(), Iniciador: "Viajero", MotivoCategoria: "Personal",
+                MotivoDetalle: "cambio de planes", PenalidadPorcentaje: 10m, FechaSolicitud: new DateOnly(2026, 8, 1),
+                HuespedEmail: "viajero-cxl@x.com", AgenteEmail: "agente-cxl@x.com"));
+
+        // When: se publica en el topic "reservas".
+        await PublicarAsync(evento);
+
+        // Then: fue enrutado a ConsumidorSolicitudCancelacion (destinatario del acuse de cancelación), no ignorado
+        // por el de confirmación (que descarta este tipo) → prueba el enrutamiento por Type.
+        var llego = await EsperarHasta(() => notificador.Destinatarios.Contains("viajero-cxl@x.com"), TimeSpan.FromSeconds(15));
+        Assert.True(llego, "La solicitud de cancelación no fue enrutada a su consumidor.");
+        Assert.Contains("agente-cxl@x.com", notificador.Destinatarios);
 
         await consumidor.StopAsync(CancellationToken.None);
     }
