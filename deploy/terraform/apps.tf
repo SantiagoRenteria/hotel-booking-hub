@@ -235,6 +235,11 @@ resource "azurerm_container_app" "hoteles" {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = azurerm_application_insights.principal.connection_string
       }
+      # Transporte de eventos en nube = Dapr→Service Bus (ADR-019); en local/compose no se setea → RabbitMQ.
+      env {
+        name  = "TransporteEventos"
+        value = "Dapr"
+      }
       env {
         name        = "ConnectionStrings__hotelesdb"
         secret_name = "cs-hotelesdb"
@@ -322,6 +327,10 @@ resource "azurerm_container_app" "reservas" {
         value = azurerm_application_insights.principal.connection_string
       }
       env {
+        name  = "TransporteEventos"
+        value = "Dapr"
+      }
+      env {
         name        = "ConnectionStrings__reservasdb"
         secret_name = "cs-reservasdb"
       }
@@ -392,6 +401,11 @@ resource "azurerm_container_app" "notificaciones" {
       env {
         name        = "ConnectionStrings__redis"
         secret_name = "cs-redis"
+      }
+      # Suscripción Dapr pub/sub (el worker recibe los eventos del Service Bus por el sidecar Dapr).
+      env {
+        name  = "TransporteEventos"
+        value = "Dapr"
       }
     }
   }

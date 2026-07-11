@@ -64,7 +64,7 @@ flowchart TB
   wrk --> redis
 ```
 
-> El transporte es RabbitMQ directo en local (corre end-to-end) y Dapr→Service Bus en nube (adaptador de nube diferido; ver [ADR-019](docs/adr/ADR-019-transporte-de-eventos-por-strategy-seg-n-entorno-rabbitmq-lo.md) y [deferred-work](docs/implementation-artifacts/deferred-work.md)).
+> El transporte es RabbitMQ directo en local (corre end-to-end, verificado) y **Dapr→Service Bus en nube** (adaptador `PublicadorEventosDapr` + suscripción Dapr del worker, seleccionados por entorno; verificación de runtime en el deploy de nube por el CD). Ver [ADR-019](docs/adr/ADR-019-transporte-de-eventos-por-strategy-seg-n-entorno-rabbitmq-lo.md).
 
 ## Ejecutar en local (un comando)
 
