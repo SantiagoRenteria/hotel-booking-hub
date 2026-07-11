@@ -54,5 +54,8 @@ public sealed class LectorCatalogoSql(HotelesDbContext db) : ILectorCatalogo
         return hotelPropio ? HabitacionResponseDto.De(habitacion, RowVersion(habitacion)) : null;
     }
 
+    // Requiere entidad TRACKED (la shadow property RowVersion solo se puebla con tracking) → las consultas de
+    // arriba NO usan AsNoTracking a propósito. Si algún día se añade AsNoTracking aquí, hay que proyectar el
+    // rowversion con EF.Property<byte[]>(...) en la query, o esto daría null.
     private byte[] RowVersion(object entidad) => (byte[])db.Entry(entidad).Property("RowVersion").CurrentValue!;
 }

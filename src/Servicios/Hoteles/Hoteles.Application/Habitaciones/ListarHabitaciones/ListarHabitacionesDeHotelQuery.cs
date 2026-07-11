@@ -10,11 +10,16 @@ namespace Hoteles.Application.Habitaciones.ListarHabitaciones;
 /// </summary>
 public sealed record ListarHabitacionesDeHotelQuery(Guid HotelId) : IRequest<Result<IReadOnlyList<HabitacionResponseDto>>>;
 
-public sealed class ListarHabitacionesDeHotelQueryHandler(ILectorCatalogo lector)
+public sealed class ListarHabitacionesDeHotelQueryHandler(ILectorCatalogo lector, IContextoAgente contexto)
     : IRequestHandler<ListarHabitacionesDeHotelQuery, Result<IReadOnlyList<HabitacionResponseDto>>>
 {
     public async Task<Result<IReadOnlyList<HabitacionResponseDto>>> Handle(ListarHabitacionesDeHotelQuery request, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(contexto.AgenteActual))
+        {
+            return Result<IReadOnlyList<HabitacionResponseDto>>.Prohibido("Se requiere la identidad del agente.");
+        }
+
         var habitaciones = await lector.ListarHabitacionesDeHotelAsync(request.HotelId, ct);
         return habitaciones is null
             ? Result<IReadOnlyList<HabitacionResponseDto>>.NoEncontrado($"No existe un hotel {request.HotelId} para este agente.")

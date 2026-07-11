@@ -65,4 +65,18 @@ public class CoberturaAutorizacionHotelesTests(HotelesApiFactory factory) : ICla
 
         Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
     }
+
+    // Story T.5 (fail-closed, hallazgo de code-review) — un token con rol Agente pero SIN identidad (claim email
+    // vacío) NO debe listar el catálogo de todos: el handler corta con 403 (Prohibido) antes de tocar la BD.
+    [Fact]
+    public async Task Agente_sin_identidad_al_listar_hoteles_responde_403()
+    {
+        var cliente = factory.CreateClient();
+        cliente.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", TokenDePrueba.Emitir(rol: TokenDePrueba.RolAgente, email: string.Empty));
+
+        var respuesta = await cliente.GetAsync("/api/v1/hoteles");
+
+        Assert.Equal(HttpStatusCode.Forbidden, respuesta.StatusCode);
+    }
 }

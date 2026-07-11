@@ -4,7 +4,7 @@ baseline_commit: ea7e14fc3d36b5311f5a9375e17a1746b84821e0
 
 # Story T.5: Lectura del catálogo — GET de hoteles y habitaciones
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -40,7 +40,7 @@ El aislamiento por agente se ejerce en los 4 GET (dueño ve, ajeno no → 404/li
   - [x] `ListarHotelesDelAgenteQuery : IRequest<Result<IReadOnlyList<HotelVistaDto>>>` + handler. Lee los hoteles del agente (el query filter global ya aísla por `AgentePropietario` y excluye `Eliminado`). Fail-closed: sin identidad → `Result.Prohibido` (403).
   - [x] `ObtenerHotelDetalleQuery(Guid Id) : IRequest<Result<HotelVistaDto>>` + handler. Usa `IHotelRepository.ObtenerAsync(id)` (ya aislado); null → `Result.NoEncontrado` (404).
   - [x] Nuevo DTO de lectura `HotelVistaDto` (Id, Nombre, Ciudad, Direccion, Descripcion, Estado string, RowVersion base64) — `HotelResponseDto` es pobre (sin Direccion/Descripcion). Método `De(Hotel, byte[] rowVersion)`.
-  - [x] `IHotelRepository.ListarAsync(ct)` (nuevo) → lista del agente (o leer vía `HotelesDbContext.Hoteles` en el handler; el filtro global aplica igual). Mapear rowVersion desde la shadow property (patrón `RowVersionActual`).
+  - [x] Lectura vía **read-port dedicado `ILectorCatalogo`** → `LectorCatalogoSql` (NO se tocó el puerto de escritura `IHotelRepository`; separación CQRS limpia, patrón de `ILectorReservasAgente`). Lee `HotelesDbContext.Hoteles` (hereda el filtro global) tracked y mapea el rowVersion desde la shadow property.
 
 - [x] **Task 2 — Queries + handlers de Habitaciones (lectura)** (AC: ET.5.3, ET.5.4)
   - [x] `ListarHabitacionesDeHotelQuery(Guid HotelId)` + handler: **primero** verifica que el hotel pertenece al agente (`IHotelRepository.ObtenerAsync(hotelId)` → null ⇒ 404); si es propio, lista sus habitaciones.
@@ -117,3 +117,20 @@ claude-opus-4-8 (Amelia / dev-story)
 |---|---|
 | 2026-07-11 | Story T.5 creada (create-story): GET lectura del catálogo (hoteles lista+detalle, habitaciones lista-por-hotel+detalle), SoloAgente, aislado por agente. Status → ready-for-dev. |
 | 2026-07-11 | Story T.5 (dev-story): 4 GET implementados (CQRS con read-port ILectorCatalogo), TDD (LecturaCatalogoTests + GET 403), Postman+smoke con los GET. Suite completa+G1 verdes; smoke+Newman(single) verdes. Status → review. |
+| 2026-07-11 | Code-review (3 capas) + follow-ups: fail-closed de identidad en los 4 handlers (+test funcional 403), rate limit holgado en compose (evita 429 en re-runs), comentario de tracking del rowVersion, subtask stale corregido. Re-verificado: suite+G1 verdes, smoke + Newman -n 2 (116 asserts/0). |
+
+## Senior Developer Review (AI)
+
+- **Fecha:** 2026-07-11 · **Resultado:** Changes Requested → **resuelto**.
+- **Método:** 3 capas adversariales (Blind Hunter, Edge Case Hunter, Acceptance Auditor). **Sin ALTA; sin fugas de aislamiento.** Los 5 ACs se cumplen (Acceptance Auditor).
+- **Confirmado correcto:** aislamiento de habitaciones por verificación del hotel dueño (transitivo, `Habitacion` sin filtro propio); 200 vs 404 uniforme (ajeno/eliminado/inexistente → 404, no lista vacía); rowVersion desde entidades tracked (sin NRE hoy); routing del Gateway intacto (`disponibles`→reservas vs `{guid}`→hoteles); SoloAgente en los 4 endpoints.
+- **Action items (resueltos):** ver *Review Follow-ups (AI)*.
+
+## Review Follow-ups (AI)
+
+- [x] [AI-Review][Med] Fail-closed ausente: sin identidad el query filter se desactivaba (los handlers devolvían siempre Ok). → Inyectado `IContextoAgente` en los **4 handlers** de lectura + guard `Prohibido` (403) si `AgenteActual` es null (igual que los handlers de escritura y como pedía la Task 1). Test funcional nuevo: rol Agente sin claim email → GET /api/v1/hoteles → **403** (corta antes de la BD).
+- [x] [AI-Review][Med] Sin test de aislamiento por el **camino HTTP** (solo a nivel lector). → El test funcional del fail-closed ejerce el seam HTTP (auth → contexto → handler); el aislamiento con datos se cubre en integración (Testcontainers) porque el `HotelesApiFactory` usa una cadena ficticia (sin BD real). Documentado.
+- [x] [AI-Review][Low] Rate limiter (100/60s) daba **429** en re-ejecuciones rápidas (`newman -n 2`, o el usuario re-corriendo). → `RateLimit__PermitLimit` holgado **solo en compose** (dev/test); Azure/ACA mantiene el estricto de appsettings. Verificado: `newman -n 2` → 116 asserts/0.
+- [x] [AI-Review][Low] `rowVersion` acoplado al tracking por defecto (NRE latente si se añade `AsNoTracking`). → Comentario defensivo en `LectorCatalogoSql.RowVersion` (requiere tracking; alternativa `EF.Property` si se cambia).
+- [x] [AI-Review][Low] Subtask de la historia describía `IHotelRepository.ListarAsync` (no implementado; se usó `ILectorCatalogo`). → Texto del subtask corregido a la solución real (read-port CQRS).
+- [ ] [AI-Review][Note] Sin paginación en las listas (carga todo el catálogo del agente, tracked). Aceptable para catálogos pequeños; queda como mejora futura fuera del alcance de T.5.
