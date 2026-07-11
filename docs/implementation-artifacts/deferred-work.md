@@ -2,6 +2,11 @@
 
 Hallazgos reales pero no accionables ahora, registrados para no perderlos.
 
+## Deferred from: Story 8.1 (IaC Terraform, 2026-07-10)
+
+- **Adaptador `.NET PublicadorEventosDapr` (transporte de nube)** (alcance — E8) — el component Dapr `pubsub`→Service Bus está en la IaC; falta el adaptador `.NET` que publique vía `DaprClient` detrás de `IPublicadorEventos` (seleccionado por entorno, ADR-019). Requiere Dapr en runtime (solo ACA), no testeable localmente; se implementa al ejecutar un despliegue real. `[Reservas.Infrastructure/Mensajeria, Hoteles.Infrastructure/Mensajeria]`
+- **`terraform plan`/`apply` reales + backend remoto + push de imágenes a ACR** (compuerta Fase 3) — la IaC está validada (`fmt`+`validate`), no aplicada (sin suscripción/credenciales). Al ejecutar: configurar backend remoto (Azure Storage + lock), `az login`/OIDC, `plan`/`apply`, y `az acr build`/push con la etiqueta en `var.imagen_*`. `[deploy/terraform/]`
+
 ## Deferred from: code review of story-9.1 (2026-07-10)
 
 - **Requeue sin backoff + contador de reintentos en memoria (veneno cross-restart)** (blind+edge, MED) — el `ConsumidorRabbitMq` hace `nack+requeue` inmediato cuando el `DespachadorNotificaciones` relanza; dentro de una corrida está acotado a `MaxIntentos`, pero sin backoff es un hot-loop, y `ContadorReintentosEnMemoria` se reinicia si el worker se reinicia → un mensaje-veneno podría no alcanzar nunca el dead-letter entre reinicios. Fix: contador de reintentos en Redis (paridad con el inbox de 5.1b) + backoff (delayed-retry exchange o requeue con espera). Misma familia que la limitación ya registrada del contador en memoria de 5.1b. `[Notificaciones.Worker/ConsumidorRabbitMq.cs, ContadorReintentosEnMemoria.cs]`
