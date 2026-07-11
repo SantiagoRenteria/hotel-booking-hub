@@ -106,7 +106,7 @@ development_status:
   epic-8: in-progress
   8-1-aprovisionar-azure-por-terraform: done
   8-2-despliegue-real-bajo-costo: done
-  8-3-cd-on-demand-y-proteccion-main: ready-for-dev
+  8-3-cd-on-demand-y-proteccion-main: review
   epic-8-retrospective: optional
 
   # ---- Epic 9: Transporte real de eventos entre BCs (cierre de brecha, correct-course 2026-07-10) ----

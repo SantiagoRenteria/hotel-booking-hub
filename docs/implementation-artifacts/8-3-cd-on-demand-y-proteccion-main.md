@@ -1,6 +1,7 @@
 # Story 8.3: CD automático por Terraform + protección de `main`
 
-Status: ready-for-dev
+Status: review
+baseline_commit: 2b46351
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -44,20 +45,20 @@ para **desplegar de forma auditada, reproducible y sin intervención manual, con
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Workflow de CD** (AC: 8.3.2, 8.3.3)
+- [x] **Task 1 — Workflow de CD** (AC: 8.3.2, 8.3.3)
   - [ ] `.github/workflows/cd.yml`: trigger `on: push: branches: [main]` (deploy) + `workflow_dispatch` con input `accion` (`deploy`/`destroy`). `permissions: { id-token: write, contents: read }`, `concurrency` por rama (evita applies solapados).
   - [ ] Job `deploy`: `azure/login@v2` (OIDC, `client-id`/`tenant-id`/`subscription-id` desde `vars`), setup Terraform + .NET + sqlcmd/openssl, `export ARM_USE_OIDC=true ARM_CLIENT_ID/... ARM_SUBSCRIPTION_ID/...`, luego `CONFIRM=yes bash deploy/scripts/deploy.sh` (auto-detecta IP del runner para el firewall SQL).
   - [ ] Job `destroy` (solo `workflow_dispatch` + `accion=destroy`): `bash deploy/scripts/destroy.sh`.
   - [ ] Adaptar `deploy.sh`/`destroy.sh` para auth OIDC en CI: cuando `ARM_USE_OIDC=true`, NO exportar `ARM_ACCESS_KEY` por `az storage keys` (el SP quizá no tenga esa vía) → el backend usa OIDC/`use_azuread_auth` o el SP con rol de datos. *(Decisión de dev-story; mantener la vía por clave para el flujo local del agente.)*
 
-- [ ] **Task 2 — Guía/commandos de setup OIDC** (AC: 8.3.4)
+- [x] **Task 2 — Guía/commandos de setup OIDC** (AC: 8.3.4)
   - [ ] `deploy/README.md` (o `docs/`): comandos `az ad app create` + `az ad sp create` + `az ad app federated-credential create` (issuer `https://token.actions.githubusercontent.com`, subject `repo:SantiagoRenteria/hotel-booking-hub:ref:refs/heads/main` y/o `:environment:production`, audience `api://AzureADTokenExchange`), `az role assignment create` (Contributor + User Access Administrator), y `gh variable set AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID`.
   - [ ] Documentar que estos los ejecuta **Santiago** (crean credenciales/identidades).
 
-- [ ] **Task 3 — Protección de `main`** (AC: 8.3.1)
+- [x] **Task 3 — Protección de `main`** (AC: 8.3.1)
   - [ ] Entregar el comando `gh api ... /branches/main/protection` (PR + 1 review + required checks + enforce_admins + no force-push). **Ya entregado**; incluirlo en el README de despliegue para referencia.
 
-- [ ] **Task 4 — CI/validación** (AC: todos)
+- [x] **Task 4 — CI/validación** (AC: todos)
   - [ ] Validar el `cd.yml` (sintaxis YAML / `actionlint` si está disponible); asegurar que NO rompe el `ci.yml` existente. Sin secretos (gitleaks verde).
   - [ ] Documentar en `deferred-work.md` que el primer `apply` del CD requiere el setup OIDC de Task 2 (una vez).
 
@@ -87,14 +88,28 @@ para **desplegar de forma auditada, reproducible y sin intervención manual, con
 
 ### Agent Model Used
 
+claude-opus-4-8 (Amelia / dev-story, modo autónomo)
+
 ### Debug Log References
+
+- `cd.yml` validado como YAML (jobs deploy/destroy; triggers push:main + workflow_dispatch; `if` correctos). Sin secretos (solo `vars.AZURE_*`, gitleaks verde).
+- `deploy.sh`/`destroy.sh` se reusan sin cambios: `azure/login@v2` (OIDC) establece la sesión `az` que `ARM_USE_CLI=true` aprovecha; el SP (Contributor) lista la clave del state y lee KV; en Linux el guard `cygpath` de `migrate.sh` no aplica (usa ruta POSIX).
 
 ### Completion Notes List
 
+- **CD implementado (Tasks 1-4):** `.github/workflows/cd.yml` — auto-apply en merge a `main` + destroy on-demand (`workflow_dispatch`), OIDC passwordless, reusa los scripts de 8.2; instala `sqlcmd` (go-sqlcmd) en el runner para `migrate.sh`.
+- **Setup entregado (no ejecutable por el agente):** comandos `az`/`gh` en `deploy/terraform/README.md` §CD (App Registration + federated credential `environment:production` + roles + variables) y el comando de branch protection de `main`. Los ejecuta Santiago.
+- **ADR-021 refinado** (auto-apply en merge + gate de aprobación de PR; Environment `production` como gate opcional).
+- **Gate de la historia (infra/ops):** workflow válido + setup documentado + branch protection entregada. El `apply` real del CD depende del setup OIDC de Santiago (diferido, `deferred-work.md`).
+
 ### File List
+
+**Nuevos:** `.github/workflows/cd.yml`
+**Modificados:** `deploy/terraform/README.md` (§CD), `docs/specs/spec-hotel-booking-hub/decisions-adr.md` (ADR-021 refinado), `docs/implementation-artifacts/deferred-work.md`
 
 ## Change Log
 
 | Fecha | Cambio |
 |---|---|
 | 2026-07-11 | Story 8.3 creada (create-story). Alcance ajustado por Santiago: CD auto-apply en merge a `main` (OIDC) + gate de aprobación de PR + branch protection (comando gh entregado). Reusa los scripts de 8.2. |
+| 2026-07-11 | Story 8.3 (dev-story): `cd.yml` (auto-apply merge→main + destroy on-demand, OIDC passwordless), setup OIDC + branch protection documentados (los ejecuta Santiago), ADR-021 refinado. Infra/ops (gate = workflow válido + docs). Status → review. |
