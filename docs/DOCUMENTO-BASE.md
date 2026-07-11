@@ -406,6 +406,8 @@ El enunciado pide JWT/OAuth2 + ≥3 prácticas; se implementan **8**, mapeadas a
 - **Application Insights** para telemetría.
 - Todo provisionado con **Terraform** (IaC versionada). Fase 3 con compuerta: solo si el core está sólido.
 
+> **[Corregido 2026-07-10 · correct-course + party-mode + Santiago]** La compuerta de Fase 3 se **cruzó**: el despliegue se ejecuta **de verdad** contra Azure (East US 2), pero **on-demand con aprobación** (`workflow_dispatch` + GitHub Environment `production`), **no** auto-aplicando en cada merge. Estrategia de mínimo costo **apply → smoke → destroy** (se paga solo las horas de prueba). Scale-to-zero selectivo (apps HTTP `min=0`; worker de Notificaciones `min=1` para no reintroducir secretos), SQL **GP_S serverless con auto-pause**, imágenes en **ACR** con pull por Managed Identity, CD passwordless por **OIDC federated credentials** y state remoto por **backend `azurerm` con auth AAD** (RG-state permanente / RG-app efímero). `main` protegida (PR + required checks). Ver **ADR-021** (CD OIDC on-demand), **ADR-022** (state remoto) y **ADR-023** (scale-to-zero selectivo); historias E8.2/E8.3.
+
 ### 8.14 Catálogo de patrones de diseño
 
 Se aplican **con intención** (no *pattern soup*): cada patrón resuelve un problema real del dominio. La lista muestra dónde vive cada uno en la solución.
