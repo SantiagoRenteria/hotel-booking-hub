@@ -41,6 +41,23 @@ public sealed class CacheCatalogoTests(CacheCatalogoFixture fixture)
         return hotel.Id;
     }
 
+    // Crea un hotel y devuelve (id, rowVersion) para poder editarlo/eliminarlo luego (concurrencia optimista).
+    private async Task<(Guid Id, byte[] Rv)> CrearHotelConRv(string agente, string nombre)
+    {
+        await using var db = fixture.CrearContexto();
+        var hotel = Hotel.Crear(nombre, "Bogotá", "Calle 1", "desc", EstadoHotel.Habilitado, agente);
+        var rv = await new HotelRepository(db, new InvalidadorCacheCatalogoRedis(fixture.Redis)).CrearAsync(hotel, CancellationToken.None);
+        return (hotel.Id, rv);
+    }
+
+    private async Task<Guid> SembrarHabitacion(Guid hotelId)
+    {
+        await using var db = fixture.CrearContexto();
+        var hab = Habitacion.Crear(hotelId, "Suite", 100m, 19m, "Piso 1", EstadoHabitacion.Habilitada, capacidad: 2);
+        await new HabitacionRepository(db, new InvalidadorCacheCatalogoRedis(fixture.Redis)).CrearAsync(hab, CancellationToken.None);
+        return hab.Id;
+    }
+
     [Fact]
     public async Task Segunda_lectura_sirve_de_cache_no_ve_escritura_sin_invalidar()
     {
@@ -86,5 +103,50 @@ public sealed class CacheCatalogoTests(CacheCatalogoFixture fixture)
         await Crear(RepoConInvalidador(), AgenteA, $"OtroDeA {_sfx}");
         var b2 = await lectorB.ListarHotelesAsync(1, 100, CancellationToken.None);
         Assert.Contains(b2.Items, h => h.Id == deB);
+    }
+
+    // Regresión del hallazgo CRÍTICO del code-review (IDOR): la clave de caché de la LISTA de habitaciones incluía
+    // solo el hotelId → un no-dueño leía el hit del dueño. Con el agente en la clave, B nunca ve la entrada de A.
+    [Fact]
+    public async Task La_lista_de_habitaciones_cacheada_no_se_filtra_a_otro_agente()
+    {
+        var hotelDeA = await Crear(RepoConInvalidador(), AgenteA, $"ConHab {_sfx}");
+        await SembrarHabitacion(hotelDeA);
+
+        // A cachea sus habitaciones del hotel.
+        var propias = await LectorCacheado(AgenteA).ListarHabitacionesDeHotelAsync(hotelDeA, 1, 100, CancellationToken.None);
+        Assert.NotNull(propias);
+        Assert.NotEmpty(propias!.Items);
+
+        // B pide el MISMO hotelId: no es dueño → debe ser null (404), NUNCA el hit cacheado de A.
+        var deB = await LectorCacheado(AgenteB).ListarHabitacionesDeHotelAsync(hotelDeA, 1, 100, CancellationToken.None);
+        Assert.Null(deB);
+    }
+
+    // Regresión del hallazgo MEDIO (anti-stale): eliminar el hotel debe caducar también su caché de habitaciones,
+    // si no un GET posterior daría 200 con habitaciones stale dentro del TTL en vez de 404.
+    [Fact]
+    public async Task Eliminar_el_hotel_invalida_la_cache_de_sus_habitaciones()
+    {
+        var (hotelId, rv) = await CrearHotelConRv(AgenteA, $"AElim {_sfx}");
+        await SembrarHabitacion(hotelId);
+
+        var lector = LectorCacheado(AgenteA);
+        var antes = await lector.ListarHabitacionesDeHotelAsync(hotelId, 1, 100, CancellationToken.None); // cachea
+        Assert.NotNull(antes);
+        Assert.NotEmpty(antes!.Items);
+
+        // Elimina el hotel (baja lógica) por el repo con invalidador.
+        await using (var db = fixture.CrearContexto())
+        {
+            var repo = new HotelRepository(db, new InvalidadorCacheCatalogoRedis(fixture.Redis));
+            var hotel = await repo.ObtenerAsync(hotelId, CancellationToken.None);
+            hotel!.Eliminar();
+            await repo.GuardarConcurrenciaAsync(hotel, rv, CancellationToken.None);
+        }
+
+        // El hotel ya no es visible → la lista de habitaciones debe dar 404 (null), no la página cacheada vieja.
+        var despues = await lector.ListarHabitacionesDeHotelAsync(hotelId, 1, 100, CancellationToken.None);
+        Assert.Null(despues);
     }
 }

@@ -63,6 +63,13 @@ public sealed class HotelRepository(HotelesDbContext db, IInvalidadorCacheCatalo
         {
             await db.SaveChangesAsync(ct);
             await _cache.InvalidarHotelesDeAgenteAsync(hotel.AgentePropietario, ct); // editar/eliminar/estado → lista caduca
+            if (hotel.Eliminado)
+            {
+                // Al eliminar el hotel, su lista de habitaciones deja de ser visible (query filter) → debe dar 404.
+                // La caché de habitaciones se genera por hotelId, así que hay que caducarla también (si no, HIT stale).
+                await _cache.InvalidarHabitacionesDeHotelAsync(hotel.Id, ct);
+            }
+
             return RowVersionActual(hotel);
         }
         catch (DbUpdateConcurrencyException ex)

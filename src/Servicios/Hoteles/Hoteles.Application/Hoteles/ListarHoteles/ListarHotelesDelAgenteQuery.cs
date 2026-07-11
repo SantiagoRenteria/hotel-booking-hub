@@ -13,7 +13,9 @@ public sealed class ListarHotelesDelAgenteQueryValidator : AbstractValidator<Lis
 {
     public ListarHotelesDelAgenteQueryValidator()
     {
-        RuleFor(x => x.Page).GreaterThanOrEqualTo(1).WithMessage("page debe ser ≥ 1.");
+        // Cota superior de page: sin ella (page-1)*pageSize desborda Int32 → OFFSET negativo → 500. 1_000_000
+        // páginas × 100 acota el offset muy por debajo del overflow y es holgado de sobra para un catálogo real.
+        RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000).WithMessage("page debe estar entre 1 y 1.000.000.");
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100).WithMessage("pageSize debe estar entre 1 y 100.");
     }
 }

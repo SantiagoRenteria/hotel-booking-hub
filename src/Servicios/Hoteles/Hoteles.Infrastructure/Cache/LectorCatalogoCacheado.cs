@@ -47,9 +47,17 @@ public sealed class LectorCatalogoCacheado(
 
     public async Task<PaginaDto<HabitacionResponseDto>?> ListarHabitacionesDeHotelAsync(Guid hotelId, int page, int pageSize, CancellationToken ct)
     {
+        var agente = contexto.AgenteActual;
+        if (string.IsNullOrWhiteSpace(agente))
+        {
+            return await inner.ListarHabitacionesDeHotelAsync(hotelId, page, pageSize, ct); // sin identidad no se cachea (el handler ya hace 403)
+        }
+
         var db = redis.GetDatabase();
         var gen = (long?)await db.StringGetAsync(ClavesCacheCatalogo.GenHabitaciones(hotelId)) ?? 0L;
-        var clave = ClavesCacheCatalogo.Habitaciones(hotelId, gen, page, pageSize);
+        // La clave incluye el agente → un no-dueño nunca lee la entrada cacheada del dueño (evita el IDOR); la
+        // comprobación de propiedad sigue en el inner, que solo devuelve (y por tanto cachea) contenido propio.
+        var clave = ClavesCacheCatalogo.Habitaciones(agente, hotelId, gen, page, pageSize);
 
         var cacheado = await db.StringGetAsync(clave);
         if (cacheado.HasValue)
