@@ -8,10 +8,12 @@ using Reservas.Application.Abstracciones;
 using Reservas.Domain.Puertos;
 using Reservas.Infrastructure.Cache;
 using Reservas.Infrastructure.Disponibilidad;
+using Reservas.Infrastructure.Idempotencia;
 using Reservas.Infrastructure.Mensajeria;
 using Reservas.Infrastructure.Outbox;
 using Reservas.Infrastructure.Persistencia;
 using Reservas.Infrastructure.Proyeccion;
+using StackExchange.Redis;
 
 namespace Reservas.Infrastructure;
 
@@ -56,6 +58,18 @@ public static class RegistroInfraestructura
         servicios.AddHostedService<RelayOutbox>();
 
         servicios.AddSingleton<IDisponibilidadHabitacion, DisponibilidadHabitacionSembrada>();
+
+        // Almacén de idempotencia de creación de reserva (Story 1.7, DOCUMENTO-BASE §8.5): SETNX+TTL en Redis si
+        // hay cadena configurada (dedup entre instancias); si no, fallback en memoria (dev de instancia única).
+        servicios.AddSingleton(new OpcionesIdempotenciaReserva());
+        servicios.AddSingleton<IAlmacenIdempotenciaReserva>(sp =>
+        {
+            var cadenaRedis = sp.GetRequiredService<IConfiguration>().GetConnectionString("redis");
+            var opcionesIdem = sp.GetRequiredService<OpcionesIdempotenciaReserva>();
+            return string.IsNullOrWhiteSpace(cadenaRedis)
+                ? new AlmacenIdempotenciaReservaEnMemoria(opcionesIdem)
+                : new AlmacenIdempotenciaReservaRedis(ConnectionMultiplexer.Connect(cadenaRedis), opcionesIdem);
+        });
 
         // Transporte de eventos por entorno (Story 9.1, ADR-019): si hay cadena de RabbitMQ (local/compose),
         // se publica de verdad al broker; si no (tests unit sin broker), se cae al placeholder que solo loguea.
