@@ -32,7 +32,7 @@ Prueba técnica · Back End Developer · **UltraGroup** (Tech, Travel & Loyalty)
 
 | Área | Qué hace | Dónde vive |
 |---|---|---|
-| **Catálogo** | Alta/edición/baja lógica de hoteles y habitaciones, habilitar/deshabilitar; concurrencia optimista (`rowVersion`) | `Servicios/Hoteles` |
+| **Catálogo** | Alta/edición/baja lógica de hoteles y habitaciones, habilitar/deshabilitar; concurrencia optimista (`rowVersion`); **consulta** (lista + detalle) **paginada y aislada por agente**, con **caché Redis** de las listas (invalidación por generación → sin datos obsoletos) | `Servicios/Hoteles` |
 | **Disponibilidad** | Búsqueda por ciudad/fechas/huéspedes sobre un read-model proyectado del catálogo, con caché Redis | `Servicios/Reservas` (`BuscarDisponibilidad`, `Proyeccion`) |
 | **Reserva** | Crear-confirmar con **anti-overbooking** (una sola confirmación bajo concurrencia) e **idempotencia** por `Idempotency-Key` | `Servicios/Reservas` (`CrearReserva`) |
 | **Cancelación** | Dos pasos (solicitud→resolución) o atajo de un paso; penalidad congelada + discreción del agente; auditada | `Servicios/Reservas` (`SolicitarCancelacion`, `ResolverCancelacion`, `CancelarEnUnPaso`) |
@@ -76,6 +76,7 @@ flowchart TB
   gw -->|/api/v1/hoteles·habitaciones| hot
   gw -->|/api/v1/reservas| res
   hot --> sqlh
+  hot -->|caché del catálogo| redis
   res --> sqlr
   res --> redis
   hot -->|eventos de catálogo| bus
@@ -145,7 +146,8 @@ Mapa a bajo nivel. Cada BC repite el mismo layout de **Clean Architecture** (`Do
 │     │  ├─ Hoteles.Domain/        #   Hoteles/ · Habitaciones/ (agregados, invariantes) · Puertos/
 │     │  ├─ Hoteles.Application/   #   slices: CrearHotel · EditarHotel · EliminarHotel · CambiarEstadoHotel
 │     │  │                         #          CrearHabitacion · EditarHabitacion · CambiarEstadoHabitacion
-│     │  ├─ Hoteles.Infrastructure/#   Persistencia (EF) · Migraciones · Outbox · Mensajeria (RabbitMQ/Dapr)
+│     │  │                         #          ListarHoteles · ListarHabitaciones (+ detalle) — lectura paginada
+│     │  ├─ Hoteles.Infrastructure/#   Persistencia (EF) · Migraciones · Outbox · Mensajeria (RabbitMQ/Dapr) · Cache (Redis del catálogo)
 │     │  └─ Hoteles.Api/           #   Program.cs (Minimal API, endpoints /api/v1/hoteles·habitaciones)
 │     │
 │     ├─ Reservas/                 # ── BC Reservas (anti-overbooking, cancelación) ──
