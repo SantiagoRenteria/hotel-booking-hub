@@ -50,21 +50,21 @@ Nuevo `docs/bdd-y-e2e.md` que consolide: (a) las **convenciones BDD** del proyec
   - [x] `appsettings.Development.json` no añade rutas (solo logging) → coherente. Overrides de ACA (`apps.tf` L155-160) solo sobreescriben `Clusters__*__Destinations__d1__Address`, no las Routes → la ruta nueva (→ cluster `reservas`, ya redirigido al app name de ACA) funciona igual en compose y en Azure.
   - [x] Test de regresión `tests/Seguridad.FunctionalTests/RuteoGatewayTests.cs`: asevera la tabla de rutas de YARP vía `IProxyConfigProvider` (`disponibles`→`reservas`, catch-all→`hoteles`). Red→Green verificado (sin la ruta, el 1er test falla). Un test HTTP no distinguiría el cluster (ambos downstream caídos → 5xx).
 
-- [ ] **Task 2 — Smoke exhaustivo** (AC: ET.2.2, ET.2.8)
-  - [ ] `deploy/scripts/smoke.sh`: añadir pasos para `GET /api/v1/habitaciones/disponibles` (rol Viajero y Agente), `GET /api/v1/reservas`, `GET /api/v1/reservas/{id}`, flujo de cancelación en **dos pasos** (`solicitud-cancelacion` → `cancelacion/resolucion` con `{"iniciador":2,"decision":1}`), `GET /api/v1/reservas/cancelaciones-pendientes`, y replay de `Idempotency-Key` (→ 200 misma reserva). Usar el flujo de dos pasos en una reserva distinta a la del atajo para no colisionar estados.
-  - [ ] Añadir casos negativos: 401 (sin token), 403 (Viajero en endpoint `SoloAgente`), 404 (`GET /api/v1/reservas/{guid-cero}`). Usar códigos esperados explícitos; fallar el smoke si no coinciden.
-  - [ ] Mintar JWT para **ambos** roles (extender `mint-jwt.sh` o mintar dos tokens). Mantener reintentos de cold-start y la verificación evento→worker por logs.
-  - [ ] Verificar local contra el compose: `docker compose up` → `bash deploy/scripts/smoke.sh` (o el flujo del job CI) verde end-to-end.
+- [x] **Task 2 — Smoke exhaustivo** (AC: ET.2.2, ET.2.8)
+  - [x] `deploy/scripts/smoke.sh` reescrito: helpers `_curl`/`ok`/`expect` con roles (A/V), headers extra y aserción de código exacto; reintento SOLO de transitorios (cold start). Cubre disponibles (Viajero+Agente), listado, detalle, cancelación en dos pasos, cancelaciones-pendientes, idempotencia (replay 200 misma reserva).
+  - [x] Negativos con código exacto: 401 (sin token), 403 (Viajero en `SoloAgente`), 404 (reserva inexistente). El smoke falla si no coinciden.
+  - [x] Ambos roles: mint de TOKEN (Agente) + TOKEN_VIAJERO. Script hecho **dual-propósito**: `JWT_SIGNING_KEY` (local) o Key Vault (nube); paso de logs del worker guardado (az en nube / hint de docker compose en local).
+  - [x] **Verificado local contra el compose**: `docker compose up` → smoke verde end-to-end (health+alive, camino feliz, lecturas, idempotencia, 2 pasos, negativos 401/403/404).
 
-- [ ] **Task 3 — Colección Postman completa por servicio** (AC: ET.2.1, ET.2.8)
-  - [ ] Reestructurar en carpetas (`item` anidado): **Gateway/health** (`/health`, `/alive`), **Hoteles** (crear/editar/eliminar/habilitar/deshabilitar hotel; crear/editar/habilitar/deshabilitar habitación), **Reservas** (crear + idempotencia replay; disponibles; listar; detalle; solicitud-cancelación; resolución; atajo; cancelaciones-pendientes).
-  - [ ] Un request por endpoint real + negativos (401/403/404/409/422). Encadenar variables con tests `pm.*` que guarden `hotelId`/`habitacionId`/`reservaId` y aserten status + forma. Mantener el pre-request de mint JWT (Agente+Viajero) con `jwtSigningKey`.
-  - [ ] Validar con Newman local: `newman run postman/hotel-booking-hub.postman_collection.json` contra el compose → 0 fallos. Asegurar que el job `smoke-compose` de `ci.yml` sigue invocándola (ajustar si cambió el nombre del archivo/orden).
+- [x] **Task 3 — Colección Postman completa por servicio** (AC: ET.2.1, ET.2.8)
+  - [x] Reestructurada en 3 carpetas (`item` anidado): **Gateway/Health**, **Hoteles** (crear/editar/deshabilitar/habilitar/eliminar hotel + concurrencia 409; crear/editar/deshabilitar/habilitar habitación), **Reservas** (crear; idempotencia 201/200/422; disponibles Viajero+Agente; listar; detalle; solicitud/pendientes/resolución; atajo). 30 requests.
+  - [x] Un request por endpoint real + negativos (401/403/404/409/422). Cadena de `rowVersion` e ids con `pm.collectionVariables`; asertos de status + forma. Pre-request de mint JWT (Agente+Viajero) preservado.
+  - [x] **Newman local verde**: `32 requests / 43 assertions / 0 fallos` contra el compose. El job `smoke-compose` de `ci.yml` la sigue invocando (mismo path). Dos asertos corregidos tras runtime: detalle usa `reserva.id` (DTO anidado); delete-inexistente usa GUID válido no-cero (el 0-GUID da 400 por validación de `Id`, no 404).
 
-- [ ] **Task 4 — Reconciliar CD a on-demand** (AC: ET.2.4)
-  - [ ] `.github/workflows/cd.yml`: quitar `push: branches:[main]`; dejar `on: workflow_dispatch` (deploy/destroy). Ajustar `if:` del job `deploy` (ya no depende de `github.event_name == 'push'`). Actualizar el bloque de comentarios (L3-7) para describir on-demand + approval.
-  - [ ] `deploy/terraform/README.md` §CD: reescribir las frases de "auto-apply al merge" (≈L7, L91, L139) a **on-demand con aprobación** (workflow_dispatch + environment). Mantener intactos los comandos OIDC (están completos y correctos).
-  - [ ] `docs/implementation-artifacts/deferred-work.md`: corregir cualquier mención a auto-apply. Verificar consistencia final con ADR-021 y `docs/uso-de-ia.md` (grep de "auto-apply" en el repo → 0 afirmaciones contradictorias).
+- [x] **Task 4 — Reconciliar CD a on-demand** (AC: ET.2.4)
+  - [x] `.github/workflows/cd.yml`: eliminado `push: branches:[main]`; solo `workflow_dispatch` (deploy/destroy). `if:` de ambos jobs simplificados a `inputs.accion`. Comentarios reescritos a on-demand.
+  - [x] `deploy/terraform/README.md` §CD y §3 Flujo reescritos a on-demand (comandos OIDC intactos).
+  - [x] Reconciliados además `docs/adr/ADR-021-*.md` y `decisions-adr.md` (nota de **reversión** del refinamiento auto-apply de la 8.3), `deferred-work.md`, y nota de reversión en la historia `8-3-*.md`. Grep del repo → sin afirmaciones contradictorias vigentes (solo contexto histórico marcado como tal).
 
 - [ ] **Task 5 — `docs/uso-de-ia.md`: método BMAD completo** (AC: ET.2.5)
   - [ ] Añadir sección(es) del flujo upstream: analista/dominio (Mary), PRD (John), SPEC, arquitectura (Winston), épicas/historias, sprint planning, UX (Sally) — cada una enlazando su artefacto real en `docs/`. Mantener y referenciar el ciclo por historia ya documentado.
