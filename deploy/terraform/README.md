@@ -86,6 +86,58 @@ Scripts (`deploy/scripts/` y `deploy/terraform/bootstrap/`):
 
 **Costos/avisos:** Azure Managed Redis Balanced_B0 (~0.06–0.10 USD/h) y Service Bus Standard (~0.01 USD/h) **facturan mientras existan**; SQL serverless pausada es marginal (solo storage); ACA scale-to-zero ≈ 0. Por eso el `destroy` es parte del ciclo. Riesgos: cold start (mitigado con retry), quota/restricciones de la suscripción (SQL y algunos SKU premium pueden estar deshabilitados por región — el `plan` no siempre lo detecta, solo el `apply`).
 
+## CD — despliegue continuo (Story 8.3)
+
+`.github/workflows/cd.yml` despliega **automáticamente al merge a `main`** (auto-apply) y permite **teardown on-demand** (`workflow_dispatch` → `accion=destroy`). Auth **100% passwordless por OIDC** (cero secretos; solo variables no-secretas). El **gate humano es la aprobación de PR en `main`** (branch protection). El workflow **reusa `deploy/scripts/deploy.sh`/`destroy.sh`**.
+
+> **El apply real requiere este setup una vez** — lo ejecuta **Santiago** (crea credenciales/identidades; el agente no lo hace por política de seguridad).
+
+### 1) OIDC: App Registration + federated credential + roles + variables
+
+```bash
+# App Registration + Service Principal para el CD
+APP_ID=$(az ad app create --display-name "hbh-github-cd" --query appId -o tsv)
+az ad sp create --id "$APP_ID"
+SUB=$(az account show --query id -o tsv); TENANT=$(az account show --query tenantId -o tsv)
+
+# Federated credential — el job usa `environment: production`, así que el subject de GitHub es el de environment.
+az ad app federated-credential create --id "$APP_ID" --parameters '{
+  "name": "github-env-production",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:SantiagoRenteria/hotel-booking-hub:environment:production",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+
+# Roles: Contributor (crear recursos) + User Access Administrator (Terraform asigna roles a la Managed Identity)
+SP_OID=$(az ad sp show --id "$APP_ID" --query id -o tsv)
+az role assignment create --assignee-object-id "$SP_OID" --assignee-principal-type ServicePrincipal --role "Contributor" --scope "/subscriptions/$SUB"
+az role assignment create --assignee-object-id "$SP_OID" --assignee-principal-type ServicePrincipal --role "User Access Administrator" --scope "/subscriptions/$SUB"
+
+# Variables del repo (NO secretos)
+gh variable set AZURE_CLIENT_ID --body "$APP_ID"
+gh variable set AZURE_TENANT_ID --body "$TENANT"
+gh variable set AZURE_SUBSCRIPTION_ID --body "$SUB"
+```
+
+### 2) Proteger `main` (PR + tu aprobación + checks)
+
+```bash
+gh api -X PUT /repos/SantiagoRenteria/hotel-booking-hub/branches/main/protection --input - <<'JSON'
+{
+  "required_status_checks": { "strict": true, "contexts": ["Build · Format · Test", "Terraform · fmt + validate", "Secret scan (gitleaks)"] },
+  "enforce_admins": true,
+  "required_pull_request_reviews": { "required_approving_review_count": 1, "dismiss_stale_reviews": true },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+JSON
+```
+
+### 3) Flujo
+
+`develop → PR a main → (CI verde + tu aprobación) → merge → CD aplica Terraform automáticamente`. Teardown: Actions → CD → *Run workflow* → `accion=destroy`. **Aviso de costo:** cada merge a `main` crea infra facturable; `main` recibe solo merges de release, y el destroy on-demand cierra el ciclo. Endurecimiento opcional: añadir *required reviewers* al Environment `production` (gate extra antes del apply).
+
 ## Migración a AKS (documentada, no ejecutada)
 
 ACA corre sobre AKS por debajo. Se migraría a AKS para control fino (ingress controllers, network policies, service mesh) o workloads no-serverless; viable porque Dapr y los contenedores son los mismos (ADR-008).
