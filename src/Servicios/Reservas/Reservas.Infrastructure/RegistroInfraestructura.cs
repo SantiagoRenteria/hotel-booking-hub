@@ -1,15 +1,19 @@
 using HotelBookingHub.Comun.Eventos;
 using HotelBookingHub.Comun.Mensajeria;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Reservas.Application.Abstracciones;
 using Reservas.Domain.Puertos;
 using Reservas.Infrastructure.Cache;
 using Reservas.Infrastructure.Disponibilidad;
+using Reservas.Infrastructure.Idempotencia;
 using Reservas.Infrastructure.Mensajeria;
 using Reservas.Infrastructure.Outbox;
 using Reservas.Infrastructure.Persistencia;
 using Reservas.Infrastructure.Proyeccion;
+using StackExchange.Redis;
 
 namespace Reservas.Infrastructure;
 
@@ -53,9 +57,30 @@ public static class RegistroInfraestructura
         servicios.AddSingleton<ProcesadorOutbox>();
         servicios.AddHostedService<RelayOutbox>();
 
-        // Placeholders de 1.6a (reemplazados en E3 y por Dapr pub/sub respectivamente).
         servicios.AddSingleton<IDisponibilidadHabitacion, DisponibilidadHabitacionSembrada>();
-        servicios.AddSingleton<IPublicadorEventos, PublicadorEventosLog>();
+
+        // Almacén de idempotencia de creación de reserva (Story 1.7, DOCUMENTO-BASE §8.5): SETNX+TTL en Redis si
+        // hay cadena configurada (dedup entre instancias); si no, fallback en memoria (dev de instancia única).
+        servicios.AddSingleton(new OpcionesIdempotenciaReserva());
+        servicios.AddSingleton<IAlmacenIdempotenciaReserva>(sp =>
+        {
+            var cadenaRedis = sp.GetRequiredService<IConfiguration>().GetConnectionString("redis");
+            var opcionesIdem = sp.GetRequiredService<OpcionesIdempotenciaReserva>();
+            return string.IsNullOrWhiteSpace(cadenaRedis)
+                ? new AlmacenIdempotenciaReservaEnMemoria(opcionesIdem)
+                : new AlmacenIdempotenciaReservaRedis(ConnectionMultiplexer.Connect(cadenaRedis), opcionesIdem);
+        });
+
+        // Transporte de eventos por entorno (Story 9.1, ADR-019): si hay cadena de RabbitMQ (local/compose),
+        // se publica de verdad al broker; si no (tests unit sin broker), se cae al placeholder que solo loguea.
+        // El adaptador Dapr→Service Bus de nube se enchufa por este mismo seam en la Épica 8, sin tocar el dominio.
+        servicios.AddSingleton<IPublicadorEventos>(sp =>
+        {
+            var cadenaRabbit = sp.GetRequiredService<IConfiguration>().GetConnectionString("rabbitmq");
+            return string.IsNullOrWhiteSpace(cadenaRabbit)
+                ? new PublicadorEventosLog(sp.GetRequiredService<ILogger<PublicadorEventosLog>>())
+                : new PublicadorEventosRabbitMq(cadenaRabbit, sp.GetRequiredService<ILogger<PublicadorEventosRabbitMq>>());
+        });
 
         return servicios;
     }

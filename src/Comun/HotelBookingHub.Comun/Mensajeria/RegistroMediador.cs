@@ -15,9 +15,12 @@ public static class RegistroMediador
     {
         servicios.AddScoped<ISender, Sender>();
 
-        // Orden canónico: el primero registrado envuelve más afuera (Logging → Validation → Handler).
+        // Orden canónico: el primero registrado envuelve más afuera (Logging → Tracing → Validation → Handler).
+        // Tracing va tras Logging y ANTES de Validation para que el span de negocio (Story 7.1) cubra tanto la
+        // validación como el handler y marque el span exacto ante un fallo de cualquiera de los dos.
         // El TransactionBehavior (transacción + outbox + retry 1205) se inserta en 1.6b.
         servicios.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+        servicios.AddScoped(typeof(IPipelineBehavior<,>), typeof(TracingBehavior<,>));
         servicios.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
         RegistrarImplementaciones(servicios, ensambladoAplicacion, typeof(IRequestHandler<,>));

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-07-08
-last_updated: 2026-07-10T02:00
+last_updated: 2026-07-10T22:30
 project: hotel-booking-hub
 project_key: NOKEY
 tracking_system: file-system
@@ -43,6 +43,7 @@ story_location: docs/implementation-artifacts
 
 development_status:
   # ---- Epic 1: Fundación ejecutable y anti-overbooking probado ----
+  # Reabierta 2026-07-10 por la auditoría vs DOCUMENTO-BASE §8.5 (faltaba Idempotency-Key, 1.7); cerrada al mergear 1.7.
   epic-1: done
   1-1-esqueleto-ejecutable-de-un-comando: done
   1-2-spikes-de-validacion-de-ejecucion: done
@@ -52,6 +53,7 @@ development_status:
   1-6a-crear-confirmar-reserva-validacion-y-happy-path: done
   1-6b-atomicidad-transaccional-reserva-outbox: done
   1-6c-money-test-confirmacion-unica-bajo-concurrencia: done
+  1-7-idempotencia-creacion-reserva: done
   epic-1-retrospective: done
 
   # ---- Epic 2: Gestión de hoteles e inventario (Agente) ----
@@ -94,15 +96,20 @@ development_status:
   epic-6-retrospective: done
 
   # ---- Epic 7: Observabilidad de extremo a extremo ----
-  epic-7: backlog
-  7-1-traza-distribuida-propagada-extremo-a-extremo: backlog
-  7-2-metricas-p95-p99-por-endpoint: backlog
+  epic-7: done
+  7-1-traza-distribuida-propagada-extremo-a-extremo: done
+  7-2-metricas-p95-p99-por-endpoint: done
   epic-7-retrospective: optional
 
   # ---- Epic 8: Nube por IaC (con compuerta) ----
-  epic-8: backlog
-  8-1-aprovisionar-azure-por-terraform: backlog
+  epic-8: done
+  8-1-aprovisionar-azure-por-terraform: done
   epic-8-retrospective: optional
+
+  # ---- Epic 9: Transporte real de eventos entre BCs (cierre de brecha, correct-course 2026-07-10) ----
+  epic-9: done
+  9-1-transporte-real-de-eventos-rabbitmq: done
+  epic-9-retrospective: optional
 
   # ---- Epic T: Entrega y requisitos transversales (DoD de entrega) ----
   epic-t: backlog

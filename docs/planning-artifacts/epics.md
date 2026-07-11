@@ -187,6 +187,11 @@ No aplica — la entrega es exclusivamente back end (non-goal del PRD). No exist
 
 **Cubre:** NFR-6 (portabilidad y despliegue).
 
+### Épica 9: Transporte real de eventos entre BCs (cierre de brecha)
+*Cierre de brecha (correct-course 2026-07-10) · Fase 1→2.* Cablea el transporte de eventos que E1/E5 dejaron diferido: **RabbitMQ directo** detrás de `IPublicadorEventos` en local (patrón Strategy por entorno), para que las notificaciones corran **end-to-end** en `docker compose`. El adaptador Dapr→Service Bus para nube queda en la Épica 8. Ver ADR-019/020.
+
+**Cubre:** FR-19…21 (ejecución real) + NFR-3 (fiabilidad de mensajería demostrada).
+
 ### Épica T: Entrega y requisitos transversales
 *Transversal — acompaña a todas las fases.* Ancla los entregables explícitos del enunciado (repo público, README+C4+ADR, doc de seguridad, doc de uso de IA, colección Postman/Newman, `docker-compose`) como Definition of Done verificable, para que no queden huérfanos.
 
@@ -450,6 +455,34 @@ para **garantizar cero overbooking bajo carga**.
 **Cuando** se clasifican las respuestas
 **Entonces** hay `exactamente 1` × `201` y `N-1` × `409`; `0` excepciones no mapeadas; los reintentos por deadlock `1205` están acotados (máx. 3, backoff+jitter) y un `1205` agotado se mapea a `409`, nunca a `500`.
 *(Collection `G1` aislada, `DisableParallelization = true`; el N sorteado 30–100 y la semilla se registran en la salida para reproducibilidad.)*
+
+### Story 1.7: Idempotencia de creación de reserva (`Idempotency-Key`)
+
+> **Trazabilidad:** auditoría de alineación vs DOCUMENTO-BASE §8.5 (2026-07-10) → **control de doble-envío del cliente** → `AC-E1.7.x` · **Obligatorio (alineación con el base doc)**
+> **Porqué:** el DOCUMENTO-BASE §8.5 lista el `Idempotency-Key` como control de la condición de carrera "doble clic en reservar" (el cliente reintenta el `POST` y NO debe crear dos reservas). La omisión en las épicas se corrige aquí. Complementa —no reemplaza— el anti-overbooking (que protege habitación/fechas, no el doble-submit del MISMO cliente sobre fechas nuevas).
+
+Como **viajero (o su cliente)**,
+quiero que **reenviar el mismo `POST /api/v1/reservas` con un `Idempotency-Key` devuelva la reserva ya creada en vez de crear otra**,
+para **no duplicar mi reserva ante un reintento de red o un doble clic**.
+
+**Acceptance Criteria:**
+
+**AC-E1.7.1 — Reintento con la misma clave devuelve la misma reserva**
+**Dado** un `POST /api/v1/reservas` con header `Idempotency-Key: K` que creó la reserva `R` (`201`)
+**Cuando** se reenvía el MISMO request con la misma `K`
+**Entonces** responde con **la misma `R`** (mismo id) y **no** se crea una segunda reserva ni segundos slots (`exactamente 1` reserva).
+
+**AC-E1.7.2 — Claves distintas no interfieren**
+**Dado** dos requests con `Idempotency-Key` distintas
+**Cuando** se procesan
+**Entonces** cada uno sigue su curso normal (crea o `409` según el invariante), sin dedup cruzada.
+
+**AC-E1.7.3 (negativo) — Misma clave, cuerpo distinto → conflicto**
+**Dado** una `Idempotency-Key: K` ya usada para un cuerpo
+**Cuando** llega otro `POST` con la misma `K` pero **cuerpo distinto**
+**Entonces** responde `409`/`422` (Problem Details): una clave de idempotencia no puede reutilizarse para otra operación.
+
+> **Alcance:** solo `POST /api/v1/reservas`. Store de idempotencia en **Redis** (SETNX+TTL, paridad con el inbox de E5) si está configurado; fallback en memoria para dev sin Redis. La clave es del **cliente** (header), distinta del `MessageId` del outbox (interno).
 
 ---
 
@@ -985,6 +1018,52 @@ para **desplegar de forma reproducible y sin provisión manual**.
 **Dado** el cambio de broker local→nube
 **Cuando** se despliega
 **Entonces** solo cambia el component YAML de Dapr; `0` cambios de código de aplicación.
+
+---
+
+## Epic 9: Transporte real de eventos entre BCs (cierre de brecha)
+
+*Cierre de brecha (correct-course 2026-07-10, party-mode + Santiago) · Núcleo del diferenciador de mensajería.* El diseño hexagonal de mensajería (Outbox transaccional, idempotencia, contratos versionados, consumidores, dead-letter) se entregó en E1/E3/E5, pero el **transporte real quedó diferido**: el único adaptador de `IPublicadorEventos` era un placeholder que solo loguea, y el worker no consumía de un broker real. Esta épica cablea el transporte **local por RabbitMQ directo** detrás del puerto (patrón **Strategy por entorno**), de modo que `docker compose up` + crear una reserva **dispara la notificación end-to-end**. El transporte de **nube (Dapr pub/sub → Service Bus)** es un adaptador hermano, seleccionado por entorno, que vive en la Épica 8. Ver **ADR-019** (transporte Strategy) y **ADR-020** (secretos por entorno).
+
+**Cubre:** cierre de FR-19…21 (notificaciones) a nivel de **ejecución real** + NFR-3 (fiabilidad de mensajería) demostrada end-to-end.
+
+### Story 9.1: Transporte real de eventos por RabbitMQ (local)
+
+> **Trazabilidad:** correct-course (party-mode + Santiago) → **FR-19…21 · NFR-3 (ejecución real)** → `AC-E9.1.x` · **Obligatorio (cierre de brecha)**
+> **Porqué:** un evaluador corre `docker compose up`, crea una reserva y espera ver la notificación; hoy muere en un log. Cerrar el cable convierte el diferenciador de "documentado + probado en costuras" a "corre end-to-end".
+
+Como **operador**,
+quiero que **los eventos de dominio viajen por un broker real (RabbitMQ) del productor al worker en el entorno local**,
+para **que las notificaciones se disparen de verdad al confirmar/cancelar una reserva, sin acoplar el dominio al transporte**.
+
+**Acceptance Criteria:**
+
+**AC-E9.1.1 — Publicación real detrás del puerto**
+**Dado** un evento encolado en el Outbox (p. ej. `ReservaConfirmada.v1`)
+**Cuando** el `RelayOutbox` lo procesa en el entorno local
+**Entonces** se publica a RabbitMQ vía un adaptador `PublicadorEventosRabbitMq` (implementación de `IPublicadorEventos`), sin que el dominio conozca el transporte.
+
+**AC-E9.1.2 — Consumo real por el worker**
+**Dado** un evento publicado en RabbitMQ
+**Cuando** el `Notificaciones.Worker` está corriendo
+**Entonces** un consumidor (`BackgroundService`) lo recibe, lo deserializa al envelope `EventoIntegracion` y lo entrega al `DespachadorNotificaciones` existente (inbox idempotente + tope de intentos + dead-letter).
+
+**AC-E9.1.3 — End-to-end verificable (Testcontainers)**
+**Dado** un test de integración con Testcontainers RabbitMQ
+**Cuando** se publica por el adaptador y se consume
+**Entonces** la notificación se produce **exactamente 1 vez** (idempotencia), un duplicado **no** la re-emite, y el test corre dentro de `dotnet test` (no smoke manual).
+
+**AC-E9.1.4 — Selección por entorno (Strategy) sin tocar el dominio**
+**Dado** el registro DI
+**Cuando** el entorno es local/compose
+**Entonces** se selecciona el adaptador RabbitMQ; el puerto `IPublicadorEventos` y los handlers/dominio **no** cambian (el adaptador Dapr de nube se añade en E8 sin tocar el dominio).
+
+**AC-E9.1.5 (negativo) — Broker caído no pierde el evento**
+**Dado** RabbitMQ no disponible al publicar
+**Cuando** el relay intenta publicar
+**Entonces** el evento permanece en el Outbox (`Pendiente`) y se reintenta; no se pierde ni se marca entregado (at-least-once).
+
+> **Alcance:** solo el transporte **LOCAL** por RabbitMQ. El adaptador **Dapr (nube)** y **Dapr Secrets/Key Vault** son de la Épica 8 (ADR-019/020). No se cablea Dapr CLI ni sidecars aquí.
 
 ---
 
