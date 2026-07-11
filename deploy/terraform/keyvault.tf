@@ -50,7 +50,7 @@ resource "azurerm_key_vault_secret" "servicebus" {
 
 resource "azurerm_key_vault_secret" "redis" {
   name         = "redis-connection"
-  value        = azurerm_redis_cache.principal.primary_connection_string
+  value        = local.redis_cs
   key_vault_id = azurerm_key_vault.principal.id
   depends_on   = [azurerm_role_assignment.kv_admin_deployer]
 }

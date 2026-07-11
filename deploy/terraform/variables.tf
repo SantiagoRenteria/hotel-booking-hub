@@ -21,9 +21,9 @@ variable "entorno" {
 }
 
 variable "ubicacion" {
-  description = "Región de Azure."
+  description = "Región de Azure. West US 2: la suscripción 'Estudio' permite SQL aquí (eastus2/eastus lo bloquean)."
   type        = string
-  default     = "eastus2"
+  default     = "westus2"
 }
 
 variable "sql_admin_login" {
@@ -51,6 +51,12 @@ variable "imagen_reservas" {
 variable "imagen_notificaciones" {
   type    = string
   default = "mcr.microsoft.com/k8se/quickstart:latest"
+}
+
+variable "ip_deployer" {
+  description = "IP pública del deployer para la regla de firewall SQL (aplicar migraciones). Vacío = no se crea la regla. Se detecta en el runbook/pipeline."
+  type        = string
+  default     = ""
 }
 
 variable "etiquetas" {
