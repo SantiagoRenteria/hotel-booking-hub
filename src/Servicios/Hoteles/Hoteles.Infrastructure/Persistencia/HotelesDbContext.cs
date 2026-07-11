@@ -55,6 +55,15 @@ public sealed class HotelesDbContext(DbContextOptions<HotelesDbContext> options,
             // Version de secuencia del estado (3.2): order key monotónico de HotelHabilitado/HotelDeshabilitado.
             // Columna de negocio propia, INDEPENDIENTE del rowversion de concurrencia.
             b.Property(h => h.Version);
+
+            // Unicidad de catálogo (decisión 2026-07-11): un agente no puede tener dos hoteles NO eliminados con
+            // el mismo (Nombre, Ciudad). Índice único FILTRADO (WHERE Eliminado = 0) → la baja lógica libera el
+            // par y permite re-crear; acotado por AgentePropietario → dos agentes pueden repetir nombre+ciudad
+            // sin cruzar catálogos ni filtrar datos ajenos (6.3). Es el árbitro race-safe (mismo espíritu que el
+            // anti-overbooking, ADR-016); la violación (SQL 2601/2627) → HotelDuplicadoException → 409 en el repo.
+            b.HasIndex(h => new { h.AgentePropietario, h.Nombre, h.Ciudad })
+                .IsUnique()
+                .HasFilter("[Eliminado] = 0");
         });
 
         modelBuilder.Entity<Habitacion>(b =>
