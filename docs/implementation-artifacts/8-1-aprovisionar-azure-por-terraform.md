@@ -3,7 +3,7 @@ baseline_commit: 61a66865bf74d5de62498f8834c21a036feac1e6
 ---
 # Story 8.1: Aprovisionar Azure por Terraform
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -44,6 +44,7 @@ para **desplegar de forma reproducible, versionada y sin provisión manual**.
 - **Estado remoto (backend):** para la prueba se usa `-backend=false` (validate local); se **documenta** que producción usaría un backend remoto (Azure Storage + state lock). No se configura un backend real.
 - **Adaptador `PublicadorEventosDapr` (.NET):** el código del adaptador de nube (publicar vía `DaprClient`) requiere Dapr en runtime (solo en ACA); se **documenta** como el camino de nube por el mismo puerto `IPublicadorEventos` (Strategy). NO se cablea/testea localmente en esta historia (no hay Dapr local; ADR-019). Candidato a seguimiento si se ejecuta un despliegue real.
 - **Imágenes:** el `Dockerfile` multi-stage ya existe (usado por compose). El push a ACR y el despliegue real quedan bajo la compuerta.
+- **Secretos de los componentes Dapr (`pubsub`/`statestore`):** hoy usan bloques `secret {}` **inline** — el valor proviene de un atributo del recurso (`primary_connection_string`/`primary_access_key`), nunca de un literal en el repo (cero secretos, ADR-020). Se declara además un component `secretstore` (Key Vault + Managed Identity) que satisface AC-E8.1.3; **migrar `pubsub`/`statestore` a `secretKeyRef` sobre ese store es endurecimiento documentado**, no requerido para el gate `fmt`+`validate`.
 
 ## Tasks / Subtasks
 
@@ -91,17 +92,17 @@ para **desplegar de forma reproducible, versionada y sin provisión manual**.
 
 ### Review Findings
 
-_Code review adversarial de 3 capas (Blind · Edge · Auditor) sobre la IaC, 2026-07-10. `terraform validate` verde en las 3 capas. 8 patch (2 ALTA), 1 defer, 1 dismiss._
+_Code review adversarial de 3 capas (Blind · Edge · Auditor) sobre la IaC, 2026-07-10. `terraform validate` verde en las 3 capas. 8 patch (2 ALTA), 1 defer, 1 dismiss._ **Todos los patch aplicados 2026-07-10; `fmt -check -recursive` + `init -backend=false` + `validate` → Success.**
 
-- [ ] [Review][Patch][ALTA] Dapr `statestore`: `redisPassword` recibe `primary_connection_string` (cadena completa `host:6380,password=...,ssl=True`), pero `state.redis` espera SOLO la clave → AUTH falla en runtime. Fix: `redisPassword` = `azurerm_redis_cache.principal.primary_access_key`. [deploy/terraform/apps.tf]
-- [ ] [Review][Patch][ALTA] La app `notificaciones` no declara `identity` ni `registry` (a diferencia de las otras 3) → no puede pull de una imagen privada de ACR. Fix: añadir `identity {UserAssigned}` + `registry {server, identity}`. [deploy/terraform/apps.tf]
-- [ ] [Review][Patch][MEDIA] `OTEL_EXPORTER_OTLP_ENDPOINT` = connection string de App Insights (no es una URL OTLP) → el exporter no exporta. Fix: usar `APPLICATIONINSIGHTS_CONNECTION_STRING` (distro Azure Monitor); documentar que habilitar `UseAzureMonitor` en ServiceDefaults es el paso .NET de nube (diferido). [deploy/terraform/apps.tf]
-- [ ] [Review][Patch][MEDIA] Service Bus auth rule `manage=false` + Dapr gestiona entidades por defecto → topics/subscriptions no se crean. Fix: `manage=true` en la auth rule (Dapr crea entidades). [deploy/terraform/data.tf]
-- [ ] [Review][Patch][MEDIA] Las Container Apps que leen el secreto de Key Vault no dependen del rol *KV Secrets User* → carrera de RBAC en apply. Fix: `depends_on = [azurerm_role_assignment.kv_lectura_apps]`. [deploy/terraform/apps.tf]
-- [ ] [Review][Patch][MEDIA] SQL Server con acceso público sin firewall. Fix: `public_network_access_enabled` explícito + `azurerm_mssql_firewall_rule` "AllowAzureServices" (para que ACA conecte); documentar private endpoint como hardening de prod. *(El wiring completo de connection strings de las apps a SQL/Redis → nube se difiere, pareja del adaptador Dapr .NET.)* [deploy/terraform/data.tf]
-- [ ] [Review][Patch][MEDIA] Falta el componente Dapr `secretstore` (Key Vault)/`secretKeyRef` que pedía AC-E8.1.3; los componentes usan `secret` inline (valor del recurso). Fix: añadir `azurerm_container_app_environment_dapr_component` `secretstore` (Key Vault + Managed Identity) y **divulgar** en la Nota de alcance que pubsub/statestore usan secretos inline (fuera del repo; migrar a `secretKeyRef` es hardening). [deploy/terraform/apps.tf]
-- [ ] [Review][Patch][BAJA] KV `purge_protection_enabled=false` fijo aun con `entorno=prod`. Fix: `purge_protection_enabled = var.entorno == "prod"`. [deploy/terraform/keyvault.tf]
-- [ ] [Review][Patch][BAJA] Variables `prefijo`/`entorno` sin `validation` de longitud (techo 24 de Key Vault). Fix: `validation` de longitud en `entorno`. [deploy/terraform/variables.tf]
+- [x] [Review][Patch][ALTA] Dapr `statestore`: `redisPassword` recibe `primary_connection_string` (cadena completa `host:6380,password=...,ssl=True`), pero `state.redis` espera SOLO la clave → AUTH falla en runtime. Fix: `redisPassword` = `azurerm_redis_cache.principal.primary_access_key`. [deploy/terraform/apps.tf]
+- [x] [Review][Patch][ALTA] La app `notificaciones` no declara `identity` ni `registry` (a diferencia de las otras 3) → no puede pull de una imagen privada de ACR. Fix: añadir `identity {UserAssigned}` + `registry {server, identity}`. [deploy/terraform/apps.tf]
+- [x] [Review][Patch][MEDIA] `OTEL_EXPORTER_OTLP_ENDPOINT` = connection string de App Insights (no es una URL OTLP) → el exporter no exporta. Fix: usar `APPLICATIONINSIGHTS_CONNECTION_STRING` (distro Azure Monitor); documentar que habilitar `UseAzureMonitor` en ServiceDefaults es el paso .NET de nube (diferido). [deploy/terraform/apps.tf]
+- [x] [Review][Patch][MEDIA] Service Bus auth rule `manage=false` + Dapr gestiona entidades por defecto → topics/subscriptions no se crean. Fix: `manage=true` en la auth rule (Dapr crea entidades). [deploy/terraform/data.tf]
+- [x] [Review][Patch][MEDIA] Las Container Apps que leen el secreto de Key Vault no dependen del rol *KV Secrets User* → carrera de RBAC en apply. Fix: `depends_on = [azurerm_role_assignment.kv_lectura_apps]`. [deploy/terraform/apps.tf]
+- [x] [Review][Patch][MEDIA] SQL Server con acceso público sin firewall. Fix: `public_network_access_enabled` explícito + `azurerm_mssql_firewall_rule` "AllowAzureServices" (para que ACA conecte); documentar private endpoint como hardening de prod. *(El wiring completo de connection strings de las apps a SQL/Redis → nube se difiere, pareja del adaptador Dapr .NET.)* [deploy/terraform/data.tf]
+- [x] [Review][Patch][MEDIA] Falta el componente Dapr `secretstore` (Key Vault)/`secretKeyRef` que pedía AC-E8.1.3; los componentes usan `secret` inline (valor del recurso). Fix: añadir `azurerm_container_app_environment_dapr_component` `secretstore` (Key Vault + Managed Identity) y **divulgar** en la Nota de alcance que pubsub/statestore usan secretos inline (fuera del repo; migrar a `secretKeyRef` es hardening). [deploy/terraform/apps.tf]
+- [x] [Review][Patch][BAJA] KV `purge_protection_enabled=false` fijo aun con `entorno=prod`. Fix: `purge_protection_enabled = var.entorno == "prod"`. [deploy/terraform/keyvault.tf]
+- [x] [Review][Patch][BAJA] Variables `prefijo`/`entorno` sin `validation` de longitud (techo 24 de Key Vault). Fix: `validation` de longitud en `entorno`. [deploy/terraform/variables.tf]
 - [x] [Review][Defer] Wiring completo de connection strings de las apps a SQL/Redis en la nube (env `ConnectionStrings__*` desde Key Vault) — pareja del adaptador Dapr .NET de nube; se cablea al ejecutar un despliegue real. Registrado en `deferred-work.md`.
 
 **Dismiss:** la imagen placeholder por defecto (`quickstart`) escucha en :80 vs `target_port` 8080 — es un placeholder a sobreescribir con la imagen .NET real (que expone 8080); documentado, no es defecto de la IaC.
@@ -141,3 +142,4 @@ claude-opus-4-8 (Amelia / dev-story, modo autónomo)
 | Fecha | Cambio |
 |---|---|
 | 2026-07-10 | Story 8.1: IaC Terraform del despliegue a Azure (ACA+Dapr/KEDA, SQL×2, Redis, Service Bus, Key Vault, App Insights, ACR, Managed Identity) — ADR-008. Cero secretos (random_password + Key Vault + passwordless). Componentes Dapr pubsub/statestore. Gate `fmt`+`validate` (local + job de CI); `plan`/`apply` bajo compuerta de Fase 3. Status → review. |
+| 2026-07-10 | Code review (3 capas): aplicados los 8 patch (2 ALTA: redis `primary_access_key`, `notificaciones` con identity+registry; MEDIA: OTEL→`APPLICATIONINSIGHTS_CONNECTION_STRING`, Service Bus `manage=true`, `depends_on` del rol KV, firewall SQL AllowAzureServices, component Dapr `secretstore` Key Vault + divulgación; BAJA: KV purge por `prod`, `validation` de `entorno`). `fmt`+`init`+`validate` → Success. Status → done. |
