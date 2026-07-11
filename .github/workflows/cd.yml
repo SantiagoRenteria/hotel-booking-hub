@@ -1,14 +1,14 @@
 name: CD
 
-# Despliegue continuo a Azure (Story 8.3, ADR-021 refinado).
-# - Auto-apply al MERGE a main (el gate humano es la aprobación de PR en main, ver branch protection).
-# - Teardown on-demand por workflow_dispatch (accion=destroy) para el ciclo de mínimo costo.
+# Despliegue continuo a Azure (Story 8.3, ADR-021).
+# - Disparo ON-DEMAND por workflow_dispatch (accion=deploy) — NUNCA auto-apply al merge (John vetó el auto-apply
+#   por control de costos: cada apply crea infra facturable). El gate adicional es `environment: production`
+#   (approval si Santiago configura required reviewers). Mergear a main NO despliega nada por sí solo.
+# - Teardown también on-demand por workflow_dispatch (accion=destroy) para el ciclo de mínimo costo.
 # Auth 100% passwordless por OIDC (azure/login federated) — cero secretos en el repo (solo variables no-secretas).
 # Reusa los scripts ya probados en 8.2 (deploy/scripts/*). El apply real requiere el setup OIDC de deploy/README.md.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       accion:
@@ -31,10 +31,10 @@ env:
 jobs:
   deploy:
     name: Deploy (apply → smoke)
-    if: ${{ github.event_name == 'push' || inputs.accion == 'deploy' }}
+    if: ${{ inputs.accion == 'deploy' }}
     runs-on: ubuntu-latest
     # Environment 'production': si Santiago le añade "required reviewers", actúa como gate extra antes del apply.
-    # Sin reviewers configurados, no bloquea (auto-apply tras la aprobación de PR). Passwordless por OIDC.
+    # El disparo es on-demand (workflow_dispatch): un humano decide cuándo desplegar. Passwordless por OIDC.
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +69,7 @@ jobs:
 
   destroy:
     name: Destroy (teardown)
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.accion == 'destroy' }}
+    if: ${{ inputs.accion == 'destroy' }}
     runs-on: ubuntu-latest
     environment: production
     steps:
