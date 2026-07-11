@@ -54,6 +54,8 @@ crash.log
 *.tfvars
 !example.tfvars
 .terraform.lock.hcl
+tfplan
+*.tfplan
 
 # ---- Node (Newman / tooling) ----
 node_modules/
