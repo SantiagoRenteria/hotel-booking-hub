@@ -4,7 +4,7 @@ baseline_commit: 5c035d187e3096177d5786f4265d7fdca75e01f7
 
 # Story T.6: Paginación y caché Redis de la lectura del catálogo
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -37,30 +37,30 @@ Tras CUALQUIER escritura de hotel del agente (crear/editar/eliminar/habilitar/de
 ## Tasks / Subtasks
 
 - [x] **Task 1 — Paginación (contrato + queries)** (AC: ET.6.1, ET.6.2)
-  - [ ] `PaginaDto<T>` (record genérico: `Items`, `Page`, `PageSize`, `Total`) en Application (Comun o Hoteles.Application).
-  - [ ] `ListarHotelesDelAgenteQuery` y `ListarHabitacionesDeHotelQuery` pasan a llevar `Page`/`PageSize`; validación (page≥1, 1≤pageSize≤100) — validador FluentValidation o guard → `Result` 400. El endpoint bindea `page`/`pageSize` de query (con defaults).
-  - [ ] `ILectorCatalogo`: los métodos de lista devuelven `PaginaDto<...>` (con `Skip((page-1)*pageSize).Take(pageSize)` + `CountAsync` en `LectorCatalogoSql`). Detalle sin cambios.
-  - [ ] Endpoints: `MapGet` bindea `int page = 1`, `int pageSize = 20`.
+  - [x] `PaginaDto<T>` (record genérico: `Items`, `Page`, `PageSize`, `Total`) en `HotelBookingHub.Comun.Resultados`.
+  - [x] `ListarHotelesDelAgenteQuery` y `ListarHabitacionesDeHotelQuery` pasan a llevar `Page`/`PageSize`; validador FluentValidation (page≥1, 1≤pageSize≤100) → `Result` 400. El endpoint bindea `page`/`pageSize` de query (con defaults).
+  - [x] `ILectorCatalogo`: los métodos de lista devuelven `PaginaDto<...>` (con `Skip((page-1)*pageSize).Take(pageSize)` + `CountAsync` y orden estable `OrderBy(...).ThenBy(Id)` en `LectorCatalogoSql`). Detalle sin cambios.
+  - [x] Endpoints: `MapGet` bindea `int page = 1`, `int pageSize = 20`.
 
-- [ ] **Task 2 — Caché Redis con invalidación por generación** (AC: ET.6.3, ET.6.4)
-  - [ ] Read-port de caché en `Hoteles.Application.Abstracciones` (p. ej. `ICacheCatalogo` con `ObtenerOAgregarHotelesAsync`/`ObtenerOAgregarHabitacionesAsync`) + invalidador (`IInvalidadorCacheCatalogo` con `InvalidarHotelesDeAgente(agente)` / `InvalidarHabitacionesDeHotel(hotelId)`).
-  - [ ] Impl Redis (`CacheCatalogoRedis`) sobre `IDistributedCache`: lee gen (`INCR`/`GET` de la clave-gen; si ausente, 0), arma la clave `hoteles:{agente}:g{gen}:p{page}:s{size}`, get→hit / miss→ejecuta el `factory` (SQL) y `SetAsync` con TTL. Invalidar = `INCR` de la clave-gen (bump). Serialización JSON del `PaginaDto`.
-  - [ ] **Degradación**: DI "Redis-si-configurado" — si `ConnectionStrings:redis` vacío, registrar un cache pass-through (ejecuta el factory, sin cachear) para que unit/integración sin Redis funcionen. Añadir `Microsoft.Extensions.Caching.StackExchangeRedis` a Hoteles (ya usado en Reservas).
-  - [ ] Cablear la invalidación en el **write-path**: los repositorios (`HotelRepository`/`HabitacionRepository`) invalidan tras un `SaveChanges` exitoso (localizado en 2 archivos, no en los 9 handlers): hotel write → `InvalidarHotelesDeAgente(hotel.AgentePropietario)`; habitación write → `InvalidarHabitacionesDeHotel(habitacion.HotelId)`. Inyectar el invalidador (no-op si no hay Redis).
-  - [ ] Los query-handlers de lista pasan a pedir la lista **a través de la caché** (decorator o el handler llama al cache que envuelve al lector).
+- [x] **Task 2 — Caché Redis con invalidación por generación** (AC: ET.6.3, ET.6.4)
+  - [x] Invalidador `IInvalidadorCacheCatalogo` (Abstracciones) con `InvalidarHotelesDeAgenteAsync(agente)` / `InvalidarHabitacionesDeHotelAsync(hotelId)`. **Desviación:** en vez de un `ICacheCatalogo` con factory, se usó un **decorator de `ILectorCatalogo`** (`LectorCatalogoCacheado`) → cache-aside sin cambiar handlers (Task 2 subtask 5 lo permitía).
+  - [x] Impl Redis con **`IConnectionMultiplexer`** (no `IDistributedCache`): lee gen (`GET` clave-gen; ausente → 0), arma clave `catalogo:hoteles:{agente}:g{gen}:p{page}:s{size}`, get→hit / miss→SQL + `StringSet` con TTL. Invalidar = `StringIncrement` (INCR atómico) de la clave-gen. **Desviación justificada:** `IDistributedCache` no expone INCR atómico; la generación necesita `IConnectionMultiplexer`.
+  - [x] **Degradación** "Redis-si-configurado": sin `ConnectionStrings:redis` se registra `InvalidadorCacheCatalogoNoop` + `LectorCatalogoSql` directo (sin caché); unit/integración sin Redis siguen verdes. Paquete `StackExchange.Redis` añadido a Hoteles.Infrastructure.
+  - [x] Invalidación en el **write-path** (2 archivos): `HotelRepository` → `InvalidarHotelesDeAgenteAsync(hotel.AgentePropietario)` tras SaveChanges (crear + concurrencia); `HabitacionRepository` → `InvalidarHabitacionesDeHotelAsync(habitacion.HotelId)`. Invalidador inyectado (no-op si null).
+  - [x] Los query-handlers de lista piden la lista al `ILectorCatalogo` inyectado → en presencia de Redis es el decorator cacheado (transparente para el handler).
 
-- [ ] **Task 3 — Cableado de infraestructura** (AC: ET.6.5)
-  - [ ] `deploy/docker-compose.yml`: `ConnectionStrings__redis: "redis:6379"` en el servicio `hoteles` (+ `depends_on: redis`). `apps.tf`: `ConnectionStrings__redis` a Hoteles (Redis gestionado ya existe; ver cómo lo hace Reservas).
-  - [ ] `RegistroInfraestructura` de Hoteles: registrar cache + invalidador (Redis-si-configurado), `AddStackExchangeRedisCache` cuando haya cadena.
+- [x] **Task 3 — Cableado de infraestructura** (AC: ET.6.5)
+  - [x] `deploy/docker-compose.yml`: `ConnectionStrings__redis: "redis:6379"` en `hoteles` + `depends_on: redis`. `apps.tf`: secret `cs-redis` + `ConnectionStrings__redis` en la app Hoteles (Redis gestionado ya existe).
+  - [x] `RegistroInfraestructura` de Hoteles: registra `LectorCatalogoSql`, `OpcionesCacheCatalogo`, y si hay cadena Redis → `IConnectionMultiplexer` + `InvalidadorCacheCatalogoRedis` + `ILectorCatalogo`=`LectorCatalogoCacheado`; si no → Noop + `LectorCatalogoSql`.
 
-- [ ] **Task 4 — Tests (TDD)** (AC: ET.6.1-6.4)
-  - [ ] Unit/handler: validación de `page`/`pageSize` (fuera de rango → 400); `PaginaDto.Total` correcto; `Skip/Take` correcto.
-  - [ ] Integración (Testcontainers **Redis** + SQL, como `Notificaciones.IntegrationTests`/`Reservas.IntegrationTests`): (a) segunda lectura idéntica = **hit** (no golpea SQL — verificable por generación/contador o por comportamiento); (b) **anti-stale**: crear hotel → listar → aparece de inmediato (la invalidación por gen funcionó); (c) paginación real (page 1 vs 2, total). Usar datos únicos por test (BD compartida + índice único).
-  - [ ] Aislamiento se mantiene (la clave incluye el agente; un agente no ve la caché de otro).
+- [x] **Task 4 — Tests (TDD)** (AC: ET.6.1-6.4)
+  - [x] Unit: `PaginacionValidatorsTests` — `page`/`pageSize` fuera de rango → inválido (400 vía ValidationBehavior). `LecturaCatalogoTests.Paginacion_respeta_page_pageSize_y_total` (Total/Skip/Take).
+  - [x] Integración (Testcontainers **Redis + SQL**, `CacheCatalogoTests`): (a) 2ª lectura = **hit** (una escritura sin invalidar no se ve); (b) **anti-stale**: crear hotel por el repo → listar lo muestra de inmediato; (c) aislamiento de caché por agente. `CacheCatalogoFixture` (SQL+Redis, conexión compartida).
+  - [x] Aislamiento mantenido (clave por agente; `La_cache_esta_aislada_por_agente`).
 
-- [ ] **Task 5 — Artefactos + verificación** (AC: ET.6.5)
-  - [ ] Postman/smoke: las listas con `?page=1&pageSize=...`; asertar el sobre `PaginaDto` (items/total) y el anti-stale (crear→listar refleja). Newman single + `-n 2` verdes; smoke x1 verde.
-  - [ ] `dotnet build` (0 warnings) + `dotnet format` limpio + suite completa + G1 verdes (G1 aislado, sin el compose compitiendo).
+- [x] **Task 5 — Artefactos + verificación** (AC: ET.6.5)
+  - [x] Postman/smoke: las listas con `?page=1&pageSize=100`; asertan el sobre `PaginaDto` (items/total) y el anti-stale (crear→listar refleja). **Fix de robustez:** agente **único por corrida** en smoke y Postman (evita acumulación >100 hoteles que sacaría el alta de page 1) + `agenteEmail` del body de reserva alineado al agente del token (antes chocaba: crear guarda body.agenteEmail, cancelar compara token → 404).
+  - [x] `dotnet build` (0 warnings) + `dotnet format` limpio + suite completa (489) + G1 (3, aislado) verdes + smoke/Newman(single 58 + `-n 2` 116) contra el compose **con Redis**.
 
 ## Dev Notes
 
@@ -97,12 +97,45 @@ claude-opus-4-8 (Amelia / dev-story)
 
 ### Debug Log References
 
+- E2E contra el compose descubrió dos bugs del **artefacto de prueba** (no del producto), ambos por el cap `pageSize<=100` + agente:
+  1. `smoke.sh` usaba `pageSize=1000` → 400 (validación). Bajado a 100.
+  2. Con agente fijo y compose persistente, el catálogo crecería sin límite y el alta caería fuera de page 1 → agente **único por corrida** (smoke + Postman). De paso destapó que `agenteEmail` del body de la reserva debía alinearse al agente del token (crear guarda `body.agenteEmail`; cancelar compara `token.AgenteActual` → 404 si difieren).
+
 ### Completion Notes List
 
+- **Paginación** (AC-ET.6.1/.2): `PaginaDto<T>` en `Comun.Resultados`; queries con `Page/PageSize` + validador (page≥1, 1≤pageSize≤100); `LectorCatalogoSql` con `Skip/Take` + `CountAsync` y orden estable (`OrderBy(...).ThenBy(Id)`); endpoints bindean `page=1,pageSize=20`.
+- **Caché Redis anti-stale** (AC-ET.6.3/.4): **decorator** `LectorCatalogoCacheado` sobre `ILectorCatalogo` (cache-aside, sin tocar handlers) + `IInvalidadorCacheCatalogo`. Invalidación por **generación** (`StringIncrement` de `catalogo:{hoteles-gen|habitaciones-gen}:{clave}`); las claves de página embeben la generación → un bump deja las viejas inalcanzables (miss → SQL fresco). Invalidación cableada en `HotelRepository`/`HabitacionRepository` (2 archivos) tras SaveChanges.
+- **Desviaciones de diseño vs. la story (justificadas):** (a) decorator de `ILectorCatalogo` en vez de un `ICacheCatalogo` con factory — la subtarea de Task 2 lo permitía y no cambia handlers; (b) **`IConnectionMultiplexer`** en vez de `IDistributedCache` — la invalidación por generación necesita `INCR` atómico, que `IDistributedCache` no expone.
+- **Degradación "Redis-si-configurado"**: sin `ConnectionStrings:redis` → `InvalidadorCacheCatalogoNoop` + `LectorCatalogoSql` directo (unit/integración sin Redis verdes; misma política que la idempotencia de Reservas).
+- **Verificación**: unit (validators), integración con Testcontainers **Redis+SQL** (`CacheCatalogoTests`: hit real, anti-stale, aislamiento de caché por agente), suite completa + G1, y E2E smoke/Newman contra el compose con Redis (anti-stale live + propagación del evento al worker).
+
 ### File List
+
+**Nuevos**
+- `src/Comun/HotelBookingHub.Comun/Resultados/PaginaDto.cs`
+- `src/Servicios/Hoteles/Hoteles.Application/Abstracciones/IInvalidadorCacheCatalogo.cs`
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/Cache/ClavesCacheCatalogo.cs`
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/Cache/InvalidadorCacheCatalogo.cs`
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/Cache/LectorCatalogoCacheado.cs`
+- `tests/Hoteles.IntegrationTests/CacheCatalogoFixture.cs`
+- `tests/Hoteles.IntegrationTests/CacheCatalogoTests.cs`
+- `tests/Hoteles.UnitTests/ListarCatalogo/PaginacionValidatorsTests.cs`
+
+**Modificados**
+- `src/Servicios/Hoteles/Hoteles.Application/Abstracciones/ILectorCatalogo.cs` (listas → `PaginaDto`)
+- `.../Hoteles/ListarHoteles/ListarHotelesDelAgenteQuery.cs` · `.../Habitaciones/ListarHabitaciones/ListarHabitacionesDeHotelQuery.cs` (Page/PageSize + validador)
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/Persistencia/LectorCatalogoSql.cs` (Skip/Take + Count + orden estable)
+- `.../Persistencia/HotelRepository.cs` · `.../Persistencia/HabitacionRepository.cs` (invalidación tras SaveChanges)
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/RegistroInfraestructura.cs` (DI Redis-si-configurado)
+- `src/Servicios/Hoteles/Hoteles.Infrastructure/Hoteles.Infrastructure.csproj` (StackExchange.Redis)
+- `src/Servicios/Hoteles/Hoteles.Api/Program.cs` (endpoints page/pageSize + pasa cadena redis)
+- `tests/Hoteles.IntegrationTests/Hoteles.IntegrationTests.csproj` · `tests/Hoteles.IntegrationTests/LecturaCatalogoTests.cs`
+- `deploy/docker-compose.yml` · `deploy/terraform/apps.tf` (ConnectionStrings__redis a Hoteles)
+- `deploy/scripts/smoke.sh` · `postman/hotel-booking-hub.postman_collection.json` (pageSize=100 + agente único por corrida + agenteEmail alineado)
 
 ## Change Log
 
 | Fecha | Cambio |
 |---|---|
 | 2026-07-11 | Story T.6 creada (create-story): paginación (page/pageSize) de las listas GET del catálogo + caché Redis con invalidación por generación (anti-stale). Status → ready-for-dev. |
+| 2026-07-11 | dev-story implementada: paginación + decorator de caché Redis (invalidación por generación), DI Redis-si-configurado, infra (compose+apps.tf), tests (unit+integración Testcontainers+E2E). Fix de artefactos (agente único por corrida + agenteEmail alineado). Suite 489 + G1 + smoke/Newman verdes. Status → review. |

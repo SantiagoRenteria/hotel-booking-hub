@@ -46,7 +46,9 @@ builder.Services.AddManejoExcepcionesNegocio();
 builder.Services.AddMediatorPipeline(typeof(CrearHotelCommand).Assembly);
 
 // Adaptadores de infraestructura (DbContext + repositorio).
-builder.Services.AddHotelesInfrastructure(builder.Configuration.GetConnectionString("hotelesdb"));
+builder.Services.AddHotelesInfrastructure(
+    builder.Configuration.GetConnectionString("hotelesdb"),
+    builder.Configuration.GetConnectionString("redis"));
 
 var app = builder.Build();
 

@@ -38,7 +38,10 @@
           "  var sig = b64url(CryptoJS.HmacSHA256(header+'.'+payload, key));",
           "  return header+'.'+payload+'.'+sig;",
           "}",
-          "pm.collectionVariables.set('jwtAgente', mint('Agente','agente@x.com'));",
+          "// Agente ÚNICO por corrida (lo fija sin guard el pre-request de 'GET /health', el primer request): así el",
+          "// catálogo del agente no crece sin límite entre corridas contra un compose persistente y el alta siempre",
+          "// cae en page 1 (pageSize<=100, Story T.6). Fallback fijo por si se corriera un request agente suelto.",
+          "pm.collectionVariables.set('jwtAgente', mint('Agente', pm.collectionVariables.get('agenteEmail') || 'agente@x.com'));",
           "pm.collectionVariables.set('jwtViajero', mint('Viajero','viajero@x.com'));"
         ]
       }
@@ -51,7 +54,14 @@
         {
           "name": "GET /health → 200 (anónimo)",
           "request": { "method": "GET", "url": "{{baseUrl}}/health" },
-          "event": [ { "listen": "test", "script": { "exec": [ "pm.test('health 200', () => pm.response.to.have.status(200));" ] } } ]
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "// Semilla de corrida: agente único por ejecución/iteración (sin guard → fresco cada vez, estable en la",
+              "// corrida porque las demás requests lo reusan vía collectionVariables). Mismo criterio que smoke.sh.",
+              "pm.collectionVariables.set('agenteEmail', 'agente-' + Date.now() + '@x.com');"
+            ] } },
+            { "listen": "test", "script": { "exec": [ "pm.test('health 200', () => pm.response.to.have.status(200));" ] } }
+          ]
         },
         {
           "name": "GET /alive → 200 (anónimo)",
@@ -341,7 +351,7 @@
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" } ],
             "url": "{{baseUrl}}/api/v1/reservas",
-            "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-08-01\",\"salida\":\"2026-08-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"agente@x.com\"}" }
+            "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-08-01\",\"salida\":\"2026-08-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"{{agenteEmail}}\"}" }
           },
           "event": [ { "listen": "test", "script": { "exec": [
             "pm.test('201 Created', () => pm.response.to.have.status(201));",
@@ -355,7 +365,7 @@
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" }, { "key": "Idempotency-Key", "value": "{{idemKey}}" } ],
             "url": "{{baseUrl}}/api/v1/reservas",
-            "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-09-01\",\"salida\":\"2026-09-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"agente@x.com\"}" }
+            "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-09-01\",\"salida\":\"2026-09-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"{{agenteEmail}}\"}" }
           },
           "event": [
             { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
@@ -375,7 +385,7 @@
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" }, { "key": "Idempotency-Key", "value": "{{idemKey}}" } ],
             "url": "{{baseUrl}}/api/v1/reservas",
-            "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-09-01\",\"salida\":\"2026-09-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"agente@x.com\"}" }
+            "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-09-01\",\"salida\":\"2026-09-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"{{agenteEmail}}\"}" }
           },
           "event": [ { "listen": "test", "script": { "exec": [
             "pm.test('200 OK (replay)', () => pm.response.to.have.status(200));",
@@ -388,7 +398,7 @@
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" }, { "key": "Idempotency-Key", "value": "{{idemKey}}" } ],
             "url": "{{baseUrl}}/api/v1/reservas",
-            "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-09-05\",\"salida\":\"2026-09-07\",\"huespedes\":[{\"nombres\":\"Otra\",\"apellidos\":\"Persona\",\"fechaNacimiento\":\"1991-02-02\",\"genero\":\"M\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC9999999\",\"email\":\"otro@x.com\",\"telefono\":\"3009999999\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Ana\",\"telefono\":\"3001112222\"},\"agenteEmail\":\"agente@x.com\"}" }
+            "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-09-05\",\"salida\":\"2026-09-07\",\"huespedes\":[{\"nombres\":\"Otra\",\"apellidos\":\"Persona\",\"fechaNacimiento\":\"1991-02-02\",\"genero\":\"M\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC9999999\",\"email\":\"otro@x.com\",\"telefono\":\"3009999999\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Ana\",\"telefono\":\"3001112222\"},\"agenteEmail\":\"{{agenteEmail}}\"}" }
           },
           "event": [ { "listen": "test", "script": { "exec": [ "pm.test('422 (clave reusada con otro cuerpo)', () => pm.response.to.have.status(422));" ] } } ]
         },
@@ -445,7 +455,7 @@
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "Bearer {{jwtAgente}}" }, { "key": "Content-Type", "value": "application/json" } ],
             "url": "{{baseUrl}}/api/v1/reservas",
-            "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-10-01\",\"salida\":\"2026-10-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"agente@x.com\"}" }
+            "body": { "mode": "raw", "raw": "{\"habitacionId\":\"{{habitacionId}}\",\"entrada\":\"2026-10-01\",\"salida\":\"2026-10-03\",\"huespedes\":[{\"nombres\":\"Ana\",\"apellidos\":\"Lopez\",\"fechaNacimiento\":\"1990-01-01\",\"genero\":\"F\",\"tipoDocumento\":\"CC\",\"numeroDocumento\":\"CC1234567\",\"email\":\"ana@x.com\",\"telefono\":\"3001234567\"}],\"contactoEmergencia\":{\"nombreCompleto\":\"Juan\",\"telefono\":\"3007654321\"},\"agenteEmail\":\"{{agenteEmail}}\"}" }
           },
           "event": [ { "listen": "test", "script": { "exec": [
             "pm.test('201 Created', () => pm.response.to.have.status(201));",
