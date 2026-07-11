@@ -3,7 +3,7 @@ baseline_commit: 07943acd6d0c4a602de87f009deb914491f38612
 ---
 # Story 8.2: Despliegue real de bajo costo + smoke end-to-end + destroy
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
