@@ -9,11 +9,11 @@ using Reservas.Domain.Puertos;
 using Reservas.Infrastructure.Cache;
 using Reservas.Infrastructure.Disponibilidad;
 using Reservas.Infrastructure.Idempotencia;
-using StackExchange.Redis;
 using Reservas.Infrastructure.Mensajeria;
 using Reservas.Infrastructure.Outbox;
 using Reservas.Infrastructure.Persistencia;
 using Reservas.Infrastructure.Proyeccion;
+using StackExchange.Redis;
 
 namespace Reservas.Infrastructure;
 

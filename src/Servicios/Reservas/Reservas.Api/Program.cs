@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
 using HotelBookingHub.Comun.Web.Seguridad;
+using Microsoft.AspNetCore.Mvc;
 using Reservas.Api;
 using Reservas.Application.Abstracciones;
 using Reservas.Application.Reservas.BuscarDisponibilidad;
@@ -87,14 +88,21 @@ if (app.Environment.IsDevelopment())
 // /health y /alive (Story 1.1).
 app.MapDefaultEndpoints();
 
-// CAP-5 · Crear-confirmar reserva (FR-9/10/11). Mapeo Result→HTTP centralizado (union type explícito).
-app.MapPost("/api/v1/reservas", async (CrearReservaCommand comando, ISender sender, CancellationToken ct) =>
-    {
-        var resultado = await sender.Send(comando, ct);
-        return resultado.ToCreatedResult(dto => $"/api/v1/reservas/{dto.Id}");
-    })
+// CAP-5 · Crear-confirmar reserva (FR-9/10/11) con idempotencia opcional por header `Idempotency-Key` (Story 1.7,
+// DOCUMENTO-BASE §8.5): un reintento del cliente con la misma clave no crea una segunda reserva. Mapeo Result→HTTP
+// centralizado en el manejador (201 al crear, 200 en replay, 422 si la clave se reutiliza con otro cuerpo).
+app.MapPost("/api/v1/reservas", (
+        CrearReservaCommand comando,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        ISender sender,
+        IAlmacenIdempotenciaReserva idempotencia,
+        CancellationToken ct) =>
+        CrearReservaIdempotente.ManejarAsync(comando, idempotencyKey, sender, idempotencia, ct))
     .WithName("CrearReserva")
     .WithTags("Reservas")
+    .Produces<Reservas.Application.Reservas.CrearReserva.ReservaResponseDto>(StatusCodes.Status201Created)
+    .Produces<Reservas.Application.Reservas.CrearReserva.ReservaResponseDto>(StatusCodes.Status200OK)
+    .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
     .RequireAuthorization(PoliticasAutorizacion.AgenteOViajero);
 
 // CAP · Solicitar cancelación con política sugerida (Story 4.1). Transición Confirmada→CancelacionSolicitada:

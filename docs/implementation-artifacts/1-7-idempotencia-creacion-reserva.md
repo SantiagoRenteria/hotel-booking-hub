@@ -3,7 +3,7 @@ baseline_commit: 1a0f7a153a0003d581d67efa3c56a5c4307543c3
 ---
 # Story 1.7: Idempotencia de creación de reserva (`Idempotency-Key`)
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -40,22 +40,11 @@ para **no duplicar mi reserva ante un reintento de red o un doble clic**.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Puerto + store de idempotencia de reserva** (AC: 1.7.1, 1.7.3)
-  - [ ] Definir `IAlmacenIdempotenciaReserva` (Application/Abstracciones): `Task<ResultadoIdempotencia> RecuperarOReservarAsync(string clave, string huellaCuerpo, ct)` y `Task GuardarRespuestaAsync(string clave, string huellaCuerpo, ReservaResponseDto dto, ct)`. La semántica: primera vez con `K` → reserva la clave (marca "en curso"); repetición con misma `K` + misma huella → devuelve la respuesta guardada; misma `K` + huella distinta → señala conflicto.
-  - [ ] Adaptador **Redis** (`AlmacenIdempotenciaReservaRedis`, Infrastructure) con **SETNX + TTL** vía `IConnectionMultiplexer` (patrón idéntico al `InboxIdempotenciaRedis` del worker, 5.1b) si hay Redis configurado; **fallback en memoria** (`AlmacenIdempotenciaReservaEnMemoria`) para dev sin Redis (misma política "Redis-si-configurado" del endpoint). TTL configurable (p. ej. 24h).
-  - [ ] Guardar la **huella del cuerpo** (hash SHA-256 del JSON canónico del `CrearReservaCommand`) + la respuesta (`ReservaResponseDto`) para replay.
-- [ ] **Task 2 — Aplicar en el endpoint `POST /api/v1/reservas`** (AC: 1.7.1..1.7.4)
-  - [ ] Leer el header `Idempotency-Key` (opcional). Si **ausente** → flujo actual sin cambios (AC-1.7.4). Si **presente**: calcular la huella del cuerpo; consultar el store: **hit misma huella** → devolver el DTO guardado (200/201 con el mismo `Id`); **hit huella distinta** → `422`; **miss** → despachar el comando, y en éxito guardar (clave → huella + DTO) antes de responder.
-  - [ ] La clave del cliente (header) es **distinta** del `MessageId` del outbox (interno) — NO confundirlas (comentario claro).
-  - [ ] Mapear el conflicto de clave a Problem Details `422` (coherente con el 400/409 del sistema; `application/problem+json`).
-- [ ] **Task 3 — Registro DI + config** (AC: 1.7.1)
-  - [ ] Registrar el adaptador (Redis-si-configurado, si no memoria) en `Reservas.Api/Program.cs` o `RegistroInfraestructura`. Reutilizar el `IConnectionMultiplexer`/`cadenaRedis` ya presente si aplica (hoy el endpoint usa `IDistributedCache`; para SETNX atómico se necesita `IConnectionMultiplexer` como el worker).
-- [ ] **Task 4 — Tests (TDD)** (AC: todos)
-  - [ ] **Unit** del store: reservar-clave nueva → OK; repetir misma clave+huella → devuelve guardado; misma clave+huella distinta → conflicto; TTL/expiración si aplica. (En memoria; determinista.)
-  - [ ] **Funcional** (WebApplicationFactory): dos `POST` con la misma `K` y mismo cuerpo → el segundo NO vuelve a despachar el comando (store hit) y devuelve el mismo `Id`; misma `K` + cuerpo distinto → `422`; sin header → pasa al pipeline como hoy. *(Para no depender de SQL real, verificar el corto-circuito del store con un `ISender`/handler fake o afirmando que el segundo request no incrementa las creaciones — evitar exigir Testcontainers SQL salvo que ya esté en el proyecto de integración.)*
-  - [ ] Determinismo: si el test usa estado ambient compartido, aislarlo (lección 7.x/9.1).
-- [ ] **Task 5 — Documentación** (AC: todos)
-  - [ ] Nota en el README/OpenAPI del endpoint: header `Idempotency-Key` soportado. Quitar/actualizar cualquier referencia en el DOCUMENTO-BASE que lo daba por no implementado.
+- [x] **Task 1 — Puerto + store de idempotencia de reserva** (AC: 1.7.1, 1.7.3) ✅ `IAlmacenIdempotenciaReserva` (`ObtenerAsync` + `GuardarSiAusenteAsync` con semántica SETNX) + `RegistroIdempotencia(HuellaCuerpo, RespuestaJson)` en Application/Abstracciones. Adaptador **Redis** (`When.NotExists` + TTL 24h configurable) y **en memoria** (`TryAdd`). Huella = SHA-256 del JSON del `CrearReservaCommand`.
+- [x] **Task 2 — Aplicar en el endpoint `POST /api/v1/reservas`** (AC: 1.7.1..1.7.4) ✅ `CrearReservaIdempotente.ManejarAsync`: sin header → flujo actual; hit misma huella → 200 replay del DTO; hit huella distinta → **422** Problem Details; miss → despacha y guarda (`GuardarSiAusente`) solo en éxito. Clave del cliente ≠ `MessageId` del outbox (documentado).
+- [x] **Task 3 — Registro DI + config** (AC: 1.7.1) ✅ Factory Redis-si-configurado (`ConnectionStrings:redis`) / memoria en `RegistroInfraestructura`; `IConnectionMultiplexer` dedicado (SETNX). `StackExchange.Redis` añadido a Reservas.Infrastructure.
+- [x] **Task 4 — Tests (TDD)** (AC: todos) ✅ Unit del store en memoria (SETNX no-sobrescribe, roundtrip, clave ausente). Funcional con `ISender` fake que **cuenta despachos**: misma clave+cuerpo → 1 despacho + mismo `Id`; misma clave+cuerpo distinto → 422; sin header → 2 despachos. Determinista, sin BD real. Ciclo Red→Green visible.
+- [x] **Task 5 — Documentación** (AC: todos) ✅ OpenAPI del endpoint anotado (`.Produces` 201/200 + `.ProducesProblem` 422). El DOCUMENTO-BASE §8.5 ya se reconcilió (el Idempotency-Key deja de estar como "no implementado"). 📄 La nota en el README de entrega se cierra en la Épica T (el README aún no es material de entrega).
 
 ## Dev Notes
 
@@ -98,10 +87,38 @@ para **no duplicar mi reserva ante un reintento de red o un doble clic**.
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-opus-4-8 (Amelia / dev-story, modo autónomo)
 
 ### Debug Log References
 
+- TDD Red→Green visible: `test(1.7): … (RED)` (endpoint ignora el header → 2 despachos / 201 en vez de 422) → fase verde (`CrearReservaIdempotente`).
+- 446 tests verdes (unit+functional+contracts+integración), 0 warnings, `dotnet format` limpio.
+
 ### Completion Notes List
 
+- **Idempotencia de `POST /api/v1/reservas` por header `Idempotency-Key`** (DOCUMENTO-BASE §8.5): reintento con misma clave+cuerpo → replay (200) sin re-despachar; misma clave+cuerpo distinto → 422; sin header → sin cambios. La huella (SHA-256 del comando) detecta la reutilización de clave con otro cuerpo.
+- **Store por entorno:** Redis (SETNX `When.NotExists` + TTL) si hay cadena; en memoria (`TryAdd`) si no. Dedup entre instancias solo con Redis (documentado). Clave de idempotencia (cliente) ≠ `MessageId` del outbox (interno).
+- **La clave solo se "quema" en éxito:** un 400/409 NO fija la clave (permite reintento legítimo). El dominio de `Reserva` y el pipeline no cambiaron.
+- **Test determinista sin SQL:** `ISender` fake que cuenta despachos aísla el comportamiento de idempotencia del endpoint del create real.
+
 ### File List
+
+**Nuevos**
+- `src/Servicios/Reservas/Reservas.Application/Abstracciones/IAlmacenIdempotenciaReserva.cs`
+- `src/Servicios/Reservas/Reservas.Infrastructure/Idempotencia/OpcionesIdempotenciaReserva.cs`
+- `src/Servicios/Reservas/Reservas.Infrastructure/Idempotencia/AlmacenIdempotenciaReservaEnMemoria.cs`
+- `src/Servicios/Reservas/Reservas.Infrastructure/Idempotencia/AlmacenIdempotenciaReservaRedis.cs`
+- `src/Servicios/Reservas/Reservas.Api/CrearReservaIdempotente.cs`
+- `tests/Reservas.UnitTests/Idempotencia/AlmacenIdempotenciaReservaEnMemoriaTests.cs`
+- `tests/Reservas.FunctionalTests/IdempotenciaReservaTests.cs`
+
+**Modificados**
+- `src/Servicios/Reservas/Reservas.Api/Program.cs` (endpoint idempotente + `[FromHeader]` + OpenAPI)
+- `src/Servicios/Reservas/Reservas.Infrastructure/RegistroInfraestructura.cs` (registro del store)
+- `src/Servicios/Reservas/Reservas.Infrastructure/Reservas.Infrastructure.csproj` (StackExchange.Redis)
+
+## Change Log
+
+| Fecha | Cambio |
+|---|---|
+| 2026-07-10 | Story 1.7: idempotencia de `POST /api/v1/reservas` por `Idempotency-Key` (DOCUMENTO-BASE §8.5). Store SETNX (Redis) / memoria; replay 200 / 422 en reutilización; sin header sin cambios. TDD Red→Green. 446 tests verdes. Status → review. |
