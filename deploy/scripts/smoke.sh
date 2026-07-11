@@ -31,7 +31,7 @@ rv_of() { printf '%s' "$1" | sed -nE 's/.*"rowVersion"[: ]*"([^"]+)".*/\1/p' | h
 
 # Cuerpo de reserva parametrizado por habitación + fechas (una sola línea: `curl -d` elimina saltos → 400).
 reserva_body() {
-  printf '{"habitacionId":"%s","entrada":"%s","salida":"%s","huespedes":[{"nombres":"Ana","apellidos":"Lopez","fechaNacimiento":"1990-01-01","genero":"F","tipoDocumento":"CC","numeroDocumento":"CC1234567","email":"ana@x.com","telefono":"3001234567"}],"contactoEmergencia":{"nombreCompleto":"Juan","telefono":"3007654321"},"agenteEmail":"agente-smoke@ejemplo.com"}' "$1" "$2" "$3"
+  printf '{"habitacionId":"%s","entrada":"%s","salida":"%s","huespedes":[{"nombres":"Ana","apellidos":"Lopez","fechaNacimiento":"1990-01-01","genero":"F","tipoDocumento":"CC","numeroDocumento":"CC1234567","email":"ana@x.com","telefono":"3001234567"}],"contactoEmergencia":{"nombreCompleto":"Juan","telefono":"3007654321"},"agenteEmail":"%s"}' "$1" "$2" "$3" "${AGENTE_EMAIL:-agente-smoke@ejemplo.com}"
 }
 
 # _curl <token> <metodo> <path> <body> <header-extra> -> imprime "code\nbody"; reintenta SOLO transitorios
@@ -101,13 +101,18 @@ else
   say "Recuperando clave de firma de Key Vault ($KV)"
   KEY="$(az keyvault secret show --vault-name "$KV" --name jwt-signing-key --query value -o tsv)"
 fi
-TOKEN="$(bash "$HERE/mint-jwt.sh" "$KEY" Agente hotel-booking-hub hotel-booking-hub-api agente-smoke@ejemplo.com)"
+# Agente ÚNICO por corrida: el volumen SQL del compose persiste entre corridas; con un agente fijo el catálogo
+# crecería sin límite y (con `pageSize<=100`, Story T.6) el hotel recién creado podría caer fuera de la página 1.
+# Un agente por corrida deja un catálogo pequeño (aislado server-side) → el alta siempre entra en page 1, y de
+# paso ejercemos el aislamiento por agente. RUN_ID también da nombres únicos (índice único Nombre+Ciudad).
+RUN_ID="$(date +%s)-$RANDOM"
+# El agente del TOKEN y el `agenteEmail` del BODY de la reserva DEBEN coincidir: Reservas guarda AgenteEmail del
+# body al crear y la cancelación compara contra el agente del token (ajeno → 404). Una sola fuente de verdad.
+AGENTE_EMAIL="agente-smoke-$RUN_ID@ejemplo.com"
+TOKEN="$(bash "$HERE/mint-jwt.sh" "$KEY" Agente hotel-booking-hub hotel-booking-hub-api "$AGENTE_EMAIL")"
 TOKEN_VIAJERO="$(bash "$HERE/mint-jwt.sh" "$KEY" Viajero hotel-booking-hub hotel-booking-hub-api viajero-smoke@ejemplo.com)"
 
 # ---- 3) Catálogo: crear + ciclo de vida (Agente) ----
-# Nombre único por corrida: el índice único (AgentePropietario, Nombre, Ciudad) rechazaría re-crear el mismo
-# hotel si el smoke se re-ejecuta contra un compose que no se reinició. Con sufijo por corrida es idempotente.
-RUN_ID="$(date +%s)-$RANDOM"
 HOTEL_NOMBRE="Hotel Smoke $RUN_ID"
 say "Crear hotel ($HOTEL_NOMBRE)"
 HOTEL=$(ok A POST /api/v1/hoteles "{\"nombre\":\"$HOTEL_NOMBRE\",\"ciudad\":\"Bogota\",\"direccion\":\"Cll 1 #2-3\",\"descripcion\":\"smoke\",\"estado\":1}")
@@ -142,12 +147,15 @@ DES=$(ok A POST /api/v1/hoteles "{\"nombre\":\"Desechable $RUN_ID\",\"ciudad\":\
 DES_ID=$(id_of "$DES"); DES_RV=$(rv_of "$DES")
 expect 204 A DELETE "/api/v1/hoteles/$DES_ID" "{\"rowVersion\":\"$DES_RV\"}"
 
-say "Lecturas del catálogo (GET, Story T.5)"
-LH=$(ok A GET /api/v1/hoteles)
-printf '%s' "$LH" | grep -q "$HOTEL_ID" && say "GET /hoteles OK (contiene el creado)" || die "el hotel $HOTEL_ID no aparece en GET /hoteles"
+say "Lecturas del catálogo (GET paginado, Story T.5/T.6)"
+# pageSize=100 (tope de la validación T.6). El agente es único por corrida → su catálogo es pequeño y el alta cae
+# en page 1. Anti-stale (AC-ET.6.4): el hotel recién creado DEBE aparecer aquí pese a la caché (la escritura la
+# invalidó). La respuesta es un sobre PaginaDto {items,page,pageSize,total}; el grep del id va sobre el JSON crudo.
+LH=$(ok A GET "/api/v1/hoteles?page=1&pageSize=100")
+printf '%s' "$LH" | grep -q "$HOTEL_ID" && say "GET /hoteles OK (paginado + anti-stale: contiene el creado)" || die "el hotel $HOTEL_ID no aparece en GET /hoteles"
 ok A GET "/api/v1/hoteles/$HOTEL_ID" >/dev/null && say "GET hotel detalle OK"
-LHAB=$(ok A GET "/api/v1/hoteles/$HOTEL_ID/habitaciones")
-printf '%s' "$LHAB" | grep -q "$HAB_ID" && say "GET habitaciones del hotel OK (contiene la creada)" || die "la habitación $HAB_ID no aparece"
+LHAB=$(ok A GET "/api/v1/hoteles/$HOTEL_ID/habitaciones?page=1&pageSize=100")
+printf '%s' "$LHAB" | grep -q "$HAB_ID" && say "GET habitaciones del hotel OK (paginado, contiene la creada)" || die "la habitación $HAB_ID no aparece"
 ok A GET "/api/v1/habitaciones/$HAB_ID" >/dev/null && say "GET habitación detalle OK"
 
 # ---- 4) Reserva (Agente) ----

@@ -206,6 +206,12 @@ resource "azurerm_container_app" "hoteles" {
     value = "Server=tcp:${azurerm_mssql_server.principal.fully_qualified_domain_name},1433;Initial Catalog=db-hoteles;User ID=${var.sql_admin_login};Password=${random_password.sql_admin.result};Encrypt=True;TrustServerCertificate=False;Connection Timeout=60;"
   }
 
+  # Managed Redis (host:port TLS + clave) para la caché de lectura del catálogo (Story T.6).
+  secret {
+    name  = "cs-redis"
+    value = local.redis_cs
+  }
+
   dapr {
     app_id   = "hoteles"
     app_port = 8080
@@ -243,6 +249,10 @@ resource "azurerm_container_app" "hoteles" {
       env {
         name        = "ConnectionStrings__hotelesdb"
         secret_name = "cs-hotelesdb"
+      }
+      env {
+        name        = "ConnectionStrings__redis"
+        secret_name = "cs-redis"
       }
       env {
         name        = "Jwt__SigningKey"

@@ -88,12 +88,16 @@ services:
       ConnectionStrings__rabbitmq: amqp://guest:guest@rabbitmq:5672
       # Data-plane local (Story T.1, AC-ET.1.5): cadena SQL + migración al arranque (gated por AplicarMigraciones).
       ConnectionStrings__hotelesdb: "Server=sql-hoteles;Database=db-hoteles;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True"
+      # Caché Redis de la lectura del catálogo (Story T.6). Sin esta cadena, Hoteles degrada a SQL directo (sin caché).
+      ConnectionStrings__redis: "redis:6379"
       AplicarMigraciones: "true"
       # Expone OpenAPI + UI Scalar en el compose (evaluabilidad, §4.3). En Azure/ACA NO se define → oculto en prod real.
       ExponerOpenApi: "true"
     ports: ["8081:8080"]
     depends_on:
       sql-hoteles:
+        condition: service_started
+      redis:
         condition: service_started
       rabbitmq:
         condition: service_healthy
