@@ -1,3 +1,4 @@
+using HotelBookingHub.Comun.Eventos;
 using Notificaciones.Worker;
 using Notificaciones.Worker.Notificaciones;
 using StackExchange.Redis;
@@ -64,5 +65,21 @@ var app = builder.Build();
 
 // /health y /alive del worker (Story 1.1).
 app.MapDefaultEndpoints();
+
+// Transporte de eventos en NUBE (ADR-019): suscripción Dapr pub/sub. El sidecar Dapr entrega cada evento
+// (CloudEvent) por HTTP a este endpoint, que lo enruta igual que el ConsumidorRabbitMq local (mismo
+// EnrutadorNotificaciones → inbox idempotente + dead-letter). Se activa solo con TransporteEventos=Dapr (ACA);
+// en local/compose el transporte es RabbitMQ directo (arriba). Adaptador hermano por el mismo seam.
+if (string.Equals(Environment.GetEnvironmentVariable("TransporteEventos"), "Dapr", StringComparison.OrdinalIgnoreCase))
+{
+    app.UseCloudEvents();
+    app.MapSubscribeHandler();
+    app.MapPost("/eventos", async (EventoIntegracion evento, EnrutadorNotificaciones enrutador, CancellationToken ct) =>
+        {
+            await enrutador.EnrutarAsync(evento, ct);
+            return Results.Ok();
+        })
+        .WithTopic("pubsub", "hotelbookinghub-eventos");
+}
 
 app.Run();

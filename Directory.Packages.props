@@ -34,6 +34,9 @@
     <PackageVersion Include="StackExchange.Redis" Version="2.7.27" />
     <!-- Transporte real de eventos local (Story 9.1, ADR-019): RabbitMQ directo detrás de IPublicadorEventos. -->
     <PackageVersion Include="RabbitMQ.Client" Version="7.1.2" />
+    <!-- Transporte de eventos en NUBE (Épica 8, ADR-019): Dapr pub/sub → Azure Service Bus, por el mismo puerto. -->
+    <PackageVersion Include="Dapr.Client" Version="1.15.4" />
+    <PackageVersion Include="Dapr.AspNetCore" Version="1.15.4" />
     <!-- Aspire ServiceDefaults: resiliencia + service discovery + OpenTelemetry -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.6.0" />
