@@ -7,6 +7,11 @@
 > **Proyecto/repo:** `hotel-booking-hub` · https://github.com/SantiagoRenteria/hotel-booking-hub
 > **Idioma:** documentación y **código de dominio en español** (identificadores sin tildes; sufijos de patrón en inglés por convención — ver §10.1).
 
+> **⚙️ Nota de reconciliación (2026-07-10).** Durante la fase de arquitectura e implementación se tomaron dos decisiones que **superan** definiciones iniciales de este documento; las secciones afectadas se corrigieron en línea (marcadas *[Corregido …]*):
+> - **Aislamiento del anti-overbooking:** `SERIALIZABLE` → **READ COMMITTED + índice único** que arbitra el conflicto en el INSERT (**ADR-016**). Menos deadlocks, mejor p95/p99; el `UNIQUE (HabitacionId, Noche)` ya garantiza cero overbooking. §8.4/§8.5/§8.8 y ADR-003 corregidos.
+> - **Transporte de eventos por entorno (patrón Strategy):** **RabbitMQ directo en local** (adaptador tras `IPublicadorEventos`) y **Dapr pub/sub → Service Bus en nube** (**ADR-019/020**). El "cero cambios de código, solo el YAML" aplica al salto de broker **dentro de Dapr en nube**, no al salto local↔nube. §5/§6/§7/§8.6 y ADR-002 corregidos.
+> - **Registro de ADRs:** los ADR reales del repo van del 001 al 020 (014–018 de la fase de arquitectura; 019–020 de la reconciliación de transporte). Los ADR completos viven en `docs/specs/spec-hotel-booking-hub/decisions-adr.md` (y se publicarán como archivos en `docs/adr/` en la Épica T).
+
 ---
 
 ## Tabla de contenido
@@ -99,7 +104,7 @@ Los retos son **opcionales**; representan la oportunidad de demostrar profundida
 | Reto (del enunciado) | ¿Se aborda? | Cómo |
 |----------------------|:-----------:|------|
 | **Arquitectura de microservicios** (≥2 dominios, contratos OpenAPI, trade-offs) | ✅ | 2 microservicios por BC + Gateway; contratos OpenAPI; trade-offs en [ADR-001](#adr-001--arquitectura-de-microservicios-por-bounded-context). |
-| **Mensajería con RabbitMQ** (evento + notificaciones + fallos/reintentos) | ✅ | Evento `ReservaConfirmada` vía Dapr pub/sub sobre RabbitMQ; retries + DLQ; §8.6. |
+| **Mensajería con RabbitMQ** (evento + notificaciones + fallos/reintentos) | ✅ | *[Corregido — ADR-019]* Evento `ReservaConfirmada` por **RabbitMQ**: transporte **directo en local** (adaptador tras `IPublicadorEventos`) y **Dapr pub/sub → Service Bus en nube**, seleccionado por entorno (patrón Strategy); Outbox + idempotencia + dead-letter; §8.6. |
 | **Seguridad en el backend** (JWT/OAuth2 + ≥3 prácticas) | ✅ | JWT/OIDC + RBAC + **8 prácticas** mapeadas a **OWASP Top 10**; §8.10, §11. |
 | **IA en el desarrollo — uso de herramientas** | ✅ | Flujo BMAD documentado; §16. |
 | **IA en el desarrollo — generación asistida de código** | ✅ | Casos con prompts y verificación documentados; §16. |
@@ -119,8 +124,8 @@ Los retos son **opcionales**; representan la oportunidad de demostrar profundida
 | Caché / state / idempotencia | **Redis** | Caché de disponibilidad, store de idempotencia (inbox) y Dapr state store ([ADR-012](#adr-012--redis-para-cach%C3%A9-idempotencia-y-state)). |
 | ORM | **EF Core 10** (code-first + migraciones) | Estándar, tracking de entidades DDD, provider SQL Server. |
 | API | **REST** documentada con **OpenAPI**; UI con **Scalar** | El estándar OpenAPI cumple el requisito "OpenAPI/Swagger" ([ADR-011](#adr-011--openapi-como-contrato-scalar-como-ui)). |
-| Mensajería / runtime distribuido | **Dapr** (pub/sub + secrets) | Cloud-agnostic, nativo en Azure Container Apps ([ADR-002](#adr-002--dapr-como-runtime-de-pubsub-y-secretos)). |
-| Broker | **RabbitMQ** (local) / **Azure Service Bus** (nube) | Intercambiable por *component* Dapr, sin tocar código. |
+| Mensajería / runtime distribuido | *[Corregido — ADR-019/020]* **RabbitMQ directo** en local; **Dapr** (pub/sub + secrets) en nube | Patrón Strategy por entorno tras el puerto `IPublicadorEventos`: el dominio no cambia; Dapr aporta cloud-agnostic + secrets en ACA ([ADR-002](#adr-002--dapr-como-runtime-de-pubsub-y-secretos) refinado por ADR-019/020). |
+| Broker | **RabbitMQ** (local, cliente directo) / **Azure Service Bus** (nube, vía Dapr) | En nube el broker es intercambiable por *component* Dapr sin tocar código; en local se usa el adaptador RabbitMQ directo. |
 | Validación | **FluentValidation** | Validación declarativa de inputs (anti-inyección, OWASP A03). |
 | Testing | **xUnit** + EF Core InMemory + **Testcontainers.MsSql** | TDD obligatorio; integración con SQL Server real en contenedor. |
 | Pruebas de API | **Postman + Newman** | Colección versionada, ejecutada en CI con Newman. |
@@ -139,7 +144,7 @@ Los retos son **opcionales**; representan la oportunidad de demostrar profundida
 | Estilo | 2 microservicios (BC Hoteles + BC Reservas) + Gateway YARP + Notificaciones worker | [001](#adr-001--arquitectura-de-microservicios-por-bounded-context) |
 | Diseño interno | Clean Architecture + DDD (patrones, **sin** paquetes privados) | [009](#adr-009--sin-dependencias-privadas) |
 | CQRS | Command/Query + **mediator propio minimalista** (no MediatR, no Wolverine) | [005](#adr-005--cqrs-con-mediator-propio) |
-| Mensajería/infra | **Dapr** (pub/sub + secrets), cloud-agnostic | [002](#adr-002--dapr-como-runtime-de-pubsub-y-secretos) |
+| Mensajería/infra | *[Corregido]* **RabbitMQ directo (local) / Dapr→Service Bus (nube)** por entorno, tras `IPublicadorEventos` | [002](#adr-002--dapr-como-runtime-de-pubsub-y-secretos) + **019/020** |
 | Motor transaccional | **SQL Server** + **anti-overbooking por slots de inventario + UNIQUE** | [003](#adr-003--sql-server-con-anti-overbooking-por-slots-de-inventario) |
 | Caché / state | **Redis** (caché, idempotencia, Dapr state) | [012](#adr-012--redis-para-cach%C3%A9-idempotencia-y-state) |
 | Consistencia eventos | **Transactional Outbox** + **idempotencia** (inbox por message-id en Redis) | [004](#adr-004--transactional-outbox--idempotencia) |
@@ -257,7 +262,7 @@ Dos contextos con lenguaje y responsabilidades separadas. Sin FK físicas entre 
 1. `POST /api/v1/reservas` con `HabitacionId`, `Estancia`, huéspedes y contacto de emergencia.
 2. Se valida (fechas coherentes `salida > entrada`, capacidad ≥ huéspedes, habitación activa en proyección).
 3. Se calcula el **precio**: `(costoBase + impuesto) × noches`.
-4. En **una sola transacción** (`SERIALIZABLE`): se inserta `Reserva`, se insertan las `NocheHabitacion` de la estancia (el `UNIQUE` rechaza solapamientos → HTTP 409) **y** se escribe el evento en la tabla `outbox`.
+4. En **una sola transacción** (*[Corregido — ADR-016]* **READ COMMITTED**, no SERIALIZABLE): se inserta `Reserva`, se insertan las `NocheHabitacion` de la estancia (el `UNIQUE` rechaza solapamientos en el propio INSERT → HTTP 409) **y** se escribe el evento en la tabla `outbox`.
 5. El *relay* publica `ReservaConfirmada`.
 6. `Notificaciones.Worker` consume (idempotente vía Redis) y envía los correos.
 
@@ -275,20 +280,20 @@ CREATE TABLE NochesHabitacion (
 );
 ```
 
-Al confirmar una reserva, dentro de una transacción con aislamiento `SERIALIZABLE`, se insertan las noches `[entrada, salida)`. Si **alguna** ya existe, la violación de `PRIMARY KEY` aborta la transacción → **409 Conflict** (Problem Details RFC 7807). Dos reservas concurrentes sobre la misma habitación y fechas: una gana, la otra falla limpio. Cero overbooking, garantizado por el motor, **portable** (funciona igual en SQL Server, PostgreSQL, etc.) y con soporte natural para disponibilidad parcial.
+Al confirmar una reserva, dentro de una transacción (*[Corregido — ADR-016]* **READ COMMITTED**), se insertan las noches `[entrada, salida)`. Si **alguna** ya existe, la violación de `PRIMARY KEY`/`UNIQUE` (`SqlException` 2627/2601) aborta el INSERT → **409 Conflict** (Problem Details RFC 7807), **sin retry** (determinístico: otro ganó). Solo el **deadlock 1205** se reintenta (backoff+jitter). Dos reservas concurrentes sobre la misma habitación y fechas: una gana, la otra falla limpio. Cero overbooking, garantizado por el motor, **portable** y con soporte natural para disponibilidad parcial.
 
-> Alternativas evaluadas y descartadas por complejidad/contención: `sp_getapplock` por `HabitacionId`, y verificación de rango bajo `SERIALIZABLE` sin tabla de slots. Se documentan en el ADR-003.
+> *[Corregido — ADR-016]* El `UNIQUE (HabitacionId, Noche)` **ya arbitra** el conflicto en el propio INSERT, sin necesidad de prevenir *phantom reads* → **READ COMMITTED** basta y evita los deadlocks extra y el castigo al p95/p99 que traería `SERIALIZABLE`. Alternativas descartadas (ADR-003/016): `SERIALIZABLE` (más caro, más deadlocks, sin beneficio), `sp_getapplock` por `HabitacionId` (complejidad).
 
 **Resumen de todas las condiciones de carrera del sistema** (resueltas por diseño, no como parche):
 
 | Condición de carrera | Mecanismo |
 |----------------------|-----------|
-| Overbooking (2 reservas, misma habitación/fechas) | Slots `NochesHabitacion` + `UNIQUE` + `SERIALIZABLE` → una gana, otra `409` |
+| Overbooking (2 reservas, misma habitación/fechas) | *[Corregido — ADR-016]* Slots `NochesHabitacion` + `UNIQUE` (READ COMMITTED; el índice único arbitra) → una gana, otra `409` |
 | Edición concurrente (2 agentes, mismo hotel) | Concurrencia optimista con `rowversion` → `409` + recarga |
 | Evento procesado dos veces (broker *at-least-once*) | Idempotencia: inbox en Redis por `message-id` |
 | Doble publicación desde el outbox | *At-least-once* + idempotencia aguas abajo lo absorbe |
 | Doble envío del cliente (doble clic en "reservar") | **Idempotency-Key** en header del `POST` → devuelve la misma reserva |
-| *Deadlock* por `SERIALIZABLE` bajo contención | Retry ante errores transitorios de SQL (Polly) |
+| *Deadlock* SQL (1205) bajo contención | Retry acotado (3 intentos, backoff+jitter) solo para 1205; el 2627/2601 NO se reintenta (ADR-016) |
 
 ### 8.6 Consistencia y mensajería (Outbox + idempotencia + Dapr)
 
@@ -296,10 +301,10 @@ Al confirmar una reserva, dentro de una transacción con aislamiento `SERIALIZAB
 
 **No procesar dos veces:** **idempotencia** en el consumidor. `Notificaciones.Worker` registra el `message-id` en **Redis** (con TTL); si llega repetido, lo ignora. Complementado con reintentos y **DLQ** de Dapr.
 
-**Broker intercambiable:** el mismo `Reservas.Api` publica a un *topic* Dapr; el *component* define el transporte:
-- Local → RabbitMQ (en docker-compose).
-- Nube → Azure Service Bus.
-- **Cero cambios de código** — solo el YAML del component.
+**Broker por entorno (patrón Strategy tras `IPublicadorEventos`)** *[Corregido — ADR-019/020]*:
+- **Local → RabbitMQ directo** (adaptador `PublicadorEventosRabbitMq` con `RabbitMQ.Client`, en docker-compose). El dominio no conoce el transporte.
+- **Nube → Dapr pub/sub → Azure Service Bus** (adaptador Dapr por el mismo puerto).
+- El **"cero cambios de código, solo el YAML del component"** aplica al cambio de broker **dentro de Dapr en la nube** (RabbitMQ↔Service Bus). El salto **local↔nube** selecciona el adaptador por entorno (Strategy), sin tocar el dominio ni los handlers.
 
 **Dapr — building blocks utilizados** (modelo *sidecar*: cada servicio corre junto a un proceso Dapr que expone una API local; los sidecars hablan entre sí, desacoplando el código de la infraestructura concreta):
 
@@ -450,11 +455,13 @@ Se aplican **con intención** (no *pattern soup*): cada patrón resuelve un prob
 - **Contexto:** se necesita mensajería y manejo de secretos, con preparación para la nube.
 - **Decisión:** Dapr para pub/sub + secrets; broker RabbitMQ local / Service Bus nube por component.
 - **Consecuencias:** (+) cloud-agnostic, nativo en ACA, cero cambios de código al cambiar broker. (−) sidecars añaden piezas al compose (mitigado por Aspire en dev y ACA gestionado en nube).
+- **⚙️ Refinado por ADR-019/020 (2026-07-10):** se separó el transporte **por entorno** (patrón Strategy tras `IPublicadorEventos`): **RabbitMQ directo en local** (sin sidecars Dapr, verificado end-to-end con Testcontainers) y **Dapr→Service Bus en la nube** (E8). Los secretos: **env vars en local** (`.env` gitignored + gitleaks; cumple "cero secretos en repo") / **Dapr Secrets + Key Vault en nube**. Dapr NO está cableado en local. Ver `docs/specs/spec-hotel-booking-hub/decisions-adr.md#ADR-019` y `#ADR-020`.
 
 ### ADR-003 — SQL Server con anti-overbooking por slots de inventario
 - **Contexto:** SQL Server es el motor del stack de UltraGroup; el invariante de no-overbooking exige garantías fuertes bajo concurrencia. SQL Server no tiene *exclusion constraints* como PostgreSQL.
 - **Decisión:** SQL Server + tabla de slots `NochesHabitacion` con clave única `(HabitacionId, Noche)`, insertados en transacción `SERIALIZABLE`.
 - **Consecuencias:** (+) cero overbooking garantizado por el motor, portable, soporta disponibilidad parcial. (−) N filas por reserva (irrelevante para estancias de hotel); menos escalado horizontal de escritura que NoSQL (no necesario a esta escala).
+- **⚙️ Superado por ADR-016 (2026-07-10):** el `UNIQUE (HabitacionId, Noche)` **ya arbitra** el conflicto en el propio INSERT, así que el aislamiento pasó de `SERIALIZABLE` a **READ COMMITTED** (menos deadlocks, mejor p95/p99, sin *phantom-read prevention* innecesaria). El 2627/2601 → **409 sin retry**; solo el deadlock 1205 se reintenta. Ver `decisions-adr.md#ADR-016`.
 
 ### ADR-004 — Transactional Outbox + idempotencia
 - **Contexto:** un mensaje no debe perderse ni procesarse dos veces.
