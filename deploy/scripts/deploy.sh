@@ -51,13 +51,24 @@ say "IP del deployer (firewall SQL): ${IP_DEPLOYER:-<no detectada>}"
 say "Bootstrap del state remoto"
 RG_STATE="$RG_STATE" SA="$SA" LOCATION="$LOCATION" CONTAINER="$CONTAINER" bash "$TF/bootstrap/bootstrap-state.sh"
 
-# 2) init con backend remoto
+# 2) init con backend remoto. El rol "Storage Blob Data Contributor" recién asignado en el bootstrap puede
+# tardar 1-5 min en propagar (RBAC de Azure) → el primer init puede dar 403; se reintenta con backoff.
 say "terraform init (backend azurerm, auth AAD)"
-terraform -chdir="$TF" init -reconfigure \
-  -backend-config="resource_group_name=$RG_STATE" \
-  -backend-config="storage_account_name=$SA" \
-  -backend-config="container_name=$CONTAINER" \
-  -backend-config="key=hotel-booking-hub.tfstate"
+init_backend() {
+  terraform -chdir="$TF" init -reconfigure \
+    -backend-config="resource_group_name=$RG_STATE" \
+    -backend-config="storage_account_name=$SA" \
+    -backend-config="container_name=$CONTAINER" \
+    -backend-config="key=hotel-booking-hub.tfstate"
+}
+init_attempt=1
+until init_backend; do
+  if [ "$init_attempt" -ge 8 ]; then echo "init falló tras 8 intentos (¿RBAC no propagó?)" >&2; exit 1; fi
+  wait=$(( init_attempt * 20 ))
+  echo "   init 403/propagando RBAC; reintento en ${wait}s (intento $init_attempt/8)..."
+  sleep "$wait"
+  init_attempt=$(( init_attempt + 1 ))
+done
 
 # 3) Primer apply SIN imágenes reales (crea ACR/infra); usa placeholders para poder construir en ACR.
 say "terraform plan (infra base)"
