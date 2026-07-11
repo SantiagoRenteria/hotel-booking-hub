@@ -6,7 +6,9 @@ baseline_commit: 2b46351
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
 > **Trazabilidad:** correct-course (party-mode + Santiago) + ajuste 2026-07-11 → **NFR-6 · gobernanza de entrega** → `AC-E8.3.x` · **Fase 3**
-> **Porqué:** formaliza el despliegue ya probado en 8.2 como pipeline **reproducible y automático**. El gate humano es la **aprobación de PR en `main`** (branch protection); al mergear, el CD **aplica Terraform automáticamente** (OIDC, passwordless). Refina ADR-021: el gate pasa de "Environment approval on-demand" a "aprobación de PR + auto-apply en merge a `main`".
+> **Porqué:** formaliza el despliegue ya probado en 8.2 como pipeline **reproducible**. El gate humano es la **aprobación de PR en `main`** (branch protection) + OIDC passwordless.
+>
+> ⚠️ **REVERSIÓN (T.2, 2026-07-11):** este documento describe el auto-apply al merge a `main` que se implementó originalmente en la 8.3. **Ese comportamiento fue revertido en la historia T.2**: el disparo del CD volvió a ser **on-demand** (`workflow_dispatch`), se eliminó el trigger `push: main` de `cd.yml`, y **mergear a `main` ya NO despliega**. Lee las menciones a "auto-apply en merge" de abajo como contexto histórico; el estado vigente es on-demand (ADR-021, `deploy/terraform/README.md` §CD).
 
 ## Story
 
@@ -21,9 +23,9 @@ para **desplegar de forma auditada, reproducible y sin intervención manual, con
 **Cuando** se configura la protección de rama
 **Entonces** `main` exige **PR con ≥1 aprobación** (Santiago), **required status checks** verdes y actualizados (`Build · Format · Test`, `Terraform · fmt + validate`, `Secret scan (gitleaks)`), sin push/force-push directo, aplicado también a admins. *(La regla la aplica **Santiago** con el comando `gh` entregado — el agente no modifica controles de acceso del repo.)*
 
-**AC-E8.3.2 — CD automático en merge a `main` (OIDC, passwordless)**
+**AC-E8.3.2 — CD ~~automático en merge a `main`~~ → on-demand (OIDC, passwordless)** &nbsp;⚠️ *Revertido en T.2: ver el banner al tope. El disparo ya NO es push a `main`, sino `workflow_dispatch`.*
 **Dado** `.github/workflows/cd.yml`
-**Cuando** ocurre un push a `main` (merge de una PR aprobada)
+**Cuando** ~~ocurre un push a `main` (merge de una PR aprobada)~~ **se dispara `workflow_dispatch` con `accion=deploy`** (T.2)
 **Entonces** el workflow autentica por **OIDC federated credentials** (`azure/login@v2`, `permissions: id-token: write`; solo variables `AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID`, cero secretos), y ejecuta el ciclo de despliegue: bootstrap del state → `az acr build` de las 4 imágenes (tag = git sha) → `terraform apply` por fases + reintentos → migraciones EF → smoke E2E. Reusa la lógica de `deploy/scripts/deploy.sh`.
 
 **AC-E8.3.3 — Teardown on-demand**

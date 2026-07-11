@@ -1,6 +1,6 @@
 # Uso de IA en la construcción de hotel-booking-hub
 
-> Navegación: [README](../README.md) · [ADRs](adr/README.md) · [Épicas](planning-artifacts/epics.md) · [Historias](implementation-artifacts/) · **Uso de IA** (este documento)
+> Navegación: [README](../README.md) · [ADRs](adr/README.md) · [Épicas](planning-artifacts/epics.md) · [Historias](implementation-artifacts/) · [BDD y E2E](bdd-y-e2e.md) · **Uso de IA** (este documento)
 
 Este proyecto se construyó con asistencia de IA (Claude, modelo `claude-opus-4-8`) operada bajo el **método BMAD**: un conjunto de *skills* y *agentes* (personas) que estructuran el trabajo por historias, con TDD visible, revisión adversarial y decisiones arquitectónicas deliberadas. Este documento explica cómo se usó la IA de forma honesta y concreta, incluyendo sus límites.
 
@@ -8,7 +8,31 @@ La autoría del código es de **Santiago Rentería**. La IA asistió bajo su dir
 
 ---
 
-## 1. El método BMAD: el ciclo por historia
+## 1. El flujo BMAD de punta a punta (planificación → construcción → entrega)
+
+BMAD no es solo "escribir historias con TDD": es un método que cubre **desde la idea hasta la entrega**, y en este proyecto se recorrió en ese orden. Cada fase tiene su skill y deja un **artefacto real** en el repo que alimenta a la siguiente (contexto acumulativo, no conversaciones sueltas):
+
+1. **Análisis y descubrimiento (Mary, analista · John, PM).** El dominio (hotelería: hoteles, inventario por habitación, reservas con anti-overbooking, cancelación con discreción del agente, notificaciones) se analizó para fijar el alcance y los actores (Agente, Viajero). Esta fase alimentó al PRD; se apoyó en las skills de analista/PM (`agent-analyst`, `agent-pm`).
+
+2. **PRD — requisitos de producto (John · `prd`).** Se destiló en un PRD con requisitos funcionales (FR-1…FR-26) y no funcionales (seguridad, observabilidad, resiliencia): [`docs/planning-artifacts/prds/prd-hotel-booking-hub-2026-07-08/prd.md`](planning-artifacts/prds/prd-hotel-booking-hub-2026-07-08/prd.md). Es la fuente de la trazabilidad `FR-x → AC → test`.
+
+3. **SPEC — contrato máquina (`spec`).** El PRD se condensó en un kernel SPEC validado (invariantes, contratos, criterios de preservación) que sirve de referencia canónica para lo aguas abajo: [`docs/specs/spec-hotel-booking-hub/SPEC.md`](specs/spec-hotel-booking-hub/SPEC.md) y sus compañeros (incluido `decisions-adr.md`, origen de los ADR).
+
+4. **Arquitectura (Winston · `create-architecture`).** El diseño de solución —Clean Architecture + DDD + CQRS, mediador propio, Outbox+idempotencia, microservicios por Bounded Context, gateway YARP, JWT/OIDC+RBAC, OpenTelemetry— quedó en [`docs/planning-artifacts/architecture.md`](planning-artifacts/architecture.md), con las decisiones puntuales extraídas como **ADRs** (`docs/adr/`, ver §4).
+
+5. **Épicas e historias (`create-epics-and-stories`).** El alcance se descompuso en épicas verticales y sus historias con criterios de aceptación en BDD y *source hints*: [`docs/planning-artifacts/epics.md`](planning-artifacts/epics.md).
+
+6. **Sprint planning y seguimiento (`sprint-planning` / `sprint-status`).** El estado de cada historia/épica se rastrea en [`docs/implementation-artifacts/sprint-status.yaml`](implementation-artifacts/sprint-status.yaml) (backlog → ready-for-dev → in-progress → review → done), que es también lo que las skills leen para saber qué sigue.
+
+7. **UX (Sally · `agent-ux-designer`).** Al ser una API headless (sin frontend en el alcance), la UX se limitó a los contratos de interacción (formas de request/response, códigos de estado, Problem Details); no hubo wireframes.
+
+8. **Gestión del cambio (`correct-course`).** Cuando el alcance cambió a mitad de camino, no se improvisó: se produjeron **propuestas de cambio de sprint** formales — p. ej. [reabrir la Épica 8 para desplegar de verdad](planning-artifacts/sprint-change-proposal-2026-07-10-e8-despliegue-real.md) y [cerrar la brecha del transporte de eventos](planning-artifacts/sprint-change-proposal-2026-07-10.md).
+
+Solo **después** de esta planificación se entró a construir historia por historia (§2). Ese orden —planear con artefactos versionados y luego ejecutar— es lo que hace el trabajo auditable de principio a fin.
+
+---
+
+## 2. El ciclo por historia (construcción)
 
 El trabajo no se hizo "pidiéndole código a un chat". Cada historia recorrió un ciclo disciplinado, donde **cada paso se invoca por su propia skill** (nunca a mano), lo que garantiza reproducibilidad y evita atajos:
 
@@ -25,17 +49,17 @@ El trabajo no se hizo "pidiéndole código a un chat". Cada historia recorrió u
 
 4. **Arreglar hallazgos (`agent-dev`).** Los hallazgos de la revisión se resuelven con el agente de desarrollo antes de avanzar. No se pasa a la siguiente historia sin cerrar los hallazgos de la actual.
 
-5. **`party-mode` — cuando hay decisión arquitectónica.** Ante una bifurcación de diseño se convoca una mesa redonda donde cada persona es un **subagente real e independiente** (no un mismo LLM haciendo voces), de modo que discrepen de verdad. La decisión resultante la aprueba Santiago y se registra como ADR (ver §3 y `docs/adr/`).
+5. **`party-mode` — cuando hay decisión arquitectónica.** Ante una bifurcación de diseño se convoca una mesa redonda donde cada persona es un **subagente real e independiente** (no un mismo LLM haciendo voces), de modo que discrepen de verdad. La decisión resultante la aprueba Santiago y se registra como ADR (ver §4 y `docs/adr/`).
 
 6. **`correct-course` — cuando cambia el alcance.** Los cambios significativos a mitad de sprint se gestionan formalmente (p. ej. la decisión de desplegar de verdad a Azure fue un correct-course + party-mode).
 
 7. **`retrospective` — al cerrar cada épica** (ver `docs/implementation-artifacts/epic-*-retro-*.md`).
 
-**Entrega:** una PR por historia contra `develop`, con CI en verde (build, tests, `dotnet format`, gitleaks) antes del merge.
+**Entrega:** una PR por historia contra `develop`, con CI en verde (build, tests, `dotnet format`, gitleaks) antes del merge. El detalle de cómo se especifica el comportamiento (BDD) y cómo se verifica de extremo a extremo está en [BDD y E2E](bdd-y-e2e.md).
 
 ---
 
-## 2. Agentes / personas y para qué se usaron
+## 3. Agentes / personas y para qué se usaron
 
 BMAD modela roles como personas con expertise propia. Los que participaron:
 
@@ -53,7 +77,7 @@ En party-mode típicamente se convocaba a Winston + John + Amelia (y Mary/Murat 
 
 ---
 
-## 3. Prompts de módulos críticos (ejemplos reales, resumidos)
+## 4. Decisiones arquitectónicas como ADRs (prompts de módulos críticos)
 
 Tres decisiones arquitectónicas salieron de party-mode + aprobación de Santiago y quedaron como ADRs:
 
@@ -65,7 +89,7 @@ Todos los ADRs viven como archivos en `docs/adr/` y están reconciliados con el 
 
 ---
 
-## 4. Iteración y verificación
+## 5. Iteración y verificación
 
 Cada paso se validó con evidencia objetiva, no con la palabra del modelo:
 
@@ -86,13 +110,16 @@ La Épica 8 dejó primero la IaC *validada pero no aplicada* (8.1). Al **despleg
 
 **Resultado:** 32 recursos provisionados y **flujo de negocio verificado end-to-end** contra Azure real — `GET /health` 200, crear hotel → habitación → reserva (precio `238.00` = (100+19)×2 noches) → cancelar, todo autenticado con JWT (clave desde Key Vault), ruteado por el gateway y persistido en Azure SQL. Evidencia en `docs/implementation-artifacts/evidencia/8-2-despliegue-real-smoke.md`. Luego `destroy` del RG-app efímero, sin recursos facturables residuales.
 
-### Límite conocido (declarado, no ocultado)
+### Estado del transporte de eventos (actualizado)
 
-En la nube el **evento → worker NO fluye**: el worker de Notificaciones está desplegado y vivo (heartbeat en logs) pero no recibe los eventos, porque el transporte de nube (**Dapr → Service Bus**, `PublicadorEventosDapr`) quedó **diferido** y el publicador degrada a `PublicadorEventosLog`. En **local sí fluye** end-to-end (RabbitMQ directo, verificado con Testcontainers en la Épica 9). Cerrar el adaptador Dapr de nube es el seguimiento pendiente registrado en `docs/implementation-artifacts/deferred-work.md` (ADR-019).
+El transporte evento → worker está cableado en **ambos entornos** tras el puerto `IPublicadorEventos` (Strategy, ADR-019):
+
+- **LOCAL / compose:** fluye end-to-end por **RabbitMQ directo**, verificado con Testcontainers en la Épica 9 y de nuevo en el smoke del compose (crear reserva → evento → notificación del worker).
+- **NUBE / ACA:** el adaptador **Dapr → Service Bus** (`PublicadorEventosDapr` + suscripción Dapr del worker) se **implementó** (cierre de brecha, seleccionado por `TransporteEventos=Dapr`). Queda **una verificación pendiente**: observar el evento → worker en runtime en el próximo despliegue a ACA (el sidecar Dapr solo existe en la nube). Es lo único abierto en `docs/implementation-artifacts/deferred-work.md`; **ya no** es un "no fluye en nube" como en la primera pasada de la Épica 8.
 
 ---
 
-## 5. Transparencia
+## 6. Transparencia
 
 - **Autoría del código: Santiago Rentería.** La IA asistió bajo su dirección y aprobación.
 - Las **decisiones clave las aprobó Santiago** explícitamente: alcance por épica, cada decisión arquitectónica de party-mode (que se volvió ADR), y —de forma crítica— el **OK explícito antes de crear cualquier recurso facturable** en Azure. El despliegue real fue una compuerta dura que no se cruzó sin su autorización.

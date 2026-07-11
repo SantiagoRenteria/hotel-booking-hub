@@ -98,6 +98,14 @@ jobs:
             curl --retry 30 --retry-all-errors --retry-delay 5 -fsS "http://localhost:${port}/health"
             echo " -> ${port}/health OK"
           done
+      - name: Smoke exhaustivo (deploy/scripts/smoke.sh, AC-ET.2.2)
+        # El mismo script del despliegue de nube, en modo local (JWT_SIGNING_KEY del .env). Ejerce catálogo
+        # (CRUD + ciclo de vida), reserva, lecturas, idempotencia, cancelación en 2 pasos y negativos 401/403/404/409.
+        run: |
+          set -e
+          JWT="$(grep '^JWT_SIGNING_KEY=' deploy/.env | cut -d= -f2-)"
+          GATEWAY=http://localhost:8080 JWT_SIGNING_KEY="$JWT" \
+            COMPOSE_FILE=deploy/docker-compose.yml bash deploy/scripts/smoke.sh
       - name: Postman / Newman (flujo E2E + negativos, AC-ET.1.4)
         run: |
           set -e

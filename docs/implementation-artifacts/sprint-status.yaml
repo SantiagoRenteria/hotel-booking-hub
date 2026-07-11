@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-07-08
-last_updated: 2026-07-11T18:00
+last_updated: 2026-07-11T23:00
 project: hotel-booking-hub
 project_key: NOKEY
 tracking_system: file-system
@@ -115,6 +115,10 @@ development_status:
   epic-9-retrospective: optional
 
   # ---- Epic T: Entrega y requisitos transversales (DoD de entrega) ----
+  # Reabierta 2026-07-11 (instrucción de Santiago): segundo lote de pulido de entregables — cobertura de
+  # pruebas exhaustiva (Postman/smoke), fix de routing del Gateway (disponibles), reconciliación del CD a
+  # on-demand (ADR-021), y documentación (uso-de-ia full BMAD, observabilidad con Dapr, flujos BDD/E2E).
   epic-t: done
   t-1-cerrar-los-entregables-del-enunciado: done
+  t-2-pulido-de-entregables-cobertura-y-docs: done
   epic-t-retrospective: optional
