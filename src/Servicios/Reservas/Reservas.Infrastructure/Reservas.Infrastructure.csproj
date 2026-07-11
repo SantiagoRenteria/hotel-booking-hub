@@ -16,6 +16,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <!-- Story 9.1 (ADR-019): adaptador de transporte RabbitMQ detrás de IPublicadorEventos (local). -->
     <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Dapr.Client" />
     <!-- Story 1.7: SETNX+TTL del almacén de idempotencia de reserva (Idempotency-Key). -->
     <PackageReference Include="StackExchange.Redis" />
   </ItemGroup>
