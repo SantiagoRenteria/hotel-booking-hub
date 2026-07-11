@@ -142,6 +142,14 @@ DES=$(ok A POST /api/v1/hoteles "{\"nombre\":\"Desechable $RUN_ID\",\"ciudad\":\
 DES_ID=$(id_of "$DES"); DES_RV=$(rv_of "$DES")
 expect 204 A DELETE "/api/v1/hoteles/$DES_ID" "{\"rowVersion\":\"$DES_RV\"}"
 
+say "Lecturas del catálogo (GET, Story T.5)"
+LH=$(ok A GET /api/v1/hoteles)
+printf '%s' "$LH" | grep -q "$HOTEL_ID" && say "GET /hoteles OK (contiene el creado)" || die "el hotel $HOTEL_ID no aparece en GET /hoteles"
+ok A GET "/api/v1/hoteles/$HOTEL_ID" >/dev/null && say "GET hotel detalle OK"
+LHAB=$(ok A GET "/api/v1/hoteles/$HOTEL_ID/habitaciones")
+printf '%s' "$LHAB" | grep -q "$HAB_ID" && say "GET habitaciones del hotel OK (contiene la creada)" || die "la habitación $HAB_ID no aparece"
+ok A GET "/api/v1/habitaciones/$HAB_ID" >/dev/null && say "GET habitación detalle OK"
+
 # ---- 4) Reserva (Agente) ----
 say "Crear reserva (fechas ago) + cancelar por atajo"
 RESERVA=$(ok A POST /api/v1/reservas "$(reserva_body "$HAB_ID" 2026-08-01 2026-08-03)")
@@ -188,6 +196,8 @@ expect 403 V POST /api/v1/hoteles '{"nombre":"X","ciudad":"Bogota","direccion":"
 expect 404 A GET /api/v1/reservas/00000000-0000-0000-0000-000000000000
 # 409: editar el hotel con el rowVersion original (stale tras las mutaciones de arriba).
 expect 409 A PUT "/api/v1/hoteles/$HOTEL_ID" "{\"rowVersion\":\"$HOTEL_RV0\",\"nombre\":\"conflicto\",\"ciudad\":\"Bogota\",\"direccion\":\"Cll 9\",\"descripcion\":\"stale\"}"
+# 404: listar habitaciones de un hotel inexistente (GUID válido no-cero) → no una lista vacía.
+expect 404 A GET /api/v1/hoteles/11111111-1111-1111-1111-111111111111/habitaciones
 
 # ---- 9) Verificar propagación del evento (worker consume del broker y notifica) ----
 if [ -n "$RG" ] && command -v az >/dev/null 2>&1; then

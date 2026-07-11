@@ -66,6 +66,9 @@ services:
       # Clave de firma JWT compartida (Story 6.1). NO se commitea: se inyecta desde el entorno / `.env`
       # (ver deploy/.env.example). Los health checks son anónimos → arrancan aunque la clave falte.
       Jwt__SigningKey: ${JWT_SIGNING_KEY:-}
+      # Rate limit holgado SOLO en local/compose: smoke + Newman + re-ejecuciones seguidas superan el default de
+      # 100/60s (E6) y darían falsos 429. En Azure/ACA NO se define → rige el estricto de appsettings (100/60s).
+      RateLimit__PermitLimit: "2000"
     ports: ["8080:8080"]
     depends_on: [hoteles, reservas]
 
