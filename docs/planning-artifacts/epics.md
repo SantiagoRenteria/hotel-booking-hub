@@ -996,7 +996,7 @@ para **detectar degradación de latencia**.
 
 ## Epic 8: Nube por IaC (con compuerta)
 
-*Recortable — primero en recortarse. No bloquea ningún criterio obligatorio.*
+*Fase 3, con compuerta. 8.1 (IaC validada) es recortable y no bloquea ningún criterio obligatorio. **Compuerta CRUZADA** (correct-course 2026-07-10, party-mode + Santiago): 8.2 despliega **de verdad** a Azure con ciclo apply→smoke→destroy y 8.3 formaliza el CD on-demand + protección de `main`. El despliegue es un **plus** ejecutado por decisión explícita; no auto-aplica en cada merge. Ver ADR-021/022/023.*
 
 ### Story 8.1: Aprovisionar Azure por Terraform
 
@@ -1018,6 +1018,74 @@ para **desplegar de forma reproducible y sin provisión manual**.
 **Dado** el cambio de broker local→nube
 **Cuando** se despliega
 **Entonces** solo cambia el component YAML de Dapr; `0` cambios de código de aplicación.
+
+---
+
+### Story 8.2: Despliegue real de bajo costo + smoke end-to-end + destroy
+
+> **Trazabilidad:** correct-course (party-mode + Santiago 2026-07-10) → **NFR-6 (portabilidad y despliegue) · ejecución real** → `AC-E8.2.x` · **Fase 3 — compuerta CRUZADA (deploy on-demand)**
+> **Porqué:** la Épica 8.1 dejó la IaC *validada pero no aplicada*. Santiago decidió cruzar la compuerta: desplegar **de verdad** a Azure y ver el sistema correr en la nube. Para una prueba técnica el entregable no es infra permanente sino **la prueba de que la infra vive cuando se enciende** → ciclo **apply → smoke → destroy** (mínimo costo). Ver **ADR-021/022/023**.
+
+Como **responsable de despliegue**,
+quiero **aplicar la IaC a una suscripción real de Azure (East US 2), verificar el sistema end-to-end y destruirlo**,
+para **demostrar que el despliegue cloud-native funciona incurriendo solo en el costo de las horas de prueba**.
+
+**Acceptance Criteria:**
+
+**AC-E8.2.1 — State remoto por bootstrap sin secretos**
+**Dado** un script `bootstrap` idempotente (`az` CLI)
+**Cuando** se ejecuta una vez
+**Entonces** crea un **RG-state permanente** con Storage + container para el `tfstate`, y `terraform init` usa el backend `azurerm` con `use_azuread_auth=true` (cero claves de storage; auth por la sesión `az`). El RG-app es **efímero** (ADR-022).
+
+**AC-E8.2.2 — Tuning de bajo costo**
+**Dado** el módulo Terraform
+**Cuando** se aplica
+**Entonces** las Container Apps `gateway/hoteles/reservas` tienen `min_replicas=0` (scale-to-zero), el `notificaciones.worker` tiene `min_replicas=1` (consumo garantizado sin reintroducir secretos, ADR-023), y las 2 BD SQL usan **GP_S serverless con auto-pause**. Imágenes en **ACR Basic** (pull por Managed Identity).
+
+**AC-E8.2.3 — Migraciones idempotentes**
+**Dado** el esquema EF Core
+**Cuando** se despliega
+**Entonces** se aplica un **script idempotente** (`dotnet ef migrations script --idempotent`) contra la SQL de Azure por auth AAD, tolerando el cold start del auto-resume (retry/backoff).
+
+**AC-E8.2.4 — Smoke end-to-end real + destroy**
+**Dado** el sistema desplegado
+**Cuando** se ejecuta el smoke
+**Entonces** `/health` responde 200 y un **flujo de negocio real** (crear hotel → reservar → cancelar) devuelve 2xx tocando Container Apps + SQL + Service Bus/Redis reales, con el **evento propagado** al worker; luego **`terraform destroy`** deja la suscripción limpia. Se captura evidencia.
+
+> **Alcance:** el **agente ejecuta el `apply`/`destroy`** con la sesión `az` de Santiago (con OK explícito antes de crear recursos facturables). Trabajo **infra/ops** (gate = apply+smoke reproducible, **no TDD**). Riesgos vivos: cold start SQL, quota ACA en suscripción nueva, olvido de destroy (ADR-023 / memoria de decisión).
+
+### Story 8.3: CD on-demand (OIDC + approval) + protección de `main`
+
+> **Trazabilidad:** correct-course (party-mode + Santiago 2026-07-10) → **NFR-6 · gobernanza de entrega** → `AC-E8.3.x` · **Fase 3**
+> **Porqué:** formaliza el despliegue de 8.2 como pipeline reproducible por cualquiera, **sin auto-aplicar infra de pago en cada merge** (John: eso quema dinero por accidente). Disparo **on-demand** con aprobación humana; `main` protegida porque habrá un camino de aprovisionamiento. Ver **ADR-021**.
+
+Como **responsable de entrega**,
+quiero **un pipeline de CD disparado on-demand con OIDC y aprobación, y la rama `main` protegida**,
+para **desplegar de forma auditada y passwordless sin riesgo de gastos accidentales**.
+
+**Acceptance Criteria:**
+
+**AC-E8.3.1 — CD on-demand passwordless (OIDC)**
+**Dado** `.github/workflows/cd.yml`
+**Cuando** se dispara por `workflow_dispatch`
+**Entonces** autentica contra Azure por **OIDC federated credentials** (sin secretos en el repo; solo `AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID` como variables), construye e sube imágenes con `az acr build`, aplica Terraform, corre migraciones y smoke.
+
+**AC-E8.3.2 — Approval antes del apply**
+**Dado** un GitHub Environment `production` con required reviewer
+**Cuando** el workflow llega al paso de `apply`
+**Entonces** el token OIDC (atado a `environment:production`) **no se emite** hasta que Santiago aprueba; el `terraform plan` se muestra antes de aprobar.
+
+**AC-E8.3.3 — Destroy on-demand**
+**Dado** el mismo workflow (o uno hermano)
+**Cuando** se dispara la acción `destroy`
+**Entonces** ejecuta `terraform destroy` para dejar la suscripción limpia (contraparte del ciclo de bajo costo).
+
+**AC-E8.3.4 — `main` protegida**
+**Dado** el repositorio
+**Cuando** se configura la protección de rama
+**Entonces** `main` exige PR (sin push/force-push directo) y **required status checks verdes** (build+test, gitleaks, terraform fmt+validate+plan, dotnet format). *(La regla de protección la aplica **Santiago** con el comando `gh` entregado — el agente no modifica controles de acceso del repo por política de seguridad.)*
+
+> **Alcance:** CD **on-demand**, NO auto-apply en cada merge (ADR-021). La protección de `main` se entrega como comando `gh`/ruleset para que la ejecute Santiago.
 
 ---
 
