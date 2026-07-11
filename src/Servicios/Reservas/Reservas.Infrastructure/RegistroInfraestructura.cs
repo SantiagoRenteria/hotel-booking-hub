@@ -65,10 +65,10 @@ public static class RegistroInfraestructura
         servicios.AddSingleton<IAlmacenIdempotenciaReserva>(sp =>
         {
             var cadenaRedis = sp.GetRequiredService<IConfiguration>().GetConnectionString("redis");
+            var opcionesIdem = sp.GetRequiredService<OpcionesIdempotenciaReserva>();
             return string.IsNullOrWhiteSpace(cadenaRedis)
-                ? new AlmacenIdempotenciaReservaEnMemoria()
-                : new AlmacenIdempotenciaReservaRedis(
-                    ConnectionMultiplexer.Connect(cadenaRedis), sp.GetRequiredService<OpcionesIdempotenciaReserva>());
+                ? new AlmacenIdempotenciaReservaEnMemoria(opcionesIdem)
+                : new AlmacenIdempotenciaReservaRedis(ConnectionMultiplexer.Connect(cadenaRedis), opcionesIdem);
         });
 
         // Transporte de eventos por entorno (Story 9.1, ADR-019): si hay cadena de RabbitMQ (local/compose),
