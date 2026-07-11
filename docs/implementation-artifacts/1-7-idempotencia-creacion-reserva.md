@@ -1,6 +1,9 @@
+---
+baseline_commit: 1a0f7a153a0003d581d67efa3c56a5c4307543c3
+---
 # Story 1.7: Idempotencia de creación de reserva (`Idempotency-Key`)
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
