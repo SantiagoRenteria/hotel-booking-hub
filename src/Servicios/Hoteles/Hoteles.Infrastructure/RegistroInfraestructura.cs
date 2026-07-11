@@ -1,3 +1,4 @@
+using Dapr.Client;
 using HotelBookingHub.Comun.Eventos;
 using Hoteles.Application.Abstracciones;
 using Hoteles.Domain.Puertos;
@@ -29,15 +30,23 @@ public static class RegistroInfraestructura
         servicios.AddSingleton<ProcesadorOutbox>();
         servicios.AddHostedService<RelayOutbox>();
 
-        // Transporte de eventos por entorno (Story 9.1, ADR-019): RabbitMQ si hay cadena (local/compose), si no
-        // el placeholder que solo loguea. El adaptador Dapr→Service Bus de nube usa este mismo seam (Épica 8).
-        servicios.AddSingleton<IPublicadorEventos>(sp =>
+        // Transporte de eventos por entorno (Strategy, ADR-019): Dapr→Service Bus en NUBE (TransporteEventos=Dapr),
+        // RabbitMQ directo si hay cadena (local/compose), y placeholder de log en tests. Todo tras el mismo puerto.
+        if (string.Equals(Environment.GetEnvironmentVariable("TransporteEventos"), "Dapr", StringComparison.OrdinalIgnoreCase))
         {
-            var cadenaRabbit = sp.GetRequiredService<IConfiguration>().GetConnectionString("rabbitmq");
-            return string.IsNullOrWhiteSpace(cadenaRabbit)
-                ? new PublicadorEventosLog(sp.GetRequiredService<ILogger<PublicadorEventosLog>>())
-                : new PublicadorEventosRabbitMq(cadenaRabbit, sp.GetRequiredService<ILogger<PublicadorEventosRabbitMq>>());
-        });
+            servicios.AddSingleton(new DaprClientBuilder().Build());
+            servicios.AddSingleton<IPublicadorEventos, PublicadorEventosDapr>();
+        }
+        else
+        {
+            servicios.AddSingleton<IPublicadorEventos>(sp =>
+            {
+                var cadenaRabbit = sp.GetRequiredService<IConfiguration>().GetConnectionString("rabbitmq");
+                return string.IsNullOrWhiteSpace(cadenaRabbit)
+                    ? new PublicadorEventosLog(sp.GetRequiredService<ILogger<PublicadorEventosLog>>())
+                    : new PublicadorEventosRabbitMq(cadenaRabbit, sp.GetRequiredService<ILogger<PublicadorEventosRabbitMq>>());
+            });
+        }
 
         return servicios;
     }

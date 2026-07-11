@@ -19,6 +19,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <!-- Story 9.1 (ADR-019): adaptador de transporte RabbitMQ detrás de IPublicadorEventos (local). -->
     <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Dapr.Client" />
   </ItemGroup>
 
 </Project>

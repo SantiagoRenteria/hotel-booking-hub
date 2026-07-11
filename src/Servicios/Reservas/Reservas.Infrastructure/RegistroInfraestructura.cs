@@ -1,3 +1,4 @@
+using Dapr.Client;
 using HotelBookingHub.Comun.Eventos;
 using HotelBookingHub.Comun.Mensajeria;
 using Microsoft.EntityFrameworkCore;
@@ -71,16 +72,25 @@ public static class RegistroInfraestructura
                 : new AlmacenIdempotenciaReservaRedis(ConnectionMultiplexer.Connect(cadenaRedis), opcionesIdem);
         });
 
-        // Transporte de eventos por entorno (Story 9.1, ADR-019): si hay cadena de RabbitMQ (local/compose),
-        // se publica de verdad al broker; si no (tests unit sin broker), se cae al placeholder que solo loguea.
-        // El adaptador Dapr→Service Bus de nube se enchufa por este mismo seam en la Épica 8, sin tocar el dominio.
-        servicios.AddSingleton<IPublicadorEventos>(sp =>
+        // Transporte de eventos por entorno (Strategy, ADR-019), todo tras el puerto IPublicadorEventos:
+        //  - NUBE  (TransporteEventos=Dapr): Dapr pub/sub → Azure Service Bus (Épica 8).
+        //  - LOCAL (hay cadena de RabbitMQ): RabbitMQ directo (Story 9.1).
+        //  - TESTS (sin broker): placeholder que solo loguea.
+        if (string.Equals(Environment.GetEnvironmentVariable("TransporteEventos"), "Dapr", StringComparison.OrdinalIgnoreCase))
         {
-            var cadenaRabbit = sp.GetRequiredService<IConfiguration>().GetConnectionString("rabbitmq");
-            return string.IsNullOrWhiteSpace(cadenaRabbit)
-                ? new PublicadorEventosLog(sp.GetRequiredService<ILogger<PublicadorEventosLog>>())
-                : new PublicadorEventosRabbitMq(cadenaRabbit, sp.GetRequiredService<ILogger<PublicadorEventosRabbitMq>>());
-        });
+            servicios.AddSingleton(new DaprClientBuilder().Build());
+            servicios.AddSingleton<IPublicadorEventos, PublicadorEventosDapr>();
+        }
+        else
+        {
+            servicios.AddSingleton<IPublicadorEventos>(sp =>
+            {
+                var cadenaRabbit = sp.GetRequiredService<IConfiguration>().GetConnectionString("rabbitmq");
+                return string.IsNullOrWhiteSpace(cadenaRabbit)
+                    ? new PublicadorEventosLog(sp.GetRequiredService<ILogger<PublicadorEventosLog>>())
+                    : new PublicadorEventosRabbitMq(cadenaRabbit, sp.GetRequiredService<ILogger<PublicadorEventosRabbitMq>>());
+            });
+        }
 
         return servicios;
     }
