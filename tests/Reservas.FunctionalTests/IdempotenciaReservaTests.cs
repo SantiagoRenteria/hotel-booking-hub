@@ -13,25 +13,25 @@ using TestKit.Auth;
 namespace Reservas.FunctionalTests;
 
 /// <summary>
-/// Story 1.7 (AC-E1.7.1..4) — `POST /api/v1/reservas` con header `Idempotency-Key`: reenviar el mismo request no
-/// crea una segunda reserva (mismo `Id`, el comando se despacha UNA vez); misma clave + cuerpo distinto → `422`;
-/// sin header → comportamiento actual. Se sustituye `ISender` por un fake que CUENTA despachos (sin BD real): el
-/// discriminante de la dedup es el conteo de despachos, no solo el `Id`.
+/// Story 1.7 (AC-E1.7.1..4) — `POST /api/v1/reservas` con `Idempotency-Key`. Se sustituye `ISender` por un fake que
+/// CUENTA despachos y devuelve un `Id` DISTINTO por despacho: así "mismo Id en el replay" es un discriminante real
+/// (no inerte). Cubre reintento (dedup), concurrencia (reservar-antes-de-despachar → 1 sola creación), claves
+/// distintas (sin dedup cruzada), cuerpo distinto (422), fallo (la clave no se "quema") y sin header (sin cambios).
 /// </summary>
 public sealed class IdempotenciaReservaTests(ReservasApiFactory factory) : IClassFixture<ReservasApiFactory>
 {
     private const string Ruta = "/api/v1/reservas";
 
-    private sealed class SenderFake : ISender
+    private sealed class SenderFake(Func<Result<ReservaResponseDto>>? fabrica = null) : ISender
     {
         public int Despachos;
-        public static readonly Guid IdFijo = Guid.Parse("018f0000-0000-7000-8000-000000000001");
 
         public Task<TResponse> Send<TResponse>(IRequest<TResponse> request, CancellationToken ct)
         {
             Interlocked.Increment(ref Despachos);
-            object resultado = Result<ReservaResponseDto>.Ok(new ReservaResponseDto(IdFijo, "Confirmada", 150m));
-            return Task.FromResult((TResponse)resultado);
+            var resultado = fabrica?.Invoke()
+                ?? Result<ReservaResponseDto>.Ok(new ReservaResponseDto(Guid.CreateVersion7(), "Confirmada", 150m));
+            return Task.FromResult((TResponse)(object)resultado);
         }
     }
 
@@ -52,9 +52,8 @@ public sealed class IdempotenciaReservaTests(ReservasApiFactory factory) : IClas
         agenteEmail = "agente@x.com",
     };
 
-    private (HttpClient cliente, SenderFake sender) CrearClienteConSenderFake()
+    private HttpClient ClienteCon(SenderFake sender)
     {
-        var sender = new SenderFake();
         var cliente = factory.WithWebHostBuilder(b =>
             b.ConfigureTestServices(s =>
             {
@@ -63,7 +62,7 @@ public sealed class IdempotenciaReservaTests(ReservasApiFactory factory) : IClas
             })).CreateClient();
         cliente.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", TokenDePrueba.Emitir(rol: TokenDePrueba.RolAgente));
-        return (cliente, sender);
+        return cliente;
     }
 
     private static HttpRequestMessage Post(object cuerpo, string? idempotencyKey)
@@ -80,43 +79,89 @@ public sealed class IdempotenciaReservaTests(ReservasApiFactory factory) : IClas
     [Fact]
     public async Task Reintento_misma_clave_mismo_cuerpo_no_crea_segunda_reserva()
     {
-        var (cliente, sender) = CrearClienteConSenderFake();
+        var sender = new SenderFake();
+        var cliente = ClienteCon(sender);
         var cuerpo = CuerpoReserva(Guid.CreateVersion7().ToString());
 
         var r1 = await cliente.SendAsync(Post(cuerpo, "clave-A"));
         var r2 = await cliente.SendAsync(Post(cuerpo, "clave-A"));
 
-        // El comando se despachó UNA sola vez (el 2º request se resolvió desde el almacén de idempotencia).
+        // El comando se despachó UNA sola vez; el 2º se resolvió por replay con el MISMO Id (el fake daría otro Id
+        // si hubiera re-despachado → la igualdad de Id es un discriminante real, no inerte).
         Assert.Equal(1, sender.Despachos);
-        Assert.True(r1.IsSuccessStatusCode);
-        Assert.True(r2.IsSuccessStatusCode);
         var dto1 = await r1.Content.ReadFromJsonAsync<ReservaResponseDto>();
         var dto2 = await r2.Content.ReadFromJsonAsync<ReservaResponseDto>();
         Assert.Equal(dto1!.Id, dto2!.Id);
     }
 
     [Fact]
+    public async Task Concurrencia_misma_clave_crea_una_sola_reserva()
+    {
+        var sender = new SenderFake();
+        var cliente = ClienteCon(sender);
+        var cuerpo = CuerpoReserva(Guid.CreateVersion7().ToString());
+
+        // Dos POST concurrentes con la misma clave (doble-clic real): reservar-antes-de-despachar garantiza que solo
+        // uno despacha; el otro obtiene replay o 409 "en proceso", pero NUNCA una segunda creación.
+        var t1 = cliente.SendAsync(Post(cuerpo, "clave-C"));
+        var t2 = cliente.SendAsync(Post(cuerpo, "clave-C"));
+        await Task.WhenAll(t1, t2);
+
+        Assert.Equal(1, sender.Despachos);
+    }
+
+    [Fact]
+    public async Task Claves_distintas_no_deduplican()
+    {
+        var sender = new SenderFake();
+        var cliente = ClienteCon(sender);
+
+        await cliente.SendAsync(Post(CuerpoReserva(Guid.CreateVersion7().ToString()), "clave-D1"));
+        await cliente.SendAsync(Post(CuerpoReserva(Guid.CreateVersion7().ToString()), "clave-D2"));
+
+        // Claves distintas → cada una sigue su curso, sin dedup cruzada (AC-E1.7.2).
+        Assert.Equal(2, sender.Despachos);
+    }
+
+    [Fact]
     public async Task Misma_clave_cuerpo_distinto_responde_422()
     {
-        var (cliente, _) = CrearClienteConSenderFake();
+        var sender = new SenderFake();
+        var cliente = ClienteCon(sender);
 
-        var r1 = await cliente.SendAsync(Post(CuerpoReserva(Guid.CreateVersion7().ToString()), "clave-B"));
-        var r2 = await cliente.SendAsync(Post(CuerpoReserva(Guid.CreateVersion7().ToString()), "clave-B"));
+        var r1 = await cliente.SendAsync(Post(CuerpoReserva(Guid.CreateVersion7().ToString()), "clave-E"));
+        var r2 = await cliente.SendAsync(Post(CuerpoReserva(Guid.CreateVersion7().ToString()), "clave-E"));
 
         Assert.True(r1.IsSuccessStatusCode);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, r2.StatusCode);
     }
 
     [Fact]
+    public async Task Creacion_fallida_no_quema_la_clave()
+    {
+        // El comando falla (p. ej. overbooking → 409): la clave se libera, así que un reintento vuelve a despachar.
+        var sender = new SenderFake(() => Result<ReservaResponseDto>.Conflicto("La habitación ya está reservada"));
+        var cliente = ClienteCon(sender);
+        var cuerpo = CuerpoReserva(Guid.CreateVersion7().ToString());
+
+        var r1 = await cliente.SendAsync(Post(cuerpo, "clave-F"));
+        var r2 = await cliente.SendAsync(Post(cuerpo, "clave-F"));
+
+        Assert.Equal(HttpStatusCode.Conflict, r1.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, r2.StatusCode);
+        Assert.Equal(2, sender.Despachos); // la clave NO quedó bloqueada por el fallo.
+    }
+
+    [Fact]
     public async Task Sin_header_no_deduplica()
     {
-        var (cliente, sender) = CrearClienteConSenderFake();
+        var sender = new SenderFake();
+        var cliente = ClienteCon(sender);
         var cuerpo = CuerpoReserva(Guid.CreateVersion7().ToString());
 
         await cliente.SendAsync(Post(cuerpo, idempotencyKey: null));
         await cliente.SendAsync(Post(cuerpo, idempotencyKey: null));
 
-        // Sin Idempotency-Key el comando se despacha en cada request (comportamiento actual, sin regresión).
         Assert.Equal(2, sender.Despachos);
     }
 }

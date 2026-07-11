@@ -96,8 +96,9 @@ app.MapPost("/api/v1/reservas", (
         [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         ISender sender,
         IAlmacenIdempotenciaReserva idempotencia,
+        IContextoAgente contexto,
         CancellationToken ct) =>
-        CrearReservaIdempotente.ManejarAsync(comando, idempotencyKey, sender, idempotencia, ct))
+        CrearReservaIdempotente.ManejarAsync(comando, idempotencyKey, sender, idempotencia, contexto, ct))
     .WithName("CrearReserva")
     .WithTags("Reservas")
     .Produces<Reservas.Application.Reservas.CrearReserva.ReservaResponseDto>(StatusCodes.Status201Created)

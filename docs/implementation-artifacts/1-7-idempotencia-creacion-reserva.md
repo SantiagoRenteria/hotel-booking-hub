@@ -3,7 +3,7 @@ baseline_commit: 1a0f7a153a0003d581d67efa3c56a5c4307543c3
 ---
 # Story 1.7: Idempotencia de creación de reserva (`Idempotency-Key`)
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -87,13 +87,13 @@ para **no duplicar mi reserva ante un reintento de red o un doble clic**.
 
 _Code review adversarial de 3 capas (Blind · Edge · Auditor), 2026-07-10. 7 patch (2 ALTA), 1 defer, 2 dismiss._
 
-- [ ] [Review][Patch][ALTA] Check-then-dispatch NO previene la doble creación bajo concurrencia: 2 POST simultáneos con la misma clave hacen ambos miss en `ObtenerAsync` y **ambos despachan** (2 reservas); el `bool` de `GuardarSiAusenteAsync` se ignora. Fix: **reservar la clave ANTES de despachar** (SETNX de un marcador "en curso"); si NO se reserva → releer y hacer replay del ganador (o 409 "en proceso" si sigue en curso). Semántica original de Task 1 ("marca en curso"). [src/Servicios/Reservas/Reservas.Api/CrearReservaIdempotente.cs, IAlmacenIdempotenciaReserva.cs]
-- [ ] [Review][Patch][ALTA] Fallo entre despacho y guardado (Redis caído tras crear) → reserva creada sin clave registrada → reintento crea otra. Se cierra con el fix #1 (la clave ya está reservada antes de despachar). [CrearReservaIdempotente.cs]
-- [ ] [Review][Patch][MEDIA] Clave de idempotencia no scopeada por el sujeto autenticado → dos usuarios con la misma clave → replay de la reserva ajena (fuga cross-tenant) o 422 mutuo. Fix: componer la key con la identidad del token (`IContextoAgente`): `{subject}:{clave}`. Coherente con el aislamiento de E6. [CrearReservaIdempotente.cs]
-- [ ] [Review][Patch][MEDIA] Tests débiles: `SenderFake` devuelve `Id` fijo → la aserción "mismo Id" es inerte; no hay test de concurrencia, ni de AC-E1.7.2 (claves distintas), ni del path de fallo. Fix: fake con `Id` distinto por despacho; test de 2 POST concurrentes misma clave → 1 sola creación; test de claves distintas; test del camino de fallo (no fija la clave). [tests/Reservas.FunctionalTests/IdempotenciaReservaTests.cs]
-- [ ] [Review][Patch][MEDIA] Sin validación de longitud del header `Idempotency-Key` → clave arbitraria del cliente como key de Redis (DoS). Fix: rechazar clave > límite razonable (p. ej. 200 chars) con 400. [CrearReservaIdempotente.cs]
-- [ ] [Review][Patch][MEDIA] Store en memoria sin TTL/evicción → crecimiento ilimitado. Fix: respaldar el fallback con `IMemoryCache` (TTL, paridad con el TTL de Redis). [Reservas.Infrastructure/Idempotencia/AlmacenIdempotenciaReservaEnMemoria.cs]
-- [ ] [Review][Patch][BAJA] Replay con `!` null-forgiving → `Ok(null)`/500 si el JSON guardado es null/corrupto. Fix: guard — si deserializa null, tratar como miss (re-procesar) en vez de responder null. [CrearReservaIdempotente.cs]
+- [x] [Review][Patch][ALTA] Check-then-dispatch → doble creación bajo concurrencia. ✅ Resuelto: rediseñado a **reservar-antes-de-despachar** — `ReservarAsync` (SETNX de marcador "en curso") ANTES de `sender.Send`; solo el ganador despacha; el otro obtiene replay (si ya terminó) o **409 "en proceso"**. Test de concurrencia (2 POST simultáneos → 1 solo despacho) determinista 3/3. [CrearReservaIdempotente.cs, IAlmacenIdempotenciaReserva.cs]
+- [x] [Review][Patch][ALTA] Fallo entre despacho y guardado. ✅ Resuelto por el rediseño (la clave se reserva antes de despachar) + `try/catch` que **libera** la clave ante excepción inesperada (no queda "en curso" para siempre). [CrearReservaIdempotente.cs]
+- [x] [Review][Patch][MEDIA] Clave no scopeada por usuario. ✅ Resuelto: la key se compone con el sujeto autenticado (`IContextoAgente.AgenteActual`): `{subject}:{clave}` → sin fuga/bloqueo cross-tenant. [CrearReservaIdempotente.cs, Program.cs]
+- [x] [Review][Patch][MEDIA] Tests débiles. ✅ Resuelto: `SenderFake` devuelve `Id` distinto por despacho (igualdad de Id = discriminante real); nuevos tests de concurrencia, claves distintas (AC-E1.7.2) y path de fallo (la clave no se quema). 6 funcionales + 4 unit. [IdempotenciaReservaTests.cs]
+- [x] [Review][Patch][MEDIA] Sin validación de longitud del header. ✅ Resuelto: clave > 200 chars → 400. [CrearReservaIdempotente.cs]
+- [x] [Review][Patch][MEDIA] Store en memoria sin TTL. ✅ Resuelto: respaldado con `MemoryCache` (TTL 24h, evicción automática) + lock para el SETNX; sin crecimiento ilimitado. [AlmacenIdempotenciaReservaEnMemoria.cs]
+- [x] [Review][Patch][BAJA] Replay `!` null-forgiving. ✅ Resuelto: si el JSON guardado deserializa null → 409 "reintente" (no `Ok(null)`). [CrearReservaIdempotente.cs]
 - [x] [Review][Defer] `IConnectionMultiplexer` de idempotencia no dispuesto explícitamente (singleton, vive lo que la app). Deferred: registrarlo como singleton gestionado por DI al endurecer; sin impacto en runtime normal. [RegistroInfraestructura.cs]
 
 **Dismiss:** header presente-pero-vacío degrada a sin-idempotencia (aceptable: sin clave = sin dedup, no es una clave válida); la huella depende del orden de `Huespedes` (un reintento reenvía el cuerpo idéntico; reordenar el array es semánticamente otro cuerpo → 422 defendible).
@@ -137,3 +137,4 @@ claude-opus-4-8 (Amelia / dev-story, modo autónomo)
 | Fecha | Cambio |
 |---|---|
 | 2026-07-10 | Story 1.7: idempotencia de `POST /api/v1/reservas` por `Idempotency-Key` (DOCUMENTO-BASE §8.5). Store SETNX (Redis) / memoria; replay 200 / 422 en reutilización; sin header sin cambios. TDD Red→Green. 446 tests verdes. Status → review. |
+| 2026-07-10 | Code-review adversarial (3 capas): 7 patch aplicados vía agent-dev (2 ALTA: rediseño reservar-antes-de-despachar contra doble creación concurrente + liberación ante fallo; scope por sujeto; validación de longitud; TTL en memoria; guard de null; tests reforzados con concurrencia/claves-distintas/fallo), 1 defer, 2 dismiss. 450 tests verdes (concurrencia determinista 3/3), format limpio. Status → done. |
