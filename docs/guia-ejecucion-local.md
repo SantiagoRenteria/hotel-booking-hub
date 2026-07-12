@@ -263,6 +263,32 @@ newman run postman/hotel-booking-hub.postman_collection.json `
 La colección mintea sus propios tokens (con `jwtSigningKey`) y usa un **agente único por corrida**, así que puedes
 re-ejecutarla sin choques. Para probar la re-ejecutabilidad, añade `-n 2` (dos iteraciones seguidas).
 
+#### ⚠️ Usar la colección en la APP de Postman (no en Newman) — paso OBLIGATORIO
+
+En Newman le pasas la clave con `--env-var "jwtSigningKey=..."`. **La app de Postman NO tiene `--env-var`**, así que
+tienes que ponerle la clave a mano, o **todo dará 401** aunque el token "se vea" en la variable:
+
+1. Colección **hotel-booking-hub** → **⋯ → Edit** → pestaña **Variables**.
+2. Fila **`jwtSigningKey`** → pega los **64 caracteres** de `JWT_SIGNING_KEY` (el de `deploy/.env`) en la columna
+   **Current value** (⚠️ **no** en *Initial value* — ver abajo).
+3. **Save** y envía cualquier request.
+
+**Cómo funciona (léelo, evita horas de confusión):** el **pre-request a nivel de colección re-mintea `jwtAgente`
+y `jwtViajero` en CADA envío**, firmándolos con `jwtSigningKey`. No es un token guardado que puedas fijar: si
+escribes un token a mano en `jwtAgente`, el pre-request **lo sobreescribe** en el siguiente Send. Por eso:
+
+- Si `jwtSigningKey` está **vacía** (default de la colección) → el token se firma con clave vacía → **401**, aunque
+  el *tooltip* de `{{jwtAgente}}` muestre un token de aspecto normal (ese es un valor viejo, no el que se envía).
+- **Pegar el token directo en el header sí funciona** — porque esquivas el pre-request. Pero es un parche; la forma
+  correcta es setear `jwtSigningKey` y dejar que la colección lo mintee sola.
+
+**Verifícalo:** abre la **Postman Console** (abajo a la izquierda, o `View → Show Postman Console`) y envía. Verás el
+header `Authorization` **realmente enviado** — con `jwtSigningKey` vacía, ese token difiere del del tooltip y falla.
+
+**Initial value vs Current value (trampa clásica de Postman):** *Initial value* es el que se **exporta/comparte** (por
+eso en el repo va vacío — no se commitean secretos). *Current value* es **local y es el que Postman usa** en tus
+envíos. Pon la clave en **Current value**; si la pones solo en *Initial*, no se aplica y seguirás con 401.
+
 ### Smoke end-to-end (solo 🐚 Git Bash — usa `openssl`)
 
 Ejerce **todo** el flujo por el Gateway con ambos roles y casos negativos (401/403/404/409). Desde la raíz:
@@ -299,6 +325,7 @@ docker compose -f deploy/docker-compose.yml down -v      # detiene y BORRA los d
 | `ls` no muestra `.env` | Es normal: `.env` es un archivo **oculto** (empieza con punto). Usa `ls -a` para verlo. No significa que falte. |
 | **401** "No autenticado" | Token vacío, mal firmado (clave incorrecta) o **expirado** (dura 1h). Regenéralo. Verifica que `KEY` mide 64. |
 | **401** aun con token que "se ve bien" | Al copiar-pegar el token metiste un **espacio** al inicio/fin → `Bearer  eyJ...`. Vuelve a copiarlo sin espacios (el token se imprime solo en su línea justo para esto). |
+| **401** en la **app de Postman** con `{{jwtAgente}}`, pero pegando el token sí funciona | `jwtSigningKey` está **vacía** en Postman. El pre-request re-mintea el token en cada envío con esa clave vacía → firma inválida. Setea `jwtSigningKey` (Current value) = `JWT_SIGNING_KEY` de `deploy/.env`. Ver §7 "Usar la colección en la APP de Postman". |
 | **403** "Prohibido" | Estás usando un token de **Viajero** en un endpoint **solo Agente** (o el token no trae claim `email`). |
 | **409** "modificado por otra operación" | `rowVersion` obsoleto: relee el recurso (GET) para tomar el `rowVersion` actual antes del PUT/DELETE. |
 | **409** al crear hotel | Ese agente ya tiene un hotel con ese `(nombre, ciudad)`. Cambia el nombre o usa otro agente. |
