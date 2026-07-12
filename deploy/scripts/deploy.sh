@@ -90,7 +90,7 @@ fi
 #   1) el recurso se crea pero una lectura inmediata da 404 ("Provider produced inconsistent result") → el retro
 #      simple converge (la relectura ya lo ve).
 #   2) el create recibe el "inconsistent result" y Terraform lo deja FUERA del state aunque Azure SÍ lo creó
-#      (típico de recursos async lentos como azurerm_redis_cache o los secretos). El retry simple NO converge:
+#      (típico de recursos async lentos como azurerm_managed_redis o los secretos). El retry simple NO converge:
 #      re-planea "crear" → "already exists" indefinidamente. Para eso, antes de reintentar IMPORTAMOS al state
 #      lo que ya exista en Azure (Terraform no auto-importa), y el apply siguiente converge.
 import_existentes() { # $1 = archivo con la salida del apply fallido
@@ -123,7 +123,7 @@ apply_fase_a() {
     -target=azurerm_application_insights.principal \
     -target=azurerm_container_registry.principal \
     -target=azurerm_mssql_server.principal \
-    -target=azurerm_redis_cache.principal \
+    -target=azurerm_managed_redis.principal \
     -target=azurerm_servicebus_namespace.principal \
     -target=azurerm_key_vault.principal \
     -target=azurerm_container_app_environment.principal

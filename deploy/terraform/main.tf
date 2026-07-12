@@ -9,7 +9,7 @@ locals {
 
   # Cadena StackExchange.Redis para Azure Managed Redis (host:port TLS + clave). Se reutiliza en las cadenas de
   # conexión de las apps (apps.tf) y en el secreto de Key Vault (keyvault.tf).
-  redis_cs = "${azurerm_redis_cache.principal.hostname}:${azurerm_redis_cache.principal.ssl_port},password=${azurerm_redis_cache.principal.primary_access_key},ssl=True,abortConnect=False"
+  redis_cs = "${azurerm_managed_redis.principal.hostname}:${azurerm_managed_redis.principal.default_database[0].port},password=${azurerm_managed_redis.principal.default_database[0].primary_access_key},ssl=True,abortConnect=False"
 }
 
 resource "azurerm_resource_group" "principal" {
