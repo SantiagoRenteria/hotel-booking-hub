@@ -40,12 +40,12 @@ resource "azurerm_container_app_environment_dapr_component" "statestore" {
   # `state.redis` espera la CLAVE en redisPassword (no la cadena de conexión completa) y el host aparte.
   secret {
     name  = "redis-password"
-    value = azurerm_managed_redis.principal.default_database[0].primary_access_key
+    value = azurerm_redis_cache.principal.primary_access_key
   }
 
   metadata {
     name  = "redisHost"
-    value = "${azurerm_managed_redis.principal.hostname}:${azurerm_managed_redis.principal.default_database[0].port}"
+    value = "${azurerm_redis_cache.principal.hostname}:${azurerm_redis_cache.principal.ssl_port}"
   }
 
   metadata {

@@ -57,21 +57,21 @@ resource "azurerm_mssql_database" "reservas" {
   tags                        = local.tags
 }
 
-# Azure Managed Redis (reemplaza al Azure Cache for Redis CLÁSICO, que Microsoft retira y ya no deja crear).
-# SKU Balanced_B0 (el más pequeño). HA off (entorno de prueba, mínimo costo). Expone hostname/port/primary_access_key;
-# la cadena StackExchange completa se arma en `local.redis_cs` (main.tf) y se usa en apps/keyvault.
-resource "azurerm_managed_redis" "principal" {
-  name                      = "${local.nombre}-redis"
-  location                  = azurerm_resource_group.principal.location
-  resource_group_name       = azurerm_resource_group.principal.name
-  sku_name                  = "Balanced_B0"
-  high_availability_enabled = false
-  tags                      = local.tags
-
-  # Habilita auth por clave de acceso (StackExchange usa password); si no, AMR queda solo con Entra ID.
-  default_database {
-    access_keys_authentication_enabled = true
-  }
+# Azure Cache for Redis clásico (Basic C0). Se eligió sobre Azure Managed Redis (Redis Enterprise, `Balanced_B0`)
+# porque el tier Enterprise falla al aprovisionarse en esta región/suscripción ("OperationFailed" sin detalle,
+# capacidad/cuota del tier premium). El clásico Basic C0 es la oferta más disponible y barata, y expone el mismo
+# protocolo Redis (StackExchange se conecta igual: host:puerto-SSL + clave). Sin HA/clustering: suficiente para
+# la caché de disponibilidad/catálogo e idempotencia del entorno efímero.
+resource "azurerm_redis_cache" "principal" {
+  name                 = "${local.nombre}-redis"
+  location             = azurerm_resource_group.principal.location
+  resource_group_name  = azurerm_resource_group.principal.name
+  capacity             = 0
+  family               = "C"
+  sku_name             = "Basic"
+  non_ssl_port_enabled = false # solo TLS
+  minimum_tls_version  = "1.2"
+  tags                 = local.tags
 }
 
 # Nota: el nombre de un Service Bus namespace NO puede terminar en "-sb" ni "-mgmt" (regla del provider,
