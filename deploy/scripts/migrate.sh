@@ -31,7 +31,9 @@ apply_with_retry() {
   command -v cygpath >/dev/null 2>&1 && winfile="$(cygpath -w "$file")"
   while true; do
     echo ">> Aplicando $winfile -> $db (intento $attempt/$RETRIES)"
-    if sqlcmd -S "$SQL_SERVER" -d "$db" -U "$SQL_ADMIN" -P "$PW" -N -C -b -l 60 -i "$winfile"; then
+    # -I: SET QUOTED_IDENTIFIER ON (obligatorio para crear ÍNDICES FILTRADOS como el único de unicidad de hotel;
+    # el sqlcmd clásico/ODBC lo tiene OFF por defecto → si no, "Msg 1934: CREATE INDEX failed ... QUOTED_IDENTIFIER").
+    if sqlcmd -S "$SQL_SERVER" -d "$db" -U "$SQL_ADMIN" -P "$PW" -I -N -C -b -l 60 -i "$winfile"; then
       echo "   OK: $db"
       return 0
     fi
