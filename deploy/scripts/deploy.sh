@@ -86,14 +86,31 @@ EOF
   exit 0
 fi
 
-# Helper de reintento: esta suscripción/región sufre consistencia eventual de ARM (un recurso se crea pero una
-# lectura inmediata da 404 → "Provider produced inconsistent result after apply"). Reintentar deja que ARM
-# propague; lo ya creado persiste y el apply converge. Aplicar por fases (parents primero) reduce los 404.
+# Helper de reintento: esta suscripción/región sufre consistencia eventual de ARM. Dos síntomas:
+#   1) el recurso se crea pero una lectura inmediata da 404 ("Provider produced inconsistent result") → el retro
+#      simple converge (la relectura ya lo ve).
+#   2) el create recibe el "inconsistent result" y Terraform lo deja FUERA del state aunque Azure SÍ lo creó
+#      (típico de recursos async lentos como azurerm_managed_redis o los secretos). El retry simple NO converge:
+#      re-planea "crear" → "already exists" indefinidamente. Para eso, antes de reintentar IMPORTAMOS al state
+#      lo que ya exista en Azure (Terraform no auto-importa), y el apply siguiente converge.
+import_existentes() { # $1 = archivo con la salida del apply fallido
+  # Cada bloque de error trae:  Error: a resource with the ID "<id>" already exists  ...  \n  with <address>,
+  awk '
+    /a resource with the ID "/ { if (match($0, /ID "[^"]+"/)) id = substr($0, RSTART+4, RLENGTH-5) }
+    / with azurerm_/           { if (id != "") { a=$0; sub(/^.* with /,"",a); sub(/,.*/,"",a); print a "\t" id; id="" } }
+  ' "$1" | while IFS="$(printf '\t')" read -r addr id; do
+    [ -n "$addr" ] && [ -n "$id" ] || continue
+    echo "   ↳ importando recurso huérfano al state: $addr"
+    terraform -chdir="$TF" import -var="ip_deployer=$IP_DEPLOYER" "$addr" "$id" || true
+  done
+}
 retry() { # $1=etiqueta  $2=función
-  local n=1
-  until "$2"; do
-    if [ "$n" -ge 6 ]; then echo "!! $1 falló tras 6 intentos" >&2; return 1; fi
-    echo "   $1: reintento $n/6 (consistencia eventual; lo creado persiste y converge)..."
+  local n=1 out; out="$(mktemp)"
+  while true; do
+    if "$2" 2>&1 | tee "$out"; then rm -f "$out"; return 0; fi
+    if [ "$n" -ge 6 ]; then echo "!! $1 falló tras 6 intentos" >&2; rm -f "$out"; return 1; fi
+    import_existentes "$out"   # "already exists" → import al state → el apply siguiente converge
+    echo "   $1: reintento $n/6 (consistencia eventual; import de huérfanos + apply para converger)..."
     sleep 45
     n=$((n + 1))
   done
