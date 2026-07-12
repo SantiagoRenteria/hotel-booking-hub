@@ -57,18 +57,20 @@ resource "azurerm_mssql_database" "reservas" {
   tags                        = local.tags
 }
 
-# Azure Managed Redis (reemplaza al Azure Cache for Redis CLÁSICO, que Microsoft retira y ya no deja crear).
-# SKU Balanced_B0 (el más pequeño). HA off (entorno de prueba, mínimo costo). Expone hostname/port/primary_access_key;
-# la cadena StackExchange completa se arma en `local.redis_cs` (main.tf) y se usa en apps/keyvault.
+# Azure Managed Redis (Redis Enterprise), tier Balanced_B0 (el más pequeño). El Azure Cache for Redis CLÁSICO ya
+# NO se puede crear (Microsoft lo retira → HTTP 400 "create Azure Managed Redis instead"), por eso se usa el
+# Managed. CLAVE: el tier Balanced es zona-redundante por diseño → NO se puede desactivar la alta disponibilidad;
+# poner high_availability_enabled=false hace que Azure rechace la creación con un "OperationFailed" genérico. Se
+# deja HA habilitado (default del servicio, redundancyMode=ZR). Expone hostname + default_database[port/clave].
 resource "azurerm_managed_redis" "principal" {
   name                      = "${local.nombre}-redis"
-  location                  = azurerm_resource_group.principal.location
+  location                  = var.ubicacion_redis # Central US: Balanced no aprovisiona en West US 2 (ver variables.tf)
   resource_group_name       = azurerm_resource_group.principal.name
   sku_name                  = "Balanced_B0"
-  high_availability_enabled = false
+  high_availability_enabled = true # obligatorio en el tier Balanced (no admite HA off)
   tags                      = local.tags
 
-  # Habilita auth por clave de acceso (StackExchange usa password); si no, AMR queda solo con Entra ID.
+  # Auth por clave de acceso (StackExchange usa password); si no, queda solo con Entra ID.
   default_database {
     access_keys_authentication_enabled = true
   }

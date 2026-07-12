@@ -26,6 +26,16 @@ variable "ubicacion" {
   default     = "westus2"
 }
 
+# Región del Azure Managed Redis, SEPARADA de `ubicacion`: el tier Balanced NO aprovisiona en West US 2 ni West
+# US 3 (Azure acepta el create y falla al provisionar → capacidad/disponibilidad regional del tier, verificado
+# 2026-07-12). Sí aprovisiona en Central US (y East US 2). El resto del stack sigue en `ubicacion` (SQL solo se
+# deja crear ahí); el Redis vive en Central US (latencia cross-region asumible en un entorno de prueba).
+variable "ubicacion_redis" {
+  description = "Región del Managed Redis (Balanced no está disponible en West US 2/3; Central US sí)."
+  type        = string
+  default     = "centralus"
+}
+
 variable "sql_admin_login" {
   description = "Usuario administrador del servidor SQL."
   type        = string
