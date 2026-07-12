@@ -26,6 +26,30 @@ terraform -chdir="$TF" init -reconfigure \
   -backend-config="key=hotel-booking-hub.tfstate" >/dev/null
 
 echo ">> terraform destroy del RG-app (el RG-state permanece)"
-terraform -chdir="$TF" destroy -auto-approve -var="ip_deployer="
+# Best-effort: si el state está desincronizado (drift), `destroy` puede fallar. No abortamos — la limpieza
+# garantizada por `az` de abajo deja el lienzo limpio igual.
+terraform -chdir="$TF" destroy -auto-approve -var="ip_deployer=" \
+  || echo "   terraform destroy con errores (posible drift); se fuerza la limpieza por az."
+
+# --- Limpieza GARANTIZADA (barre huérfanos fuera del state) ---
+# `terraform destroy` SOLO borra lo que está en el state. Un apply previo interrumpido deja recursos HUÉRFANOS
+# (creados en Azure, no registrados) que quedan facturando y colisionan con el próximo deploy ("already exists").
+# Nombres derivados del mismo esquema que Terraform (local.nombre = "${prefijo}-${entorno}").
+NOMBRE="${PREFIJO:-hbh}-${ENTORNO:-dev}"
+RG_APP="${RG_APP:-${NOMBRE}-rg}"
+KV_APP="${KV_APP:-${NOMBRE}-kv}"
+
+echo ">> Limpieza garantizada: borrando el RG-app completo ($RG_APP)"
+az group delete --name "$RG_APP" --yes 2>/dev/null || echo "   ($RG_APP ya no existe)"
+
+echo ">> Purga del Key Vault soft-deleted ($KV_APP) — evita que el próximo deploy recupere el vault viejo"
+az keyvault purge --name "$KV_APP" 2>/dev/null || echo "   ($KV_APP no estaba en soft-delete)"
+
+# Reset del state remoto: tras el nuke, el state podría quedar con entradas fantasma. Lo dejamos vacío para que
+# el próximo deploy arranque en lienzo limpio (Azure vacío + state vacío = imposible chocar con "already exists").
+echo ">> Reset del state remoto (blob tfstate) para el próximo deploy"
+az storage blob delete --account-name "$SA" --container-name "$CONTAINER" \
+  --name "hotel-booking-hub.tfstate" --auth-mode key --account-key "$ARM_ACCESS_KEY" 2>/dev/null \
+  || echo "   (state blob ya no existía)"
 
 echo ">> destroy OK. Verifica que no queden recursos facturables:  az group list -o table"
