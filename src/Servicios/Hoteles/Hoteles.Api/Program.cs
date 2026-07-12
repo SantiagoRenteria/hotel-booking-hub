@@ -4,14 +4,21 @@ using HotelBookingHub.Comun.Web.Seguridad;
 using Hoteles.Application.Habitaciones.CambiarEstadoHabitacion;
 using Hoteles.Application.Habitaciones.CrearHabitacion;
 using Hoteles.Application.Habitaciones.EditarHabitacion;
+using Hoteles.Application.Habitaciones.ListarHabitaciones;
+using Hoteles.Application.Habitaciones.ObtenerHabitacion;
 using Hoteles.Application.Hoteles.CambiarEstadoHotel;
 using Hoteles.Application.Hoteles.CrearHotel;
 using Hoteles.Application.Hoteles.EditarHotel;
 using Hoteles.Application.Hoteles.EliminarHotel;
+using Hoteles.Application.Hoteles.ListarHoteles;
+using Hoteles.Application.Hoteles.ObtenerHotel;
 using Hoteles.Domain.Habitaciones;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Infrastructure;
+using Hoteles.Infrastructure.Persistencia;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,9 +46,26 @@ builder.Services.AddManejoExcepcionesNegocio();
 builder.Services.AddMediatorPipeline(typeof(CrearHotelCommand).Assembly);
 
 // Adaptadores de infraestructura (DbContext + repositorio).
-builder.Services.AddHotelesInfrastructure(builder.Configuration.GetConnectionString("hotelesdb"));
+builder.Services.AddHotelesInfrastructure(
+    builder.Configuration.GetConnectionString("hotelesdb"),
+    builder.Configuration.GetConnectionString("redis"));
 
 var app = builder.Build();
+
+// Migraciones al arranque SOLO si se solicita explícitamente (`AplicarMigraciones=true`, que activa docker-compose
+// para el data-plane local de un comando). En tests (WebApplicationFactory, cadena falsa) y en la nube (migraciones
+// por el pipeline de CD) queda DESACTIVADO → no toca la BD al bootear. Story T.1 (AC-ET.1.5).
+if (app.Configuration.GetValue<bool>("AplicarMigraciones"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<HotelesDbContext>();
+    // En docker-compose el servicio arranca antes de que SQL Server acepte conexiones → reintenta hasta ~60s.
+    for (var intento = 1; ; intento++)
+    {
+        try { db.Database.Migrate(); break; }
+        catch when (intento < 30) { await Task.Delay(TimeSpan.FromSeconds(2)); }
+    }
+}
 
 app.UseExceptionHandler();
 
@@ -49,9 +73,13 @@ app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
 
-if (app.Environment.IsDevelopment())
+// OpenAPI + UI Scalar (ADR-011): en Development, y en cualquier entorno si ExponerOpenApi=true (el docker-compose
+// lo activa para que el evaluador lo alcance; en Azure/ACA NO se activa → no se expone la superficie de la API en
+// la nube real). Scalar sirve la UI en /scalar y lee la spec de /openapi/v1.json.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("ExponerOpenApi"))
 {
     app.MapOpenApi();
+    app.MapScalarApiReference(opciones => opciones.WithTitle("Hoteles.Api — hotel-booking-hub"));
 }
 
 // HTTPS enforcement es responsabilidad del API Gateway (borde único); los servicios corren HTTP tras él.
@@ -148,6 +176,32 @@ app.MapPost("/api/v1/habitaciones/{id:guid}/deshabilitar", async (Guid id, Cambi
         return resultado.ToOkResult();
     })
     .WithName("DeshabilitarHabitacion")
+    .WithTags("Habitaciones")
+    .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
+
+// CAP · Lectura del catálogo (Story T.5). GET aislados por agente (query filter de hoteles + verificación del
+// hotel dueño para habitaciones). Devuelven el rowVersion vigente para editar tras leer (GET → PUT). 404 lo ajeno.
+app.MapGet("/api/v1/hoteles", async (ISender sender, CancellationToken ct, int page = 1, int pageSize = 20) =>
+        (await sender.Send(new ListarHotelesDelAgenteQuery(page, pageSize), ct)).ToOkResult())
+    .WithName("ListarHoteles")
+    .WithTags("Hoteles")
+    .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
+
+app.MapGet("/api/v1/hoteles/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
+        (await sender.Send(new ObtenerHotelDetalleQuery(id), ct)).ToOkResult())
+    .WithName("ObtenerHotel")
+    .WithTags("Hoteles")
+    .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
+
+app.MapGet("/api/v1/hoteles/{hotelId:guid}/habitaciones", async (Guid hotelId, ISender sender, CancellationToken ct, int page = 1, int pageSize = 20) =>
+        (await sender.Send(new ListarHabitacionesDeHotelQuery(hotelId, page, pageSize), ct)).ToOkResult())
+    .WithName("ListarHabitacionesDeHotel")
+    .WithTags("Habitaciones")
+    .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
+
+app.MapGet("/api/v1/habitaciones/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
+        (await sender.Send(new ObtenerHabitacionDetalleQuery(id), ct)).ToOkResult())
+    .WithName("ObtenerHabitacion")
     .WithTags("Habitaciones")
     .RequireAuthorization(PoliticasAutorizacion.SoloAgente);
 

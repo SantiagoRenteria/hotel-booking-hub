@@ -86,8 +86,39 @@ EOF
   exit 0
 fi
 
-say "terraform apply (infra base)"
-terraform -chdir="$TF" apply tfplan
+# Helper de reintento: esta suscripción/región sufre consistencia eventual de ARM (un recurso se crea pero una
+# lectura inmediata da 404 → "Provider produced inconsistent result after apply"). Reintentar deja que ARM
+# propague; lo ya creado persiste y el apply converge. Aplicar por fases (parents primero) reduce los 404.
+retry() { # $1=etiqueta  $2=función
+  local n=1
+  until "$2"; do
+    if [ "$n" -ge 6 ]; then echo "!! $1 falló tras 6 intentos" >&2; return 1; fi
+    echo "   $1: reintento $n/6 (consistencia eventual; lo creado persiste y converge)..."
+    sleep 45
+    n=$((n + 1))
+  done
+}
+apply_fase_a() {
+  terraform -chdir="$TF" apply -auto-approve -var="ip_deployer=$IP_DEPLOYER" \
+    -target=azurerm_resource_group.principal \
+    -target=azurerm_user_assigned_identity.apps \
+    -target=azurerm_log_analytics_workspace.principal \
+    -target=azurerm_application_insights.principal \
+    -target=azurerm_container_registry.principal \
+    -target=azurerm_mssql_server.principal \
+    -target=azurerm_managed_redis.principal \
+    -target=azurerm_servicebus_namespace.principal \
+    -target=azurerm_key_vault.principal \
+    -target=azurerm_container_app_environment.principal
+}
+apply_full() { terraform -chdir="$TF" apply -auto-approve -var="ip_deployer=$IP_DEPLOYER"; }
+
+say "terraform apply — Fase A: fundamentos (parents), con reintentos"
+retry "apply Fase A" apply_fase_a || exit 1
+say "Esperando propagación de ARM antes de los dependientes..."
+sleep 30
+say "terraform apply — Fase B: resto (BDs, secretos, componentes Dapr, apps, roles)"
+retry "apply Fase B" apply_full || exit 1
 
 # 4) Build/push de imágenes a ACR (tag = git sha) y captura de las refs
 say "Construyendo imágenes en ACR ($ACR)"
@@ -96,7 +127,8 @@ IMG_VARS="$(ACR="$ACR" bash "$SCRIPTS/build-push.sh")"
 # 5) apply con las imágenes reales + IP del deployer
 say "terraform apply (con imágenes reales)"
 # shellcheck disable=SC2086
-terraform -chdir="$TF" apply -auto-approve -var="ip_deployer=$IP_DEPLOYER" $IMG_VARS
+apply_img() { terraform -chdir="$TF" apply -auto-approve -var="ip_deployer=$IP_DEPLOYER" $IMG_VARS; }
+retry "apply imágenes" apply_img || exit 1
 
 # 6) Migraciones EF (idempotentes, auth SQL con contraseña de Key Vault)
 say "Aplicando migraciones EF Core"

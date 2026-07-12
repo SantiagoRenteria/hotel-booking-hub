@@ -147,6 +147,10 @@ namespace Hoteles.Infrastructure.Migraciones
 
                     SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("Seq"));
 
+                    b.HasIndex("AgentePropietario", "Nombre", "Ciudad")
+                        .IsUnique()
+                        .HasFilter("[Eliminado] = 0");
+
                     b.ToTable("Hoteles", (string)null);
                 });
 

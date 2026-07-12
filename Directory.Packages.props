@@ -20,6 +20,8 @@
     <!-- Autenticación JWT/OIDC (Épica 6, Story 6.1): validación issuer/audience/expiración/firma en Gateway y servicios. -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
+    <!-- UI de la spec OpenAPI (ADR-011). Se expone en Development y en el compose (flag ExponerOpenApi); NO en Azure. -->
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.16.11" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -34,6 +36,9 @@
     <PackageVersion Include="StackExchange.Redis" Version="2.7.27" />
     <!-- Transporte real de eventos local (Story 9.1, ADR-019): RabbitMQ directo detrás de IPublicadorEventos. -->
     <PackageVersion Include="RabbitMQ.Client" Version="7.1.2" />
+    <!-- Transporte de eventos en NUBE (Épica 8, ADR-019): Dapr pub/sub → Azure Service Bus, por el mismo puerto. -->
+    <PackageVersion Include="Dapr.Client" Version="1.15.4" />
+    <PackageVersion Include="Dapr.AspNetCore" Version="1.15.4" />
     <!-- Aspire ServiceDefaults: resiliencia + service discovery + OpenTelemetry -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.6.0" />

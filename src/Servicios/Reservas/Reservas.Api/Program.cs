@@ -3,6 +3,7 @@ using HotelBookingHub.Comun.Mensajeria;
 using HotelBookingHub.Comun.Web;
 using HotelBookingHub.Comun.Web.Seguridad;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Reservas.Api;
 using Reservas.Application.Abstracciones;
 using Reservas.Application.Reservas.BuscarDisponibilidad;
@@ -15,6 +16,8 @@ using Reservas.Application.Reservas.ResolverCancelacion;
 using Reservas.Application.Reservas.SolicitarCancelacion;
 using Reservas.Domain.Servicios;
 using Reservas.Infrastructure;
+using Reservas.Infrastructure.Persistencia;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -72,15 +75,34 @@ builder.Services.AddScoped<IContextoAgente, ClaimContextoAgente>();
 
 var app = builder.Build();
 
+// Migraciones al arranque SOLO si se solicita (`AplicarMigraciones=true`, que activa docker-compose para el
+// data-plane local de un comando). Desactivado en tests (cadena falsa) y en la nube (migraciones por CD).
+// Story T.1 (AC-ET.1.5).
+if (app.Configuration.GetValue<bool>("AplicarMigraciones"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ReservasDbContext>();
+    // En docker-compose el servicio arranca antes de que SQL Server acepte conexiones → reintenta hasta ~60s.
+    for (var intento = 1; ; intento++)
+    {
+        try { db.Database.Migrate(); break; }
+        catch when (intento < 30) { await Task.Delay(TimeSpan.FromSeconds(2)); }
+    }
+}
+
 app.UseExceptionHandler();
 
 // Autenticación/autorización (Story 6.1). Va antes de los endpoints de negocio; /health y /alive quedan anónimos.
 app.UseAuthentication();
 app.UseAuthorization();
 
-if (app.Environment.IsDevelopment())
+// OpenAPI + UI Scalar (ADR-011): en Development, y en cualquier entorno si ExponerOpenApi=true (el docker-compose
+// lo activa para que el evaluador lo alcance; en Azure/ACA NO se activa → no se expone la superficie de la API en
+// la nube real). Scalar sirve la UI en /scalar y lee la spec de /openapi/v1.json.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("ExponerOpenApi"))
 {
     app.MapOpenApi();
+    app.MapScalarApiReference(opciones => opciones.WithTitle("Reservas.Api — hotel-booking-hub"));
 }
 
 // HTTPS enforcement es responsabilidad del API Gateway (borde único); los servicios corren HTTP tras él.

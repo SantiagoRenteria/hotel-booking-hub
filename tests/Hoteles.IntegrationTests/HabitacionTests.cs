@@ -14,10 +14,14 @@ namespace Hoteles.IntegrationTests;
 [Collection("sqlserver-hoteles")]
 public sealed class HabitacionTests(SqlServerFixture fixture)
 {
+    // Nombre único por test: la BD del fixture es compartida y el índice único (agente, nombre, ciudad) rechaza
+    // dos siembras iguales entre tests.
+    private readonly string _nombre = $"Hotel Central {Guid.NewGuid():N}";
+
     private async Task<Guid> CrearHotelAsync()
     {
         await using var db = fixture.CrearContexto();
-        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
+        var hotel = Hotel.Crear(_nombre, "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
         await new HotelRepository(db).CrearAsync(hotel, CancellationToken.None);
         return hotel.Id;
     }
@@ -72,7 +76,7 @@ public sealed class HabitacionTests(SqlServerFixture fixture)
             var hotel = await db.Hoteles.FirstAsync(h => h.Id == hotelId);
             var hotelRowVersionDespues = (byte[])db.Entry(hotel).Property("RowVersion").CurrentValue!;
             Assert.Equal(hotelRowVersionAntes, hotelRowVersionDespues); // el hotel no se tocó
-            Assert.Equal("Hotel Central", hotel.Nombre);
+            Assert.Equal(_nombre, hotel.Nombre);
 
             var hab = await db.Habitaciones.FirstAsync(h => h.Id == habId);
             Assert.Equal("Suite Premium", hab.Tipo); // la habitación sí cambió

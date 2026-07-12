@@ -26,9 +26,12 @@ declare -A DBS=(
 
 apply_with_retry() {
   local db="$1" file="$2" attempt=1
+  # El sqlcmd clásico (Windows/ODBC) requiere ruta de Windows (C:\...), no la MSYS de Git Bash (/c/...).
+  local winfile="$file"
+  command -v cygpath >/dev/null 2>&1 && winfile="$(cygpath -w "$file")"
   while true; do
-    echo ">> Aplicando $file -> $db (intento $attempt/$RETRIES)"
-    if sqlcmd -S "$SQL_SERVER" -d "$db" -U "$SQL_ADMIN" -P "$PW" -N -C -b -l 60 -i "$file"; then
+    echo ">> Aplicando $winfile -> $db (intento $attempt/$RETRIES)"
+    if sqlcmd -S "$SQL_SERVER" -d "$db" -U "$SQL_ADMIN" -P "$PW" -N -C -b -l 60 -i "$winfile"; then
       echo "   OK: $db"
       return 0
     fi
