@@ -146,11 +146,17 @@ TOKEN=$(bash deploy/scripts/mint-jwt.sh "$KEY" Agente  hotel-booking-hub hotel-b
 # Token de Viajero (busca y reserva)
 TOKEN_VIAJERO=$(bash deploy/scripts/mint-jwt.sh "$KEY" Viajero hotel-booking-hub hotel-booking-hub-api viajero@x.com)
 
-echo "AGENTE:  $TOKEN"
-echo "VIAJERO: $TOKEN_VIAJERO"
+# Imprime cada token SOLO en su propia línea (para copiarlo limpio, sin espacios de relleno):
+echo "-- TOKEN AGENTE --";  echo "$TOKEN"
+echo "-- TOKEN VIAJERO --"; echo "$TOKEN_VIAJERO"
 ```
 Firma del script: `mint-jwt.sh "<clave>" [rol] [issuer] [audience] [email]`. El issuer/audience deben ser
 exactamente `hotel-booking-hub` / `hotel-booking-hub-api` (los que valida el sistema).
+
+> ⚠️ **Al copiar el token para pegarlo (Scalar/Postman), no incluyas espacios antes ni después.** Un espacio de
+> más deja el header como `Bearer  eyJ...` y el sistema responde **401**. Por eso el token se imprime solo en su
+> línea (arriba): selecciónala completa. Si lo usas por `curl`/`Invoke-RestMethod` con la variable `$TOKEN`, no hay
+> riesgo — el problema solo aparece al copiar-pegar a mano.
 
 ### Vía B — 🔷 PowerShell (nativo, sin scripts .sh)
 
@@ -169,7 +175,7 @@ function New-Jwt([string]$Role='Agente',[string]$Email='agente1@x.com'){
   "$h.$p.$sig"
 }
 
-$TOKEN         = New-Jwt Agente  'agente1@x.com'
+$TOKEN = New-Jwt Agente  'agente1@x.com'
 $TOKEN_VIAJERO = New-Jwt Viajero 'viajero@x.com'
 ```
 
@@ -292,6 +298,7 @@ docker compose -f deploy/docker-compose.yml down -v      # detiene y BORRA los d
 | `len KEY` da **0** | Igual que arriba: la clave no se leyó porque no estás en la raíz. Plántate en la raíz y repite. |
 | `ls` no muestra `.env` | Es normal: `.env` es un archivo **oculto** (empieza con punto). Usa `ls -a` para verlo. No significa que falte. |
 | **401** "No autenticado" | Token vacío, mal firmado (clave incorrecta) o **expirado** (dura 1h). Regenéralo. Verifica que `KEY` mide 64. |
+| **401** aun con token que "se ve bien" | Al copiar-pegar el token metiste un **espacio** al inicio/fin → `Bearer  eyJ...`. Vuelve a copiarlo sin espacios (el token se imprime solo en su línea justo para esto). |
 | **403** "Prohibido" | Estás usando un token de **Viajero** en un endpoint **solo Agente** (o el token no trae claim `email`). |
 | **409** "modificado por otra operación" | `rowVersion` obsoleto: relee el recurso (GET) para tomar el `rowVersion` actual antes del PUT/DELETE. |
 | **409** al crear hotel | Ese agente ya tiene un hotel con ese `(nombre, ciudad)`. Cambia el nombre o usa otro agente. |
