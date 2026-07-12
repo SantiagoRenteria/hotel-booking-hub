@@ -235,3 +235,43 @@ END;
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260711192016_AgregaIndiceUnicoHotelPorAgenteNombreCiudad'
+)
+BEGIN
+    ;WITH Duplicados AS (
+        SELECT [Seq],
+               ROW_NUMBER() OVER (
+                   PARTITION BY [AgentePropietario], [Nombre], [Ciudad]
+                   ORDER BY [Seq]) AS rn
+        FROM [Hoteles]
+        WHERE [Eliminado] = 0
+    )
+    UPDATE h SET h.[Eliminado] = 1
+    FROM [Hoteles] h
+    INNER JOIN Duplicados d ON h.[Seq] = d.[Seq]
+    WHERE d.rn > 1;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260711192016_AgregaIndiceUnicoHotelPorAgenteNombreCiudad'
+)
+BEGIN
+    EXEC(N'CREATE UNIQUE INDEX [IX_Hoteles_AgentePropietario_Nombre_Ciudad] ON [Hoteles] ([AgentePropietario], [Nombre], [Ciudad]) WHERE [Eliminado] = 0');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260711192016_AgregaIndiceUnicoHotelPorAgenteNombreCiudad'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260711192016_AgregaIndiceUnicoHotelPorAgenteNombreCiudad', N'10.0.9');
+END;
+
+COMMIT;
+GO
+
