@@ -89,6 +89,11 @@ flowchart TB
 
 ## Ejecutar en local (un comando)
 
+> 📖 **¿Primera vez?** La **[Guía de ejecución local paso a paso](docs/guia-ejecucion-local.md)** explica todo con
+> detalle: **desde qué consola** (Git Bash / PowerShell / CMD) y **desde qué carpeta** correr cada comando, cómo
+> obtener el token JWT en ambas consolas, cómo funciona la identidad por agente, y los errores típicos. Esta sección
+> es el resumen; la guía es el manual.
+
 Requiere Docker. Copia `deploy/.env.example` → `deploy/.env` y define `MSSQL_SA_PASSWORD` y `JWT_SIGNING_KEY`.
 
 ```bash
@@ -202,7 +207,8 @@ Mapa a bajo nivel. Cada BC repite el mismo layout de **Clean Architecture** (`Do
 | Si quieres… | Ve a |
 |---|---|
 | Las **decisiones** y su porqué | [`docs/adr/`](docs/adr/README.md) |
-| **Ejecutar** local | [arriba](#ejecutar-en-local-un-comando) · `deploy/docker-compose.yml` |
+| **Ejecutar** local (resumen) | [arriba](#ejecutar-en-local-un-comando) · `deploy/docker-compose.yml` |
+| **Ejecutar** local — guía paso a paso (consola, carpeta, token, troubleshooting) | [`docs/guia-ejecucion-local.md`](docs/guia-ejecucion-local.md) |
 | **Desplegar** a Azure / CD | [`deploy/terraform/README.md`](deploy/terraform/README.md) |
 | **Seguridad** (OWASP) | [`docs/seguridad.md`](docs/seguridad.md) |
 | **Uso de IA** (método BMAD) | [`docs/uso-de-ia.md`](docs/uso-de-ia.md) |
