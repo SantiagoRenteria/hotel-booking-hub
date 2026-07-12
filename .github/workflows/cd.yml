@@ -56,12 +56,16 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Instalar sqlcmd (go-sqlcmd, para migrate.sh)
+      - name: Instalar sqlcmd (mssql-tools18 · ODBC clásico, para migrate.sh)
+        # migrate.sh usa el sqlcmd CLÁSICO (ODBC) con -U/-P/-N/-C, no go-sqlcmd. El paquete `sqlcmd` (go-sqlcmd)
+        # además no está publicado para Ubuntu 24.04/noble en el feed prod ("Unable to locate package sqlcmd").
+        # mssql-tools18 sí lo está y trae el sqlcmd que espera migrate.sh en /opt/mssql-tools18/bin.
         run: |
           curl -fsSL https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -o pmc.deb
           sudo dpkg -i pmc.deb
           sudo apt-get update
-          sudo ACCEPT_EULA=Y apt-get install -y sqlcmd
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
+          echo "/opt/mssql-tools18/bin" >> "$GITHUB_PATH"
 
       - name: Deploy (bootstrap → apply por fases → build/push → migraciones → smoke)
         # deploy.sh reusa la sesión az de azure/login (ARM_USE_CLI); detecta la IP del runner para el firewall SQL.
