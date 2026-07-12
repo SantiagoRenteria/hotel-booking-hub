@@ -6,17 +6,35 @@
 
 ## Regla de oro (lee esto primero)
 
-**Abre la consola en la RAÍZ del repositorio** — la carpeta `hotel-booking-hub/` (la que contiene `README.md`,
-`deploy/`, `postman/`, `src/`). **Todos** los comandos de esta guía asumen que estás ahí. Nunca entres a `deploy/`
-ni a otra subcarpeta: las rutas ya vienen escritas relativas a la raíz (`deploy/...`, `postman/...`).
+**TODOS los comandos de esta guía se ejecutan desde la RAÍZ del repositorio** — la carpeta `hotel-booking-hub/`
+(la que contiene `README.md`, `deploy/`, `postman/`, `src/`). No hace falta entrar a ninguna subcarpeta: **cada
+comando ya trae dentro la ruta exacta de lo que necesita** (`deploy/.env`, `deploy/scripts/...`, `postman/...`).
+Tú solo tienes que estar parado en la raíz.
 
+### Cómo plantarte en la raíz (hagas lo que hagas antes)
+
+Copia la ruta de TU repo una vez y úsala siempre para posicionarte, sin importar en qué carpeta estabas:
+
+**🐚 Git Bash:**
 ```bash
-# ¿estoy en la raíz? Debe listar README.md, deploy, postman, src...
+cd ~/Documents/Projects/prueba_tecnica_ultragroup/hotel-booking-hub
+```
+**🔷 PowerShell:**
+```powershell
+cd C:\Users\santiago\Documents\Projects\prueba_tecnica_ultragroup\hotel-booking-hub
+```
+
+Verifica que estás bien (debe listar `README.md`, `deploy`, `postman`, `src`…):
+```bash
 ls
 ```
 
-> El tropiezo #1 es correr un comando desde `deploy/` — entonces `deploy/.env` se busca como `deploy/deploy/.env`,
-> no existe, y la clave del token sale vacía → todo da 401. Si algo falla, **verifica primero en qué carpeta estás.**
+> **Nota:** `.env` empieza con punto → es un **archivo oculto**, y `ls` normal **no lo muestra** (eso es normal,
+> no significa que falte). Para verlo usa `ls -a`.
+
+> El tropiezo #1 es correr un comando desde `deploy/`: como el comando ya lleva `deploy/` dentro, la ruta queda
+> `deploy/deploy/.env`, no existe, la clave sale vacía → todo da 401. Regla simple: **si algo falla, vuelve a
+> plantarte en la raíz con el `cd` de arriba y repite.** Nunca mezcles "estar en `deploy/`" con rutas que ya dicen `deploy/`.
 
 ## ¿Qué consola uso? (importante en Windows)
 
@@ -270,8 +288,9 @@ docker compose -f deploy/docker-compose.yml down -v      # detiene y BORRA los d
 
 | Síntoma | Causa y solución |
 |---------|------------------|
-| `grep: deploy/.env: No such file or directory` y token vacío | Estás **dentro de `deploy/`** (u otra carpeta), no en la raíz. `cd` a la raíz del repo. |
-| `len KEY` da **0** | Igual que arriba: la clave no se leyó. Confirma que `deploy/.env` existe y que estás en la raíz. |
+| `grep: deploy/.env: No such file or directory` y token vacío | Estás **dentro de `deploy/`** (u otra carpeta), no en la raíz. Vuelve a la raíz con el `cd` de la sección "Cómo plantarte en la raíz" y repite. |
+| `len KEY` da **0** | Igual que arriba: la clave no se leyó porque no estás en la raíz. Plántate en la raíz y repite. |
+| `ls` no muestra `.env` | Es normal: `.env` es un archivo **oculto** (empieza con punto). Usa `ls -a` para verlo. No significa que falte. |
 | **401** "No autenticado" | Token vacío, mal firmado (clave incorrecta) o **expirado** (dura 1h). Regenéralo. Verifica que `KEY` mide 64. |
 | **403** "Prohibido" | Estás usando un token de **Viajero** en un endpoint **solo Agente** (o el token no trae claim `email`). |
 | **409** "modificado por otra operación" | `rowVersion` obsoleto: relee el recurso (GET) para tomar el `rowVersion` actual antes del PUT/DELETE. |
