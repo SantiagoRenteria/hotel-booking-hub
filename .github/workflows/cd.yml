@@ -1,0 +1,91 @@
+name: CD
+
+# Despliegue continuo a Azure (Story 8.3, ADR-021).
+# - Disparo ON-DEMAND por workflow_dispatch (accion=deploy) — NUNCA auto-apply al merge (John vetó el auto-apply
+#   por control de costos: cada apply crea infra facturable). El gate adicional es `environment: production`
+#   (approval si Santiago configura required reviewers). Mergear a main NO despliega nada por sí solo.
+# - Teardown también on-demand por workflow_dispatch (accion=destroy) para el ciclo de mínimo costo.
+# Auth 100% passwordless por OIDC (azure/login federated) — cero secretos en el repo (solo variables no-secretas).
+# Reusa los scripts ya probados en 8.2 (deploy/scripts/*). El apply real requiere el setup OIDC de deploy/README.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      accion:
+        description: "Acción a ejecutar"
+        type: choice
+        options: [deploy, destroy]
+        default: deploy
+
+permissions:
+  id-token: write # requerido por OIDC (azure/login)
+  contents: read
+
+concurrency:
+  group: cd-azure # nunca dos apply/destroy solapados sobre la misma infra
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  deploy:
+    name: Deploy (apply → smoke)
+    if: ${{ inputs.accion == 'deploy' }}
+    runs-on: ubuntu-latest
+    # Environment 'production': si Santiago le añade "required reviewers", actúa como gate extra antes del apply.
+    # El disparo es on-demand (workflow_dispatch): un humano decide cuándo desplegar. Passwordless por OIDC.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login Azure (OIDC, passwordless)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.8"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Instalar sqlcmd (go-sqlcmd, para migrate.sh)
+        run: |
+          curl -fsSL https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -o pmc.deb
+          sudo dpkg -i pmc.deb
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y sqlcmd
+
+      - name: Deploy (bootstrap → apply por fases → build/push → migraciones → smoke)
+        # deploy.sh reusa la sesión az de azure/login (ARM_USE_CLI); detecta la IP del runner para el firewall SQL.
+        run: CONFIRM=yes bash deploy/scripts/deploy.sh
+
+  destroy:
+    name: Destroy (teardown)
+    if: ${{ inputs.accion == 'destroy' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login Azure (OIDC, passwordless)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.8"
+
+      - name: Destroy (RG-app; el RG-state permanece)
+        run: bash deploy/scripts/destroy.sh

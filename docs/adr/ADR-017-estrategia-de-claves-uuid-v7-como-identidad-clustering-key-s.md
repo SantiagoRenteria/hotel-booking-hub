@@ -1,0 +1,6 @@
+# ADR-017 — Estrategia de claves: UUID v7 como identidad + clustering key secuencial
+
+- **Contexto:** el stack fija UUID v7 en las PKs. `Guid.CreateVersion7()` de .NET no produce el orden secuencial que el tipo `uniqueidentifier` de SQL Server ordena, por lo que como PK *clustered* fragmenta el índice casi como un v4 (trap documentado).
+- **Decisión:** la identidad de dominio es el **UUID v7** (expuesto en API y eventos), mapeado como PK **no-clustered**; la *clustering key* es una columna secuencial interna **`Seq bigint IDENTITY`**. `Seq` es *shadow property*: nunca cruza la frontera del BC ni aparece en DTOs/eventos/logs; las FK apuntan al Guid. `NochesHabitacion` no usa surrogate — su clustering key natural es `(HabitacionId, Noche)`, que además es el índice árbitro.
+- **Alternativas:** v7 *clustered* naive (descartado: fragmentación); reordenar los bytes del v7 al layout de SQL Server (descartado: el valor almacenado deja de ser el v7 canónico salvo conversión); `SequentialGuidValueGenerator` de EF Core (descartado: no es v7).
+- **Consecuencias:** (+) identidad pública estable y secuencialidad física a cualquier escala. (−) una columna extra por tabla con surrogate; disciplina para no filtrar `Seq`. A la escala objetivo (~0,12 writes/s) la fragmentación sería tolerable, pero la decisión cuesta poco y evita el trap si el volumen crece.

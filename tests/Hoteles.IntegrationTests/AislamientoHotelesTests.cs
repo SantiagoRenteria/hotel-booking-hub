@@ -18,10 +18,14 @@ public sealed class AislamientoHotelesTests(SqlServerFixture fixture)
     private const string AgenteA = "a@agencia.com";
     private const string AgenteB = "b@agencia.com";
 
+    // Nombre único por test: la BD del fixture es compartida por la colección y el índice único
+    // (agente, nombre, ciudad) rechazaría dos siembras iguales entre tests.
+    private readonly string _nombre = $"Hotel A {Guid.NewGuid():N}";
+
     private async Task<Guid> SembrarHotelDeAsync(string dueno)
     {
         await using var db = fixture.CrearContexto(); // sin identidad → filtro inactivo para sembrar
-        var hotel = Hotel.Crear("Hotel A", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, dueno);
+        var hotel = Hotel.Crear(_nombre, "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, dueno);
         await new HotelRepository(db).CrearAsync(hotel, CancellationToken.None);
         return hotel.Id;
     }
@@ -55,7 +59,7 @@ public sealed class AislamientoHotelesTests(SqlServerFixture fixture)
         await using (var dbA = fixture.CrearContextoConAgente(AgenteA))
         {
             var propio = await new HotelRepository(dbA).ObtenerAsync(id, CancellationToken.None);
-            Assert.Equal("Hotel A", propio!.Nombre);
+            Assert.Equal(_nombre, propio!.Nombre);
         }
     }
 
@@ -76,7 +80,7 @@ public sealed class AislamientoHotelesTests(SqlServerFixture fixture)
 
         await using var dbA = fixture.CrearContextoConAgente(AgenteA);
         var propio = await new HotelRepository(dbA).ObtenerAsync(id, CancellationToken.None);
-        Assert.Equal("Hotel A", propio!.Nombre); // intacto
+        Assert.Equal(_nombre, propio!.Nombre); // intacto
     }
 
     [Fact]

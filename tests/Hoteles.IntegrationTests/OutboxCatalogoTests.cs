@@ -29,10 +29,14 @@ public sealed class OutboxCatalogoTests(SqlServerFixture fixture)
     private static Task LimpiarOutboxAsync(HotelesDbContext db) =>
         db.Database.ExecuteSqlRawAsync("DELETE FROM OutboxMessages;");
 
+    // Nombre único por test: la BD del fixture es compartida y el índice único (agente, nombre, ciudad) rechaza
+    // dos siembras iguales entre tests.
+    private readonly string _nombre = $"Hotel Central {Guid.NewGuid():N}";
+
     private async Task<Guid> CrearHotelAsync()
     {
         await using var db = fixture.CrearContexto();
-        var hotel = Hotel.Crear("Hotel Central", "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
+        var hotel = Hotel.Crear(_nombre, "Medellín", "Calle 1", "Boutique", EstadoHotel.Habilitado, "agente@test.com");
         await new HotelRepository(db).CrearAsync(hotel, CancellationToken.None);
         return hotel.Id;
     }

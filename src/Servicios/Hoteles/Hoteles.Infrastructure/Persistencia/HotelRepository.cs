@@ -1,6 +1,9 @@
 using HotelBookingHub.Comun.Excepciones;
+using Hoteles.Application.Abstracciones;
 using Hoteles.Domain.Hoteles;
 using Hoteles.Domain.Puertos;
+using Hoteles.Infrastructure.Cache;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hoteles.Infrastructure.Persistencia;
@@ -10,12 +13,27 @@ namespace Hoteles.Infrastructure.Persistencia;
 /// eventos). En 2.5, cuando el alta emita un evento de catálogo, migrará al write-path transaccional con outbox.
 /// La edición/baja (2.2) usan concurrencia optimista por <c>rowversion</c>.
 /// </summary>
-public sealed class HotelRepository(HotelesDbContext db) : IHotelRepository
+public sealed class HotelRepository(HotelesDbContext db, IInvalidadorCacheCatalogo? cache = null) : IHotelRepository
 {
+    // En producción DI inyecta el invalidador (Redis o no-op); en tests que construyen el repo a mano y no
+    // ejercen la caché, `null` degrada a no-op (sin Redis no hay nada que invalidar).
+    private readonly IInvalidadorCacheCatalogo _cache = cache ?? new InvalidadorCacheCatalogoNoop();
+
     public async Task<byte[]> CrearAsync(Hotel hotel, CancellationToken ct)
     {
         db.Hoteles.Add(hotel);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (EsViolacionUnicidad(ex))
+        {
+            // El índice único filtrado (AgentePropietario, Nombre, Ciudad) rechazó un duplicado → 409.
+            throw new HotelDuplicadoException(ex);
+        }
+
+        // Invalida la lista cacheada del agente (Story T.6) → un GET posterior muestra el alta de inmediato.
+        await _cache.InvalidarHotelesDeAgenteAsync(hotel.AgentePropietario, ct);
         return RowVersionActual(hotel);
     }
 
@@ -44,6 +62,14 @@ public sealed class HotelRepository(HotelesDbContext db) : IHotelRepository
         try
         {
             await db.SaveChangesAsync(ct);
+            await _cache.InvalidarHotelesDeAgenteAsync(hotel.AgentePropietario, ct); // editar/eliminar/estado → lista caduca
+            if (hotel.Eliminado)
+            {
+                // Al eliminar el hotel, su lista de habitaciones deja de ser visible (query filter) → debe dar 404.
+                // La caché de habitaciones se genera por hotelId, así que hay que caducarla también (si no, HIT stale).
+                await _cache.InvalidarHabitacionesDeHotelAsync(hotel.Id, ct);
+            }
+
             return RowVersionActual(hotel);
         }
         catch (DbUpdateConcurrencyException ex)
@@ -52,8 +78,17 @@ public sealed class HotelRepository(HotelesDbContext db) : IHotelRepository
             // volvería a fallar → 409 y NUNCA retry (a diferencia del deadlock 1205, que sí es transitorio).
             throw new ConflictoConcurrenciaException(ex);
         }
+        catch (DbUpdateException ex) when (EsViolacionUnicidad(ex))
+        {
+            // Renombrar el hotel a un par (Nombre, Ciudad) ya usado por el agente → el índice único lo rechaza.
+            throw new HotelDuplicadoException(ex);
+        }
     }
 
     // EF refresca el rowversion (shadow property) tras SaveChanges; lo devolvemos para exponerlo en la respuesta.
     private byte[] RowVersionActual(Hotel hotel) => (byte[])db.Entry(hotel).Property("RowVersion").CurrentValue!;
+
+    // Violación de índice único de SQL Server: 2627 (constraint) / 2601 (índice único). Determinístico → 409.
+    private static bool EsViolacionUnicidad(DbUpdateException ex) =>
+        ex.InnerException is SqlException sql && sql.Number is 2601 or 2627;
 }
