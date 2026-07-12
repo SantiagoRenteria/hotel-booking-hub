@@ -7,7 +7,9 @@ output "grupo_recursos" {
 
 output "gateway_fqdn" {
   description = "FQDN público del API Gateway (único ingress externo)."
-  value       = azurerm_container_app.gateway.latest_revision_fqdn
+  # FQDN ESTABLE de ingress (a nivel de app), NO el de la revisión (`latest_revision_fqdn` → `--<rev>` da 404).
+  # El smoke y las pruebas manuales deben pegarle a este.
+  value = azurerm_container_app.gateway.ingress[0].fqdn
 }
 
 output "acr_login_server" {
